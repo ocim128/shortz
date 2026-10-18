@@ -64,6 +64,15 @@ export function TrimRange({ duration, trim, onChange }: TrimRangeProps): JSX.Ele
 
   const label = (t: number): string => `${t.toFixed(1)}s`
 
+  // Value bubbles anchor flush near the track ends — centered bubbles on the
+  // first/last 10% would paint past the track edge and get cut by the pane.
+  const valueAnchor = (t: number): string => {
+    const p = pct(t)
+    if (p >= 90) return ' trim-range__value--flush-right'
+    if (p <= 10) return ' trim-range__value--flush-left'
+    return ''
+  }
+
   return (
     <div className="trim-range">
       <div
@@ -89,7 +98,7 @@ export function TrimRange({ duration, trim, onChange }: TrimRangeProps): JSX.Ele
           aria-valuemin={0}
           aria-valuemax={duration}
         >
-          <span className="trim-range__value">{label(trim.start)}</span>
+          <span className={`trim-range__value${valueAnchor(trim.start)}`}>{label(trim.start)}</span>
         </div>
         <div
           className={`trim-range__handle${dragging === 'end' ? ' is-active' : ''}`}
@@ -102,7 +111,7 @@ export function TrimRange({ duration, trim, onChange }: TrimRangeProps): JSX.Ele
           aria-valuemin={0}
           aria-valuemax={duration}
         >
-          <span className="trim-range__value">{label(trim.end)}</span>
+          <span className={`trim-range__value${valueAnchor(trim.end)}`}>{label(trim.end)}</span>
         </div>
       </div>
     </div>

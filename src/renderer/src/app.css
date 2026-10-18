@@ -607,6 +607,18 @@
   white-space: nowrap;
   pointer-events: none;
 }
+/* Flush anchors keep the bubble inside the track at the ends (the centered
+   form paints past the track edge when the handle sits at 0% / 100%). Both
+   align the bubble's outer edge to the handle's CENTER: 50% of the 14px
+   handle, no translate. */
+.trim-range__value--flush-right {
+  left: auto;
+  right: 50%;
+  transform: none;
+}
+.trim-range__value--flush-left {
+  transform: none;
+}
 
 /* --- field panel ------------------------------------------------------------ */
 
@@ -862,6 +874,10 @@
   max-width: 380px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   cursor: pointer;
+  /* Long unbreakable tokens (export paths) must wrap inside the toast — the
+     stack sits 18px from the window edge, so overflow would clip mid-glyph. */
+  overflow-wrap: anywhere;
+  overflow: hidden;
   animation: toast-in 160ms ease;
 }
 .toast--ok {
