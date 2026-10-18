@@ -14,7 +14,25 @@ interface ProjectCardProps {
 
 export function ProjectCard({ meta, onOpen, onRelink, onDuplicate, onDelete, onReveal }: ProjectCardProps): JSX.Element {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+
+  // media:// URL for projects/<id>/thumb.jpg when the asset exists.
+  useEffect(() => {
+    let alive = true
+    const load = async (): Promise<void> => {
+      try {
+        const url = await window.shortz.getThumbUrl(meta.id)
+        if (alive) setThumbUrl(url)
+      } catch {
+        /* missing thumb keeps the fallback glyph */
+      }
+    }
+    void load()
+    return () => {
+      alive = false
+    }
+  }, [meta.id])
 
   useEffect(() => {
     if (!menu) return
@@ -49,9 +67,13 @@ export function ProjectCard({ meta, onOpen, onRelink, onDuplicate, onDelete, onR
       onContextMenu={openMenu}
     >
       <div className="project-card__thumb">
-        <span className="project-card__play" aria-hidden>
-          ▶
-        </span>
+        {thumbUrl ? (
+          <img className="project-card__thumb-img" src={thumbUrl} alt="" draggable={false} />
+        ) : (
+          <span className="project-card__play" aria-hidden>
+            ▶
+          </span>
+        )}
         {meta.sourceMissing && (
           <span className="project-card__missing-badge" title={S.homeRelinkPrompt}>
             ⚠ {S.homeRelink}

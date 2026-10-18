@@ -1,5 +1,5 @@
-import type { BackgroundStyle } from '../../../preload/api'
-import { PREVIEW_SCALE, type ResolvedLayout } from '../preview/layout'
+import type { BackgroundStyle } from '../../../shared/template/types'
+import { PREVIEW_SCALE, type SharedResolvedLayout } from '../preview/canvas-spec'
 import { SafeZoneOverlay } from './SafeZoneOverlay'
 import { TextLayer } from './TextLayer'
 import { VideoLayer } from './VideoLayer'
@@ -8,18 +8,18 @@ import { VideoLayer } from './VideoLayer'
  * PhonePreview — HTML/CSS composition inside a phone-shaped frame
  * (docs/02-architecture.md §Preview Compositor). The inner .design-root is the
  * full 1080×1920 design space scaled by 0.36 → 390×693 on screen; children
- * position in design px.
+ * position in design px. Text is painted on a canvas with the shared engine's
+ * exact metrics; the video keeps native scaling.
  */
 
-const BG_COLOR: Record<BackgroundStyle, string> = {
+const BG_COLOR: Record<Exclude<BackgroundStyle, 'blurVideo'>, string> = {
   black: '#000000',
   white: '#ffffff',
-  darkGray: '#0f0f0f',
-  blurVideo: '#000000' // blurred video layer covers it when ready
+  darkGray: '#0f0f0f'
 }
 
 interface PhonePreviewProps {
-  layout: ResolvedLayout
+  layout: SharedResolvedLayout
   mediaUrl: string | null
   muted: boolean
   showSafeZones: boolean
@@ -32,10 +32,13 @@ export function PhonePreview({ layout, mediaUrl, muted, showSafeZones, safeZones
       <div
         className="design-root"
         style={{
-          width: 1080,
-          height: 1920,
+          width: layout.canvas.width,
+          height: layout.canvas.height,
           transform: `scale(${PREVIEW_SCALE})`,
-          backgroundColor: BG_COLOR[layout.canvas.background]
+          backgroundColor:
+            layout.canvas.background === 'blurVideo'
+              ? '#000000' // the blurred video layer covers it
+              : BG_COLOR[layout.canvas.background]
         }}
       >
         <VideoLayer mediaUrl={mediaUrl} layout={layout} muted={muted} />

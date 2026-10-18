@@ -1,38 +1,50 @@
-import type { ResolvedLayout } from '../preview/layout'
-import { cssFontFamily } from '../preview/text'
+import { useEffect, useRef } from 'react'
+import { canvasFontFamilySpec, type SharedResolvedLayout } from '../preview/canvas-spec'
+import { getFontLoader } from '../preview/font-loader'
+import { ascentPx } from '../../../shared/layout/text'
 
 /**
- * TextLayer — absolutely-positioned per-line spans styled from the resolved
- * layout. The browser never re-wraps (`white-space: pre`, `display: block`);
- * lines are pre-broken by the (placeholder) shared metrics
- * (docs/technical/template-schema.md §resolution contract).
+ * TextLayer — a canvas painted with the resolved layout's text, using the
+ * renderer's registered CSS fonts. This mirrors the render pipeline's overlay
+ * drawing exactly (src/core/render/overlay.ts drawing text): baseline =
+ * y + i * lineHeightPx + ascentPx, anchored at the slot's x/width with the
+ * same align semantics — preview↔render parity (goal G3, acceptance A2).
+ *
+ * The lines are pre-broken by the shared engine; nothing re-wraps. The canvas
+ * is drawn in design space (1080×1920) and inherits the design-root scale.
  */
-export function TextLayer({ layout }: { layout: ResolvedLayout }): JSX.Element {
-  return (
-    <>
-      {layout.texts.map((t) => (
-        <div
-          key={t.slotId}
-          className="text-layer"
-          style={{
-            left: t.x,
-            top: t.y,
-            width: t.width,
-            textAlign: t.slot.align,
-            color: t.slot.color,
-            fontFamily: cssFontFamily(t.slot.fontFamily),
-            fontWeight: t.slot.fontWeight,
-            fontSize: t.fitted.fontSize,
-            lineHeight: `${t.lineHeightPx}px`
-          }}
-        >
-          {t.fitted.lines.map((line, i) => (
-            <span key={i} className="text-layer__line">
-              {line}
-            </span>
-          ))}
-        </div>
-      ))}
-    </>
-  )
+export function TextLayer({ layout }: { layout: SharedResolvedLayout }): JSX.Element {
+  const ref = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    const loader = getFontLoader()
+    for (const text of layout.texts) {
+      ctx.fillStyle = text.color
+      ctx.textBaseline = 'alphabetic'
+      ctx.textAlign = text.align === 'center' ? 'center' : text.align === 'right' ? 'right' : 'left'
+      ctx.font = canvasFontFamilySpec(text.fontFamily, text.fontWeight, text.fontSize)
+
+      const anchorX =
+        text.align === 'center'
+          ? text.x + text.width / 2
+          : text.align === 'right'
+            ? text.x + text.width
+            : text.x
+
+      // Per-line: baseline = slot y + i * lineHeightPx + ascentPx (opentype metrics,
+      // same math and same font bytes the overlay PNG uses in the render pipeline).
+      const ascent = ascentPx(loader, text.fontKey, text.fontSize)
+      for (let i = 0; i < text.lines.length; i += 1) {
+        const baseline = text.y + i * text.lineHeightPx + ascent
+        ctx.fillText(text.lines[i] as string, anchorX, baseline)
+      }
+    }
+  }, [layout])
+
+  return <canvas ref={ref} width={1080} height={1920} className="text-canvas" aria-hidden />
 }

@@ -6,19 +6,68 @@ import { S } from '../strings'
 
 /**
  * SettingsModal — screen 3 (ui-spec): Output / Encoder / FFmpeg / Storage /
- * About. Fields mirror settings.json (docs/technical/data-storage.md).
- * FFmpeg version + probe-cache size are engine-dependent → disabled mocks.
+ * About. Fields mirror settings.json (docs/technical/data-storage.md). FFmpeg
+ * version/test and probe-cache size hit the real binaries via main.
  */
+
+interface FfmpegDisplay {
+  source: string
+  version: string
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element {
   const settings = useSettingsStore((s) => s.settings)
   const load = useSettingsStore((s) => s.load)
   const save = useSettingsStore((s) => s.save)
   const [draft, setDraft] = useState<Settings | null>(settings)
+  const [ffmpeg, setFfmpeg] = useState<FfmpegDisplay | null>(null)
+  const [cache, setCache] = useState<{ entries: number; sizeLabel: string } | null>(null)
+  const [appVersion, setAppVersion] = useState<string | null>(null)
 
   useEffect(() => {
     if (!settings) void load()
     else setDraft(settings)
   }, [settings, load])
+
+  useEffect(() => {
+    let alive = true
+    void window.shortz
+      .ffmpegInfo()
+      .then((info) => {
+        if (alive) setFfmpeg({ source: info.source, version: info.version ?? 'unknown' })
+      })
+      .catch(() => undefined)
+    void window.shortz
+      .probeCacheInfo()
+      .then((c) => {
+        if (alive) setCache({ entries: c.entries, sizeLabel: formatBytes(c.bytes) })
+      })
+      .catch(() => undefined)
+    void window.shortz
+      .appVersion()
+      .then((v) => {
+        if (alive) setAppVersion(v)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const clearCache = async (): Promise<void> => {
+    await window.shortz.probeCacheClear()
+    toast.ok(S.storageCacheCleared)
+    void window.shortz
+      .probeCacheInfo()
+      .then((c) => setCache({ entries: c.entries, sizeLabel: formatBytes(c.bytes) }))
+      .catch(() => undefined)
+  }
 
   if (!draft) {
     return (
@@ -40,6 +89,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
     await save(draft)
     toast.ok(S.settingsSaved)
     onClose()
+  }
+
+  const testFfmpeg = async (): Promise<void> => {
+    try {
+      const info = await window.shortz.ffmpegTest()
+      if (info.ok && info.version) {
+        toast.ok(S.ffmpegTestOk(info.version))
+        setFfmpeg({ source: info.source, version: info.version })
+      } else {
+        toast.err(S.ffmpegTestFail)
+      }
+    } catch {
+      toast.err(S.ffmpegTestFail)
+    }
   }
 
   return (
@@ -135,11 +198,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
               <option value="system">System PATH</option>
               <option value="bundled">Bundled</option>
             </select>
-            <div className="settings-row" title={S.ffmpegPending}>
+            <div className="settings-row">
               <span className="field__label">
-                {S.ffmpegVersion}: <em>— ({S.ffmpegPending})</em>
+                {S.ffmpegVersion}:{' '}
+                <em>{ffmpeg ? `${S.ffmpegSourceName(ffmpeg.source)} · ${ffmpeg.version}` : '—'}</em>
               </span>
-              <button type="button" className="btn btn-sm" disabled title={S.ffmpegPending}>
+              <button type="button" className="btn btn-sm" onClick={() => void testFfmpeg()}>
                 {S.ffmpegTest}
               </button>
             </div>
@@ -153,11 +217,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                 {S.storageOpen}
               </button>
             </div>
-            <div className="settings-row" title={S.ffmpegPending}>
+            <div className="settings-row">
               <span className="field__label">
-                {S.storageProbeCache}: <em>— ({S.ffmpegPending})</em>
+                {S.storageProbeCache}: <em>{cache ? S.storageCacheValue(cache.entries, cache.sizeLabel) : '—'}</em>
               </span>
-              <button type="button" className="btn btn-sm" disabled title={S.ffmpegPending}>
+              <button type="button" className="btn btn-sm" onClick={() => void clearCache()}>
                 {S.storageClear}
               </button>
             </div>
@@ -165,7 +229,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
 
           <section className="settings-section">
             <h3>{S.secAbout}</h3>
-            <p className="settings-about">{S.aboutVersion('0.0.0-dev')}</p>
+            <p className="settings-about">{S.aboutVersion(appVersion ?? '…')}</p>
             <p className="settings-about">{S.aboutLicenses}</p>
           </section>
         </div>

@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { TemplateMeta } from '../../../../preload/api'
+import { LayoutError, resolveLayout, type ResolvedLayout } from '../../../../shared/layout/engine'
+import type { Slot, TextSlot } from '../../../../shared/template/types'
 import { ExportBar } from '../../components/ExportBar'
 import { FieldPanel } from '../../components/FieldPanel'
 import { PhonePreview } from '../../components/PhonePreview'
@@ -7,19 +10,27 @@ import { RelinkBanner } from '../../components/RelinkBanner'
 import { TemplatePicker } from '../../components/TemplatePicker'
 import { TrimRange } from '../../components/TrimRange'
 import { clamp, formatTime, snapTenths } from '../../lib/format'
-import { findMockTemplate, mockTemplates } from '../../mock/templates'
-import { resolveLayout } from '../../preview/layout'
+import { fontsReady, getFontLoader, loadBundledFonts } from '../../preview/font-loader'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useProjectStore } from '../../stores/projectStore'
+import { useRenderStore } from '../../stores/renderStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { toast } from '../../stores/toastStore'
 import { S } from '../../strings'
 
 /**
  * EditorScreen — the product (ui-spec §screen 2): template picker / phone
- * preview / field panel, top bar with probe chips + Export, conditional
- * render bar. Keyboard: Space, I/O, Ctrl+E, Esc, Ctrl+S, ←/→ (shift = 1s).
+ * preview / field panel, top bar with probe chips + Export, conditional render
+ * bar. The preview runs the SHARED layout engine (same files the render
+ * pipeline uses, same bundled fonts over getFontBuffer). Keyboard: Space, I/O,
+ * Ctrl+E (export), Esc, Ctrl+S, ←/→ (shift = 1s).
  */
+
+type LayoutOutcome =
+  | { kind: 'unavailable'; reason: 'no-clip-dims' }
+  | { kind: 'ok'; layout: ResolvedLayout }
+  | { kind: 'error'; error: LayoutError }
+
 export function EditorScreen(): JSX.Element {
   const project = useProjectStore((s) => s.active)
   const patchActive = useProjectStore((s) => s.patchActive)
@@ -36,16 +47,33 @@ export function EditorScreen(): JSX.Element {
   const [mediaUrl, setMediaUrl] = useState<string | null>(null)
   const [sourceMissing, setSourceMissing] = useState(false)
   const [showSafeZones, setShowSafeZones] = useState<boolean>(settings?.ui.safeZonesDefault ?? true)
+  const [fontsLoaded, setFontsLoaded] = useState(fontsReady())
+  const [templates, setTemplates] = useState<TemplateMeta[] | null>(null)
 
   // Settings load async — adopt the persisted default until the user toggles.
   useEffect(() => {
     if (settings) setShowSafeZones(settings.ui.safeZonesDefault)
   }, [settings?.ui.safeZonesDefault])
 
-  const template = useMemo(
-    () => (project ? (findMockTemplate(project.templateId) ?? mockTemplates[0]!) : mockTemplates[0]!),
-    [project?.templateId]
-  )
+  // Fonts feed both CSS (preview canvas) and the shared opentype metrics.
+  useEffect(() => {
+    if (fontsLoaded) return
+    void loadBundledFonts().then(
+      () => setFontsLoaded(true),
+      (err: unknown) => toast.err(`Fonts failed to load: ${err instanceof Error ? err.message : String(err)}`)
+    )
+  }, [fontsLoaded])
+
+  // Template registry (built-in resources/templates + user templates).
+  useEffect(() => {
+    void window.shortz
+      .listTemplates()
+      .then(setTemplates)
+      .catch((err: unknown) => {
+        console.warn('[shortz] listTemplates failed:', err)
+        setTemplates([])
+      })
+  }, [])
 
   // Resolve the media:// URL for the source (main validates + mints).
   useEffect(() => {
@@ -70,11 +98,68 @@ export function EditorScreen(): JSX.Element {
     }
   }, [project?.source.path, project?.id, setMedia])
 
-  const layout = useMemo(() => {
+  const byId = useMemo(
+    () => (project ? templates?.find((t) => t.id === project.templateId) : undefined),
+    [project?.templateId, templates]
+  )
+  const firstValid = useMemo(() => templates?.find((t) => t.valid && t.body), [templates])
+  const activeTemplate = byId ?? firstValid ?? null
+  const activeInvalid = byId !== undefined && !byId.valid
+
+  const layoutOutcome: LayoutOutcome | null = useMemo(() => {
     if (!project) return null
-    const clip = videoWidth > 0 && videoHeight > 0 ? { width: videoWidth, height: videoHeight } : null
-    return resolveLayout(template.body, project.values, clip)
-  }, [project, project?.values, template, videoWidth, videoHeight])
+    if (!fontsLoaded || !activeTemplate || activeInvalid) return null
+    // Clip dims: the import-time probe has display (rotation-normalized) dims —
+    // prefer them; fall back to the <video> element's intrinsic size.
+    const probe = project.source.probe
+    const clip =
+      probe && probe.width > 0 && probe.height > 0
+        ? { width: probe.width, height: probe.height }
+        : videoWidth > 0 && videoHeight > 0
+          ? { width: videoWidth, height: videoHeight }
+          : null
+    if (!clip) return { kind: 'unavailable', reason: 'no-clip-dims' }
+    try {
+      return {
+        kind: 'ok',
+        layout: resolveLayout({
+          template: activeTemplate.body!,
+          // LayoutError import keeps the narrow class for catch-mapping below.
+          values: project.values,
+          clip,
+          loadFont: getFontLoader()
+        })
+      }
+    } catch (err) {
+      const error =
+        err instanceof LayoutError
+          ? err
+          : new LayoutError('invalid-template', err instanceof Error ? err.message : String(err))
+      return { kind: 'error', error }
+    }
+  }, [project, project?.values, activeTemplate, activeInvalid, fontsLoaded, videoWidth, videoHeight])
+
+  const layout = layoutOutcome?.kind === 'ok' ? layoutOutcome.layout : null
+  const hookTooLong = layoutOutcome?.kind === 'error' && layoutOutcome.error.code === 'text-too-long'
+
+  const canExport =
+    project !== null &&
+    project.source.missing !== true &&
+    !activeInvalid &&
+    layout !== null &&
+    mediaUrl !== null
+
+  const exportDisabledTitle = !canExport
+    ? project?.source.missing === true
+      ? S.exportDisabledMissing
+      : hookTooLong
+        ? S.exportDisabledTooLong
+        : layout === null
+          ? mediaUrl === null
+            ? S.exportDisabledNoVideo
+            : S.exportDisabledEmptyHook
+          : S.exportHint
+    : S.exportHint
 
   const relink = useCallback(async () => {
     if (!project) return
@@ -103,7 +188,8 @@ export function EditorScreen(): JSX.Element {
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
         e.preventDefault()
-        toast.info(S.enginePendingToast)
+        e.stopPropagation()
+        void useRenderStore.getState().runJob()
         return
       }
       if (typing || tag === 'BUTTON') return
@@ -130,7 +216,7 @@ export function EditorScreen(): JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [duration, forceSave])
 
-  if (!project || !layout) return <div className="editor editor--empty" />
+  if (!project) return <div className="editor editor--empty" />
 
   const probe = project.source.probe
   const chips: string[] = [project.name]
@@ -140,6 +226,7 @@ export function EditorScreen(): JSX.Element {
   if (probe?.fps) chips.push(`${probe.fps}fps`)
   const dur = probe?.duration || duration
   if (dur > 0) chips.push(formatTime(dur))
+  if (dirty) chips.push('●')
 
   return (
     <div className="editor">
@@ -149,22 +236,17 @@ export function EditorScreen(): JSX.Element {
         </button>
         <div className="editor__chips">
           {chips.map((c, i) => (
-            <span key={i} className={`chip${i === 0 ? ' chip--name' : ''}`}>
+            <span key={i} className={`chip${i === 0 ? ' chip--name' : ''}${c === '●' ? ' chip--dirty' : ''}`}>
               {c}
             </span>
           ))}
-          {dirty && (
-            <span className="chip chip--dirty" title={S.unsavedDot}>
-              ●
-            </span>
-          )}
         </div>
         <button
           type="button"
           className="btn btn-primary"
-          disabled
-          title={S.exportPendingTooltip}
-          aria-disabled
+          disabled={!canExport}
+          title={exportDisabledTitle}
+          onClick={() => void useRenderStore.getState().runJob()}
         >
           {S.export} ▶
         </button>
@@ -173,15 +255,19 @@ export function EditorScreen(): JSX.Element {
       {sourceMissing && <RelinkBanner onChoose={() => void relink()} />}
 
       <div className="editor__panes">
-        <TemplatePicker
-          templates={mockTemplates}
-          activeId={project.templateId}
-          onSelect={(t) =>
-            patchActive((d) => {
-              d.templateId = t.id
-            })
-          }
-        />
+        {templates === null ? (
+          <div className="template-picker" aria-busy></div>
+        ) : (
+          <TemplatePicker
+            templates={templates}
+            activeId={activeTemplate?.id ?? null}
+            onSelect={(t) =>
+              patchActive((d) => {
+                d.templateId = t.id
+              })
+            }
+          />
+        )}
 
         <section className="editor__preview-pane">
           <div className="preview-toolbar">
@@ -195,13 +281,31 @@ export function EditorScreen(): JSX.Element {
               ◉ {S.safeZones}
             </button>
           </div>
-          <PhonePreview
-            layout={layout}
-            mediaUrl={mediaUrl}
-            muted={project.audio === 'mute'}
-            showSafeZones={showSafeZones}
-            safeZones={template.body.safeZones}
-          />
+          {activeInvalid ? (
+            <div className="layout-warnings">
+              <div className="layout-warnings__item">
+                ⚠ {S.invalidTemplate}: {byId?.error ?? 'unknown error'}
+              </div>
+            </div>
+          ) : layoutOutcome?.kind === 'error' && !hookTooLong ? (
+            <div className="layout-warnings">
+              <div className="layout-warnings__item">
+                ⚠ {S.layoutErrorTitle}: {layoutOutcome.error.message}
+              </div>
+            </div>
+          ) : layout === null ? (
+            <div className="layout-warnings">
+              <div className="layout-warnings__item">…</div>
+            </div>
+          ) : (
+            <PhonePreview
+              layout={layout}
+              mediaUrl={mediaUrl}
+              muted={project.audio === 'mute'}
+              showSafeZones={showSafeZones}
+              safeZones={activeTemplate!.body!.safeZones}
+            />
+          )}
           <PlaybackBar />
           <TrimRange
             duration={duration}
@@ -212,7 +316,7 @@ export function EditorScreen(): JSX.Element {
               })
             }
           />
-          {layout.warnings.length > 0 && (
+          {layout !== null && layout.warnings.length > 0 && (
             <div className="layout-warnings">
               {layout.warnings.map((w, i) => (
                 <div key={i} className="layout-warnings__item">
@@ -225,9 +329,10 @@ export function EditorScreen(): JSX.Element {
 
         <FieldPanel
           project={project}
-          knobs={template.body.knobs}
-          inputs={template.body.inputs}
-          textSlots={template.body.textSlots}
+          knobs={activeTemplate?.body?.knobs ?? []}
+          inputs={activeTemplate?.body?.inputs ?? []}
+          textSlots={(activeTemplate?.body?.slots.filter((s: Slot): s is TextSlot => s.type === 'text') ?? []) as TextSlot[]}
+          loadFont={getFontLoader()}
           duration={duration}
           onPatch={patchActive}
         />

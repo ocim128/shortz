@@ -1,18 +1,18 @@
 import { useEffect, useRef } from 'react'
 import { usePlayerStore } from '../stores/playerStore'
 import { useProjectStore } from '../stores/projectStore'
-import type { ResolvedLayout } from '../preview/layout'
+import type { SharedResolvedLayout } from '../preview/canvas-spec'
 
 /**
  * VideoLayer — the <video> element playing the original file directly through
  * the Range-capable media:// protocol (docs/02-architecture.md §preview
- * performance — no proxy in v0.1). Positioned in design-space px inside the
- * scaled phone frame; the store owns playback state.
+ * performance — no proxy in v0.1). Positioned in design-space px at the shared
+ * engine's resolved geometry; the store owns playback state.
  */
 
 interface VideoLayerProps {
   mediaUrl: string | null
-  layout: ResolvedLayout
+  layout: SharedResolvedLayout
   muted: boolean
 }
 
@@ -49,11 +49,17 @@ export function VideoLayer({ mediaUrl, layout, muted }: VideoLayerProps): JSX.El
     }
     main.addEventListener('timeupdate', sync)
     main.addEventListener('seeked', sync)
-    main.addEventListener('play', () => void bg.play().catch(() => {}))
-    main.addEventListener('pause', () => bg.pause())
+    const onPlay = (): void => {
+      void bg.play().catch(() => {})
+    }
+    const onPause = (): void => bg.pause()
+    main.addEventListener('play', onPlay)
+    main.addEventListener('pause', onPause)
     return () => {
       main.removeEventListener('timeupdate', sync)
       main.removeEventListener('seeked', sync)
+      main.removeEventListener('play', onPlay)
+      main.removeEventListener('pause', onPause)
     }
   }, [blurBg])
 
@@ -80,7 +86,10 @@ export function VideoLayer({ mediaUrl, layout, muted }: VideoLayerProps): JSX.El
           top: layout.video.y,
           width: layout.video.w,
           height: layout.video.h,
-          borderRadius: layout.video.cornerRadius
+          borderRadius: layout.video.cornerRadius,
+          ...(layout.video.borderWidth > 0
+            ? { border: `${layout.video.borderWidth}px solid ${layout.video.borderColor}` }
+            : {})
         }}
         src={mediaUrl}
         muted={muted}
@@ -91,7 +100,8 @@ export function VideoLayer({ mediaUrl, layout, muted }: VideoLayerProps): JSX.El
           setDuration(el.duration)
           setVideoSize(el.videoWidth, el.videoHeight)
           setReady(true)
-          // First open: default the trim to the full clip.
+          // Safety net for legacy projects whose stored trim is unset/invalid —
+          // new projects get trim.end = duration from the import-time ffprobe.
           const p = useProjectStore.getState().active
           if (p && (p.trim.end <= 0 || p.trim.end > el.duration)) {
             useProjectStore.getState().patchActive((d) => {

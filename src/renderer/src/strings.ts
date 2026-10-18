@@ -19,13 +19,17 @@ export const S = {
   homeOpenLocation: 'Open file location',
   homeDelete: 'Delete',
   homeDuplicated: 'Duplicated as a new project',
-  homeDuplicateMock: 'Mock project — source not on disk, cannot duplicate yet',
   homeRevealMissing: 'Source missing — re-link the project first',
+  homeThumbFailed: 'Thumbnail unavailable',
 
   // Editor — top bar
   back: 'Back',
   export: 'Export',
-  exportPendingTooltip: 'Engine pending — export wiring arrives with the render core',
+  exportDisabledEmptyHook: 'Type a hook first',
+  exportDisabledTooLong: 'Hook text does not fit — shorten it',
+  exportDisabledNoVideo: 'Load a video first',
+  exportDisabledMissing: 'Source file missing — re-link first',
+  exportHint: 'Ctrl+E',
   unsavedDot: 'Unsaved changes',
 
   // Editor — template picker
@@ -41,6 +45,7 @@ export const S = {
   play: 'Play',
   pause: 'Pause',
   noVideoLoaded: 'No video',
+  layoutErrorTitle: 'Preview unavailable',
 
   // Editor — field panel
   templateSettingsTitle: 'TEMPLATE SETTINGS',
@@ -49,6 +54,8 @@ export const S = {
   charsCount: (n: number, max: number) => `${n} / ${max} chars`,
   textTooLong: (maxLines: number, minPx: number) =>
     `Too long for ${maxLines} lines even at ${minPx}px — shorten`,
+  textShrunk: (minPx: number) => `Shrunk to the ${minPx}px minimum to fit`,
+  inputRequired: 'Required',
   audioKeep: 'keep',
   audioMute: 'mute',
   trimStart: 'Trim start (s)',
@@ -56,7 +63,20 @@ export const S = {
   resetTrim: 'Reset trim',
 
   // Render bar
-  enginePendingBar: 'Render engine pending — export will be wired when the core lands',
+  rendering: 'Rendering…',
+  progressStage: (stage: string) => `Rendering… ${stage}`,
+  cancelExport: 'Cancel',
+  cancelExportHint: 'Kill ffmpeg immediately',
+  exportErrorTitle: 'Render failed',
+  exportErrorDismiss: 'Dismiss',
+  eta: (s: number) => `eta ${s}s`,
+
+  // Export toasts
+  exportStartedToast: 'Export started',
+  exportDoneToast: (path: string) => `Export complete — ${path}`,
+  exportCancelled: 'Export cancelled',
+  exportFailedToast: 'Export failed — see the bar for details',
+  exportMissingSource: 'Source file missing — re-link first',
 
   // Relink banner
   relinkBanner: 'Source file moved or deleted.',
@@ -79,19 +99,22 @@ export const S = {
   encoderFps: 'FPS',
   ffmpegSource: 'Binary source',
   ffmpegVersion: 'Version',
+  ffmpegVersionValue: (v: string) => `${v}`,
   ffmpegTest: 'Test',
-  ffmpegPending: 'engine pending',
+  ffmpegTestOk: (v: string) => `FFmpeg OK — ${v}`,
+  ffmpegTestFail: 'FFmpeg test failed',
+  ffmpegSourceName: (s: string) => (s === 'system' ? 'System PATH' : s === 'bundled' ? 'Bundled' : `Custom (${s})`),
   storageTemplates: 'User templates folder',
   storageOpen: 'Open',
   storageProbeCache: 'Probe cache',
   storageClear: 'Clear',
+  storageCacheValue: (entries: number, size: string) => `${entries} entries · ${size}`,
+  storageCacheCleared: 'Probe cache cleared',
   aboutVersion: (v: string) => `Version ${v}`,
   aboutLicenses: 'Licenses: Electron · FFmpeg (GPL) · Inter & Poppins (SIL OFL)',
 
   // Toasts
   savedToast: 'Project saved',
-  enginePendingToast: 'Engine pending — export is not wired yet',
-  mockOnlyToast: 'Mocked action — wired at engine integration',
 
   // Errors
   errCreateProject: 'Could not create the project',

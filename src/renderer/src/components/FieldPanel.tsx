@@ -1,5 +1,6 @@
-import type { KnobDef, Project, TextSlotStyle } from '../../../preload/api'
-import { fitText } from '../preview/text'
+import type { Project } from '../../../preload/api'
+import type { FieldDef, KnobDef, TextSlot } from '../../../shared/template/types'
+import { fontKeyFor, wrapAndShrink, type FontLoader } from '../../../shared/layout/text'
 import { formatTime } from '../lib/format'
 import { S } from '../strings'
 
@@ -7,35 +8,46 @@ import { S } from '../strings'
  * FieldPanel — right pane (ui-spec §editor): TEMPLATE SETTINGS = the
  * template's inputs[] (hook textarea with live line/char counters) then knobs
  * in declared order; CLIP = audio keep/mute, trim readouts (editable), reset.
+ * Line metrics come from the shared opentype.js engine (same bytes + math as
+ * the preview canvas and the render overlay).
  */
 
 interface FieldPanelProps {
   project: Project
   knobs: KnobDef[]
-  inputs: Array<{
-    key: string
-    label: string
-    placeholder?: string
-    maxLength?: number
-    required?: boolean
-    maxLines?: number
-  }>
-  textSlots: TextSlotStyle[]
+  inputs: FieldDef[]
+  textSlots: TextSlot[]
+  loadFont: FontLoader
   duration: number
   onPatch: (mut: (draft: Project) => void) => void
 }
 
-export function FieldPanel({ project, knobs, inputs, textSlots, duration, onPatch }: FieldPanelProps): JSX.Element {
-  const hookSlot = textSlots.find((s) => s.bindsTo === inputs[0]?.key) ?? textSlots[0]
-
+export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, duration, onPatch }: FieldPanelProps): JSX.Element {
   return (
     <div className="field-panel">
       <h2 className="pane-title">{S.templateSettingsTitle}</h2>
 
       {inputs.map((input) => {
         const value = project.values.fields[input.key] ?? ''
-        const lineCount = hookSlot ? fitText(value, hookSlot).lines.length : value.split('\n').length
-        const tooLong = hookSlot ? fitText(value, hookSlot).tooLong : false
+        const hookSlot = textSlots.find((s) => s.bindsTo === input.key) ?? textSlots[0]
+        if (!hookSlot) return null
+        const text = value.trim()
+        const fitted =
+          text.length > 0
+            ? wrapAndShrink({
+                loader: loadFont,
+                fontKey: fontKeyFor(hookSlot.fontFamily, hookSlot.fontWeight),
+                text,
+                maxWidth: hookSlot.width,
+                fontSize: hookSlot.fontSize,
+                fontSizeMin: hookSlot.fontSizeMin,
+                maxLines: hookSlot.maxLines,
+                wordBreak: hookSlot.wordBreak
+              })
+            : null
+        const tooLong = text.length > 0 && fitted === null
+        const lineCount = fitted?.lines.length ?? (tooLong ? hookSlot.maxLines + 1 : 0)
+        const hitFloor = fitted?.shrunkToFloor === true
         return (
           <div key={input.key} className="field">
             <label className="field__label" htmlFor={`field-${input.key}`}>
@@ -56,17 +68,23 @@ export function FieldPanel({ project, knobs, inputs, textSlots, duration, onPatc
               }
             />
             <div className={`field__counters${tooLong ? ' is-invalid' : ''}`}>
-              {hookSlot && input.maxLines ? (
-                <span className={lineCount > input.maxLines ? 'is-invalid' : ''}>
-                  {S.linesCount(lineCount, input.maxLines)}
+              {fitted ? (
+                <span className={lineCount > hookSlot.maxLines ? 'is-invalid' : ''}>
+                  {S.linesCount(lineCount, hookSlot.maxLines)}
                 </span>
               ) : null}
               {input.maxLength ? <span>{S.charsCount(value.length, input.maxLength)}</span> : null}
             </div>
-            {tooLong && hookSlot && (
+            {tooLong && (
               <div className="field__hint field__hint--err">
                 {S.textTooLong(hookSlot.maxLines, hookSlot.fontSizeMin)}
               </div>
+            )}
+            {hitFloor && !tooLong && (
+              <div className="field__hint">{S.textShrunk(hookSlot.fontSizeMin)}</div>
+            )}
+            {text.length === 0 && input.required && (
+              <div className="field__hint">{S.inputRequired}</div>
             )}
           </div>
         )

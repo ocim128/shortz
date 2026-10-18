@@ -3,40 +3,60 @@
  * `window.shortz.getFontBuffer` — no fetch/asset URLs in the sandbox
  * (docs/technical/project-structure.md §renderer layout tree).
  *
- * Registers CSS families 'ShortZ Inter' / 'ShortZ Poppins' once Agent A's
- * bundled TTFs exist in resources/fonts/. Until then registration fails
- * silently and the CSS falls back to system fonts. TODO(integration): the
- * same buffers also feed src/shared's opentype.js loader for real metrics.
+ * The SAME cached ArrayBuffers feed both CSS FontFace registration (preview
+ * rendering) and the shared opentype.js metrics engine (src/shared/layout) —
+ * exactly the pairing tmp/NOTES-A.md §"Renderer preview" prescribes.
  */
 
+import type { FontLoader, FontKey as SharedFontKey } from '../../../shared/layout/text'
 import type { FontKey } from '../../../preload/api'
 
-const FACES: Array<{ key: FontKey; family: string; weight: number }> = [
-  { key: 'inter-regular', family: 'ShortZ Inter', weight: 400 },
-  { key: 'inter-semibold', family: 'ShortZ Inter', weight: 600 },
-  { key: 'inter-extrabold', family: 'ShortZ Inter', weight: 800 },
-  { key: 'poppins-semibold', family: 'ShortZ Poppins', weight: 600 }
+const FACES: Array<{ key: FontKey; family: string; weight: number; shared: SharedFontKey }> = [
+  { key: 'inter-regular', family: 'ShortZ Inter', weight: 400, shared: 'inter-400' },
+  { key: 'inter-semibold', family: 'ShortZ Inter', weight: 600, shared: 'inter-600' },
+  { key: 'inter-extrabold', family: 'ShortZ Inter', weight: 800, shared: 'inter-800' },
+  { key: 'poppins-semibold', family: 'ShortZ Poppins', weight: 600, shared: 'poppins-600' }
 ]
 
-let loadPromise: Promise<void> | null = null
+const cache = new Map<SharedFontKey, ArrayBuffer>()
+let readyPromise: Promise<void> | null = null
 
 export function loadBundledFonts(): Promise<void> {
-  if (loadPromise) return loadPromise
-  loadPromise = (async () => {
-    for (const face of FACES) {
-      try {
+  if (readyPromise) return readyPromise
+  readyPromise = (async () => {
+    await Promise.all(
+      FACES.map(async (face) => {
         const bytes = await window.shortz.getFontBuffer(face.key)
-        if (bytes.byteLength === 0) continue
-        const fontFace = new FontFace(face.family, bytes.buffer as ArrayBuffer, {
-          weight: String(face.weight),
-          style: 'normal'
-        })
+        if (bytes.byteLength === 0) throw new Error(`Font ${face.key} returned empty bytes`)
+        cache.set(face.shared, bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength
+        ) as ArrayBuffer)
+        const fontFace = new FontFace(face.family, bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength
+        ) as ArrayBuffer, { weight: String(face.weight), style: 'normal' })
         await fontFace.load()
         document.fonts.add(fontFace)
-      } catch {
-        // Fonts not bundled yet (engine pending) — CSS falls back to system-ui.
-      }
-    }
+      })
+    )
   })()
-  return loadPromise
+  return readyPromise
+}
+
+/** True once loadBundledFonts() has resolved without error. */
+export function fontsReady(): boolean {
+  return cache.size === FACES.length
+}
+
+/**
+ * Sync loader for the shared layout engine (resolveLayout/wrapAndShrink).
+ * Throws unless loadBundledFonts() has completed — gate callers on it.
+ */
+export function getFontLoader(): FontLoader {
+  return (key: SharedFontKey): ArrayBuffer => {
+    const buf = cache.get(key)
+    if (!buf) throw new Error(`Font "${key}" is not loaded yet (fonts must be awaited first)`)
+    return buf
+  }
 }

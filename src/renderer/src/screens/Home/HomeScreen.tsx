@@ -60,17 +60,17 @@ export function HomeScreen({ onOpenSettings }: HomeScreenProps): JSX.Element {
     }
   }, [])
 
-  // Duplicate goes through the real contract (openProject → createProject on
-  // the same source). Mock projects whose sources aren't on disk get a clear
-  // "mock" toast instead of a raw IPC error.
+  // Duplicate: clone the document with the same source (createProject re-probes
+  // and makes fresh assets). A re-probe failure (e.g. source vanished) surfaces
+  // the real error.
   const duplicate = useCallback(async (id: string) => {
     try {
       const source = await window.shortz.openProject(id)
       await window.shortz.createProject(source.source.path)
       await useProjectStore.getState().loadList()
       toast.ok(S.homeDuplicated)
-    } catch {
-      toast.info(S.homeDuplicateMock)
+    } catch (err) {
+      toast.err(`${S.errCreateProject}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }, [])
 
