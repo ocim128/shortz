@@ -191,3 +191,60 @@ describe('resolveLayout — background knobs and errors', () => {
     expect(layout.warnings).toBeInstanceOf(Array)
   })
 })
+
+describe('resolveLayout — emptyRequired: skip-slot (preview mode)', () => {
+  it('resolves with the slot omitted and a warning when a required field is empty', () => {
+    const template = loadHookTemplate()
+    const layout = resolveLayout({
+      template,
+      values: { fields: {}, knobs: {} },
+      clip: { width: 1920, height: 1080 },
+      loadFont,
+      emptyRequired: 'skip-slot'
+    })
+    // The video geometry must survive — an empty hook can never blank it.
+    expect(layout.video).toMatchObject({ x: 0, y: 520, w: 1080, h: 608 })
+    expect(layout.texts).toHaveLength(0)
+    expect(layout.warnings.some((w) => w.includes('"hook"') && w.includes('required'))).toBe(true)
+  })
+
+  it('treats whitespace-only as empty in skip-slot mode too', () => {
+    const template = loadHookTemplate()
+    const layout = resolveLayout({
+      template,
+      values: { fields: { hook: '   ' }, knobs: {} },
+      clip: { width: 1920, height: 1080 },
+      loadFont,
+      emptyRequired: 'skip-slot'
+    })
+    expect(layout.texts).toHaveLength(0)
+    expect(layout.warnings.some((w) => w.includes('"hook"'))).toBe(true)
+  })
+
+  it('resolves non-empty values identically in both modes (preview cannot diverge from export)', () => {
+    const template = loadHookTemplate()
+    const values = { fields: { hook: 'Hello world' }, knobs: { videoTop: 600 } }
+    const clip = { width: 1280, height: 720 }
+    const strict = resolveLayout({ template, values, clip, loadFont })
+    const lenient = resolveLayout({ template, values, clip, loadFont, emptyRequired: 'skip-slot' })
+    expect(lenient).toEqual(strict)
+  })
+
+  it('still throws text-too-long in skip-slot mode (only required-empty is forgiven)', () => {
+    const template = loadHookTemplate()
+    const huge = 'endless words '.repeat(60)
+    try {
+      resolveLayout({
+        template,
+        values: { fields: { hook: huge }, knobs: {} },
+        clip: { width: 1920, height: 1080 },
+        loadFont,
+        emptyRequired: 'skip-slot'
+      })
+      expect.unreachable('expected LayoutError')
+    } catch (error) {
+      expect(error).toBeInstanceOf(LayoutError)
+      expect((error as LayoutError).code).toBe('text-too-long')
+    }
+  })
+})

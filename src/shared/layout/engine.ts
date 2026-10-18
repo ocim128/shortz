@@ -97,6 +97,15 @@ export interface ResolveLayoutInput {
   values: UserValues
   clip: ClipInfo
   loadFont: FontLoader
+  /**
+   * What happens to a required input whose value is absent/empty:
+   * - 'error' (default) throws LayoutError('missing-input') — the render
+   *   pipeline and every strict consumer.
+   * - 'skip-slot' omits the bound text slot and records a warning instead —
+   *   the live preview, so an empty required field can never blank the video.
+   *   Non-empty values resolve identically under both modes.
+   */
+  emptyRequired?: 'error' | 'skip-slot'
 }
 
 export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
@@ -110,9 +119,15 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
   // otherwise the template's own values are authoritative.
   const declared = (id: KnobId): boolean => template.knobs.some((k) => k.id === id)
 
-  // Required inputs must have values at resolve time (rule 4).
+  // Required inputs must have values at resolve time (rule 4). The preview
+  // passes emptyRequired: 'skip-slot' so an empty field degrades to a missing
+  // text slot (+ warning) instead of taking the whole layout down.
   for (const field of template.inputs) {
     if (field.required && (values.fields[field.key] ?? '').trim().length === 0) {
+      if (input.emptyRequired === 'skip-slot') {
+        warnings.push(`Input "${field.key}" is required — the preview omits its text until you type`)
+        continue
+      }
       throw new LayoutError('missing-input', `Input "${field.key}" is required`, field.key)
     }
   }
