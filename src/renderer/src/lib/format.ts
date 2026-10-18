@@ -39,3 +39,26 @@ export function clamp(n: number, min: number, max: number): number {
 export function snapTenths(n: number): number {
   return Math.round(n * 10) / 10
 }
+
+/**
+ * Canonical frame rates for display: probe values carry float noise (24000/1001
+ * = 23.97602…, legacy projects stored 23.98), so snap within tolerance before
+ * showing. Unmatched rates display at up to 3 decimals.
+ */
+const CANONICAL_FPS = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 90, 100, 120]
+
+/** 23.976023 → "23.976"; 23.98 (legacy persisted) → "23.976"; 24 → "24". */
+export function formatFps(fps: number): string {
+  if (!Number.isFinite(fps) || fps <= 0) return ''
+  let best = fps
+  let bestDiff = Infinity
+  for (const c of CANONICAL_FPS) {
+    const diff = Math.abs(fps - c)
+    if (diff < bestDiff) {
+      best = c
+      bestDiff = diff
+    }
+  }
+  if (bestDiff > 0.05) best = Math.round(fps * 1000) / 1000
+  return String(best)
+}

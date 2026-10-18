@@ -87,7 +87,9 @@ export function probeSnapshot(meta: ClipMeta): {
   return {
     width: meta.width,
     height: meta.height,
-    fps: Math.round(meta.fps * 100) / 100,
+    // 3 decimals keeps NTSC rates distinguishable (23.976, 29.97, 59.94);
+    // display-side snapping to canonical rates lives in the renderer.
+    fps: Math.round(meta.fps * 1000) / 1000,
     duration: Math.round(meta.durationSec * 1000) / 1000,
     hasAudio: meta.hasAudio,
     videoCodec: meta.videoCodec

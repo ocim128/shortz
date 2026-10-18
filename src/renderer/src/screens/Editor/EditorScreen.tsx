@@ -9,7 +9,7 @@ import { PlaybackBar } from '../../components/PlaybackBar'
 import { RelinkBanner } from '../../components/RelinkBanner'
 import { TemplatePicker } from '../../components/TemplatePicker'
 import { TrimRange } from '../../components/TrimRange'
-import { clamp, formatTime, snapTenths } from '../../lib/format'
+import { clamp, formatFps, formatTime, snapTenths } from '../../lib/format'
 import { fontsReady, getFontLoader, loadBundledFonts } from '../../preview/font-loader'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useProjectStore } from '../../stores/projectStore'
@@ -291,7 +291,7 @@ export function EditorScreen(): JSX.Element {
   const w = probe?.width || (videoWidth > 0 ? videoWidth : 0)
   const h = probe?.height || (videoHeight > 0 ? videoHeight : 0)
   if (w && h) chips.push(`${w}×${h}`)
-  if (probe?.fps) chips.push(`${probe.fps}fps`)
+  if (probe?.fps) chips.push(`${formatFps(probe.fps)}fps`)
   const dur = probe?.duration || duration
   if (dur > 0) chips.push(formatTime(dur))
   if (dirty) chips.push('●')
