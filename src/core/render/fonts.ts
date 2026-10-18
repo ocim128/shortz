@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { GlobalFonts } from '@napi-rs/canvas'
 import { logWarn } from '../log'
-import type { FontKey, FontLoader } from '../../shared/layout/text'
+import { setEmojiFont, type FontKey, type FontLoader } from '../../shared/layout/text'
 
 export const FONT_FILES: Record<FontKey, string> = {
   'inter-400': 'Inter-Regular.ttf',
@@ -68,5 +68,80 @@ export function registerFonts(fontsDir: string): void {
 
 /** CSS-like font spec for @napi-rs/canvas ctx.font. */
 export function canvasFontSpec(key: FontKey, fontSize: number): string {
-  return `${FONT_WEIGHTS[key]} ${fontSize}px "${FONT_FAMILIES[key]}"`
+  const base = `${FONT_WEIGHTS[key]} ${fontSize}px "${FONT_FAMILIES[key]}"`
+  return emojiFamily !== null ? `${base}, "${emojiFamily}"` : base
+}
+
+// --- system emoji fallback ----------------------------------------------------
+
+export interface SystemEmojiFont {
+  path: string
+  /** Family name to register + reference in canvasFontSpec's fallback list. */
+  family: string
+}
+
+/** Known-per-platform emoji fonts, first existing file wins. */
+function emojiFontCandidates(): SystemEmojiFont[] {
+  if (process.platform === 'win32') {
+    return [{ path: 'C:\\Windows\\Fonts\\seguiemj.ttf', family: 'Segoe UI Emoji' }]
+  }
+  if (process.platform === 'darwin') {
+    return [
+      { path: '/System/Library/Fonts/Apple Color Emoji.ttc', family: 'Apple Color Emoji' },
+      { path: '/System/Library/Fonts/Supplemental/Arial Unicode.ttf', family: 'Arial Unicode MS' }
+    ]
+  }
+  return [
+    { path: '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf', family: 'Noto Color Emoji' },
+    { path: '/usr/share/fonts/truetype/noto-color-emoji/NotoColorEmoji.ttf', family: 'Noto Color Emoji' }
+  ]
+}
+
+export function findSystemEmojiFont(): SystemEmojiFont | null {
+  return emojiFontCandidates().find((candidate) => existsSync(candidate.path)) ?? null
+}
+
+let emojiFamily: string | null = null
+let emojiBytes: ArrayBuffer | null = null
+let emojiSpec: SystemEmojiFont | null = null
+let emojiActivated = false
+
+/**
+ * Wire the platform emoji font into BOTH sides of text rendering:
+ * - draw: registered with Skia and appended to canvasFontSpec's fallback list
+ *   (Skia shapes per run, so only missing glyphs use it — ASCII is untouched);
+ * - metrics: setEmojiFont on the shared engine, so wrapping measures the emoji
+ *   at the width it will actually draw.
+ * Best-effort: with no system emoji font, behavior is exactly the pre-emoji
+ * one (the glyph renders blank). Idempotent; must run before resolveLayout.
+ */
+export function activateSystemEmojiFont(): SystemEmojiFont | null {
+  if (emojiActivated) return emojiSpec
+  emojiActivated = true
+  const spec = findSystemEmojiFont()
+  if (!spec) return null
+  try {
+    const buffer = readFileSync(spec.path)
+    if (!GlobalFonts.registerFromPath(spec.path, spec.family)) {
+      logWarn(`[fonts] Skia rejected the emoji font at ${spec.path}`)
+      return null
+    }
+    emojiFamily = spec.family
+    emojiBytes = toArrayBuffer(buffer)
+    emojiSpec = spec
+    setEmojiFont(() => emojiBytes as ArrayBuffer)
+    return spec
+  } catch (error) {
+    logWarn(`[fonts] could not activate emoji font ${spec.path}: ${(error as Error).message}`)
+    return null
+  }
+}
+
+/**
+ * Emoji font bytes for the renderer's metrics (fetched once over the font
+ * IPC). Empty when the platform has none — the caller treats that as "off".
+ */
+export function emojiFontBytes(): Uint8Array | null {
+  activateSystemEmojiFont()
+  return emojiBytes !== null ? new Uint8Array(emojiBytes) : null
 }

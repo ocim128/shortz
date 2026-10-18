@@ -56,6 +56,7 @@ import { probeWithCache } from '../core/ffmpeg/probe'
 import { generateThumbnail } from '../core/media/thumbnail'
 import { renderProject, defaultTmpRoot } from '../core/render/orchestrator'
 import type { OrchestratorProgress } from '../core/render/orchestrator'
+import { emojiFontBytes } from '../core/render/fonts'
 import { saveSettings as saveSettingsDoc, loadSettings } from '../core/store/settings'
 import {
   deleteEditorConfig,
@@ -73,7 +74,7 @@ import { logWarn } from '../core/log'
  * through src/core (the render engine + stores).
  */
 
-const FONT_FILES: Record<FontKey, string> = {
+const FONT_FILES: Record<Exclude<FontKey, 'emoji'>, string> = {
   'inter-regular': 'Inter-Regular.ttf',
   'inter-semibold': 'Inter-SemiBold.ttf',
   'inter-extrabold': 'Inter-ExtraBold.ttf',
@@ -443,6 +444,8 @@ export function registerIpcHandlers(): void {
   // --- fonts (strict — fonts ship in resources/fonts, verified baseline) ------
 
   handle('shortz:getFontBuffer', async (key: FontKey) => {
+    // 'emoji' is the platform's system font — best-effort, empty means "none".
+    if (key === 'emoji') return emojiFontBytes() ?? new Uint8Array(0)
     const file = FONT_FILES[key]
     if (!file) throw new Error(`Unknown font key: ${key}`)
     const fontPath = path.join(fontsDir(), file)

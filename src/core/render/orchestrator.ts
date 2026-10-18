@@ -14,7 +14,7 @@ import {
 import { probeWithCache, type ClipMeta } from '../ffmpeg/probe'
 import { resolveFfmpegBinariesCached } from '../ffmpeg/resolve-bin'
 import { runFfmpeg, type RunFfmpegResult } from '../ffmpeg/runner'
-import { createFontBufferLoader, registerFonts } from '../render/fonts'
+import { activateSystemEmojiFont, createFontBufferLoader, registerFonts } from '../render/fonts'
 import { needsMask, renderOverlayAssets } from '../render/overlay'
 import { moveWithRetry, rmWithRetry, uniqueOutputPath } from '../store/fs-utils'
 import type { ProjectDocument } from '../store/projects'
@@ -170,6 +170,9 @@ export async function renderProject(request: RenderRequest): Promise<RenderResul
     report('resolve', STAGE_BASE_PCT.resolve)
     const fontsDir = path.join(request.resourcesDir, 'fonts')
     const loadFont = createFontBufferLoader(fontsDir)
+    // Emoji metrics must be live before wrapping; the draw-side registration
+    // is idempotent and also covers renderOverlayAssets below.
+    activateSystemEmojiFont()
     let layout: ResolvedLayout
     try {
       layout = resolveLayout({

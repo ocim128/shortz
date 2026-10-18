@@ -8,6 +8,25 @@ export type FontKey = 'inter-400' | 'inter-600' | 'inter-800' | 'poppins-600'
 
 export type FontLoader = (key: FontKey) => ArrayBuffer
 
+type ParsedFont = ReturnType<typeof parse>
+
+/**
+ * Bytes of the host platform's emoji font — the only glyph coverage the bundled
+ * fonts lack that hooks actually use. Injected the same way as FontLoader
+ * (hosts read the system file); null restores bundled-only metrics.
+ */
+export type EmojiFontSource = () => ArrayBuffer
+
+let emojiSource: EmojiFontSource | null = null
+let emojiParsed: { source: EmojiFontSource; font: ParsedFont } | null = null
+let emojiFailedSource: EmojiFontSource | null = null
+
+export function setEmojiFont(source: EmojiFontSource | null): void {
+  if (emojiSource === source) return
+  emojiSource = source
+  emojiParsed = null
+}
+
 export interface FontMetrics {
   unitsPerEm: number
   ascender: number
@@ -32,7 +51,7 @@ export function fontCacheSize(): number {
   return fontCache.size
 }
 
-function getFont(loader: FontLoader, key: FontKey): ReturnType<typeof parse> {
+function getFont(loader: FontLoader, key: FontKey): ParsedFont {
   let byKey = fontCache.get(loader)
   if (!byKey) {
     if (fontCache.size >= MAX_CACHED_LOADERS) {
@@ -53,6 +72,25 @@ function getFont(loader: FontLoader, key: FontKey): ReturnType<typeof parse> {
   return font
 }
 
+/** Parsed emoji font, or null when the host registered none / it failed. */
+function getEmojiFont(): ParsedFont | null {
+  if (!emojiSource) return null
+  if (emojiFailedSource === emojiSource) return null
+  if (!emojiParsed || emojiParsed.source !== emojiSource) {
+    const buffer = emojiSource()
+    if (!buffer || buffer.byteLength === 0) return null
+    try {
+      emojiParsed = { source: emojiSource, font: parse(buffer) }
+    } catch {
+      // A font opentype.js cannot read (e.g. some collections) would otherwise
+      // throw out of every measurement — degrade to bundled-only metrics.
+      emojiFailedSource = emojiSource
+      return null
+    }
+  }
+  return emojiParsed.font
+}
+
 export function fontMetrics(loader: FontLoader, key: FontKey): FontMetrics {
   const font = getFont(loader, key)
   return {
@@ -68,6 +106,42 @@ export function ascentPx(loader: FontLoader, key: FontKey, fontSize: number): nu
   return (m.ascender / m.unitsPerEm) * fontSize
 }
 
+export interface TextRun {
+  text: string
+  /** True when the primary font lacks the run's glyphs (emoji, symbols). */
+  fallback: boolean
+}
+
+/**
+ * Split text into maximal runs of covered / uncovered code points. Iterates by
+ * code point so astral characters (emoji) stay whole. Exported for tests.
+ */
+export function splitRunsByCoverage(
+  text: string,
+  hasGlyph: (character: string) => boolean
+): TextRun[] {
+  const runs: TextRun[] = []
+  for (const character of text) {
+    const fallback = !hasGlyph(character)
+    const last = runs[runs.length - 1]
+    if (last !== undefined && last.fallback === fallback) {
+      last.text += character
+    } else {
+      runs.push({ text: character, fallback })
+    }
+  }
+  return runs
+}
+
+/**
+ * Width of `text` at `fontSize`. When an emoji font is registered, characters
+ * the primary font lacks are measured with it — run by run, mirroring how the
+ * rasterizer draws a font fallback list — so wrapping and centering match what
+ * lands on screen instead of measuring missing glyphs as .notdef boxes.
+ *
+ * Known approximation: multi-codepoint sequences (skin tones, ZWJ families)
+ * measure as the sum of their parts; the shaper may ligate them narrower.
+ */
 export function measureAdvance(
   loader: FontLoader,
   key: FontKey,
@@ -76,7 +150,20 @@ export function measureAdvance(
 ): number {
   if (text.length === 0) return 0
   const font = getFont(loader, key)
-  return font.getAdvanceWidth(text, fontSize, { kerning: true })
+  const emoji = getEmojiFont()
+  if (emoji === null) {
+    return font.getAdvanceWidth(text, fontSize, { kerning: true })
+  }
+  const runs = splitRunsByCoverage(text, (character) => font.charToGlyphIndex(character) !== 0)
+  if (!runs.some((run) => run.fallback)) {
+    return font.getAdvanceWidth(text, fontSize, { kerning: true })
+  }
+  let total = 0
+  for (const run of runs) {
+    const measureWith = run.fallback ? emoji : font
+    total += measureWith.getAdvanceWidth(run.text, fontSize, { kerning: true })
+  }
+  return total
 }
 
 export function fontKeyFor(family: 'inter' | 'poppins', weight: number): FontKey {

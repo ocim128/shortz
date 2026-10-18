@@ -8,7 +8,7 @@
  * exactly the pairing tmp/NOTES-A.md §"Renderer preview" prescribes.
  */
 
-import type { FontLoader, FontKey as SharedFontKey } from '../../../shared/layout/text'
+import { setEmojiFont, type FontLoader, type FontKey as SharedFontKey } from '../../../shared/layout/text'
 import type { FontKey } from '../../../preload/api'
 
 const FACES: Array<{ key: FontKey; family: string; weight: number; shared: SharedFontKey }> = [
@@ -40,6 +40,22 @@ export function loadBundledFonts(): Promise<void> {
         document.fonts.add(fontFace)
       })
     )
+    // Emoji metrics (best-effort): the preview's canvas draws emoji through the
+    // browser's own fallback, but the shared wrapping engine needs the same
+    // advances the renderer's Skia canvas will use — fetch the system emoji
+    // font when the platform has one. Failure keeps bundled-only metrics.
+    try {
+      const bytes = await window.shortz.getFontBuffer('emoji')
+      if (bytes.byteLength > 0) {
+        const buffer = bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength
+        ) as ArrayBuffer
+        setEmojiFont(() => buffer)
+      }
+    } catch {
+      /* optional enhancement — preview still works without it */
+    }
   })()
   return readyPromise
 }

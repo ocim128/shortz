@@ -253,7 +253,16 @@ export interface Settings {
   }
 }
 
-export type FontKey = 'inter-regular' | 'inter-semibold' | 'inter-extrabold' | 'poppins-semibold'
+/**
+ * Bundled font faces, plus 'emoji' — the host platform's emoji font, served
+ * best-effort (empty bytes when the platform has none; never throws).
+ */
+export type FontKey =
+  | 'inter-regular'
+  | 'inter-semibold'
+  | 'inter-extrabold'
+  | 'poppins-semibold'
+  | 'emoji'
 
 export type Unsubscribe = () => void
 
