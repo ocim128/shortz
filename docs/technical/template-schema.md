@@ -39,9 +39,11 @@ interface SlotBase {
 
 interface VideoSlot extends SlotBase {
   type: 'video';
-  y: number;                     // top edge; driven by the 'videoTop' knob when present
-  fit: 'contain' | 'cover';      // contain = letterbox, cover = crop-fill
-  scale: number;                 // 0.85–1.0 of available box
+  y: number;                     // top edge of the bounded target box; driven by 'videoTop' when present
+  height: number;                // bounded target box height — contain fits inside (width × height),
+                                 // so no source aspect ratio can overflow the canvas (re-audit Issue 2)
+  fit: 'contain' | 'cover';      // contain = fit inside the box (letter/pillarbox), cover = crop-fill the box
+  scale: number;                 // 0.85–1.0 of the target box
   cornerRadius: number;          // px, 0 = square
   borderWidth: number;           // px, 0 = none
   borderColor: string;
@@ -130,7 +132,7 @@ interface ResolvedLayout {
 
 Line breaking and shrink-to-fit use **opentype.js** glyph-advance metrics (+ kerning) computed from the bundled TTFs — pure JavaScript, so the exact same numbers run in the Electron main process, the sandboxed Chromium renderer, and Vitest.
 
-- `src/shared/layout/text.ts` receives font data through an injected loader — `loadFont(key: FontKey): ArrayBuffer` — provided by the host process (fs in main/CLI/tests, fetch of the bundled asset in the renderer). This keeps `src/shared` platform-free while guaranteeing identical metrics everywhere.
+- `src/shared/layout/text.ts` receives font data through an injected loader — `loadFont(key: FontKey): ArrayBuffer` — provided by the host process (fs in main/CLI/tests; in the renderer the bytes arrive via the preload bridge's `getFontBuffer` IPC — no `fetch`/asset-path ambiguity in the sandbox). This keeps `src/shared` platform-free while guaranteeing identical metrics everywhere.
 - Drawing consumes **pre-broken lines only**: canvas `fillText` per line, DOM per-line spans (`white-space: pre`). Neither rasterizer ever re-wraps, so DOM-vs-Skia metric differences cannot change line breaks.
 - `string-width` (column-count) metrics are explicitly banned for wrapping — proportional fonts make them wrong.
 
@@ -164,7 +166,7 @@ if lines.length > slot.maxLines:
   "slots": [
     {
       "type": "video", "id": "video",
-      "x": 0, "y": 520, "width": 1080,
+      "x": 0, "y": 520, "width": 1080, "height": 980,
       "fit": "contain", "scale": 1.0,
       "cornerRadius": 24, "borderWidth": 0, "borderColor": "#FFFFFF",
       "visible": true
@@ -203,13 +205,14 @@ if lines.length > slot.maxLines:
 ```
 
 Notes on the defaults:
+- Video target box: y 520 → **1500** (height 980 = canvas 1920 − videoTop 520 − bottom safe zone 420). `contain` inside `1080×980` then yields: 16:9 → **1080×608**; portrait 9:16 → **551×980** centered at x ≈ 264 (pillarboxed); 4:3 → **1080×810** (width-limited). No source aspect can spill past the canvas or into the bottom caption zone (re-audit Issue 2).
 - Hook box: x 48 → **928** (48 + 880), keeping wrapped ink clear of the right rail at x 940 (audit C1).
 - The hook is anchored **above the video**: resolved box top = `max(minY=150, …)`, bottom = `video.y − 32`. With default `videoTop=520` the block spans y 150–488; `vAlign: bottom` makes the last line hug the video regardless of line count — and the whole block follows when the `videoTop` knob moves the video.
 
 ## Validation rules (loader enforces)
 
 1. `schemaVersion` present and supported.
-2. Slot boxes inside canvas (`0 ≤ x`, `x + width ≤ 1080`); video slot `y + height ≤ 1920` (height computed from fit at resolve time — validator recomputes with a 16:9 worst case).
+2. Slot boxes inside canvas (`0 ≤ x`, `x + width ≤ 1080`, `0 ≤ y`, `y + height ≤ 1920`) — the video slot's `height` is an explicit bounded target box, so validation is direct (no worst-case recomputation needed).
 3. Exactly one `video` slot in v1 (multi-video = M4+).
 4. Every `TextSlot.bindsTo` matches an `inputs[].key`; every required input has a value at resolve time.
 5. `fontSize ≥ fontSizeMin ≥ 12`; `maxLines ≥ 1`; `lineHeight` in [1.0, 2.0].

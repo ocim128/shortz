@@ -30,7 +30,7 @@ Cache key: absolute path + file size + mtime.
 
 ## Stage 2 — Resolve
 
-Pure function (see `technical/template-schema.md`). Produces absolute geometry after rotation correction: video display box, final text line breaks/sizes, anchor-resolved text positions (`aboveVideo` slots: bottom edge = `video.y − gap`, top clamped ≥ `minY`). All boxes even-rounded (607.5 → 608). Non-fatal issues (safe-zone ink, shrink floor reached) come back as `warnings[]` for the UI.
+Pure function (see `technical/template-schema.md`). Produces absolute geometry after rotation correction: the video's display box (**contained and centered inside the slot's bounded target box** — `width × height` from the schema, so no source aspect ratio can overflow the canvas), final text line breaks/sizes, anchor-resolved text positions (`aboveVideo` slots: bottom edge = `video.y − gap`, top clamped ≥ `minY`). All boxes even-rounded (607.5 → 608). Non-fatal issues (safe-zone ink, shrink floor reached) come back as `warnings[]` for the UI.
 
 ## Stage 3 — Overlay PNG
 
@@ -38,7 +38,7 @@ Pure function (see `technical/template-schema.md`). Produces absolute geometry a
 
 1. **Text slots** — `fillText` per pre-broken line with `textAlign` set; fonts registered at startup (`GlobalFonts.registerFromPath(resources/fonts/…)`).
 2. **Rounded corners, solid background (primary mechanism):** draw four background-colored corner covers onto `overlay.png`. Zero extra filters, immune to stream-termination/alpha edge cases.
-3. **Rounded corners, non-solid background (blur):** needs real alpha → separate gray `mask.png` + the `alphamerge` chain in Case B2 below.
+3. **Rounded corners, non-solid background (blur):** needs real alpha → separate gray `mask.png` + the `alphamerge` chain in Case B2 below. **`mask.png` is rendered at the exact video-content dimensions** (`ResolvedLayout.video.w × .h`, e.g. 1080×608) — `alphamerge` requires both inputs to have identical width and height; a full-canvas 1080×1920 mask against a 1080×608 video aborts with `Input frame sizes do not match … error code -22` (verified on FFmpeg 8.0).
 4. Phase 2: shape/image slots.
 
 Static slots → one overlay.png for the whole duration.
@@ -95,7 +95,7 @@ ffmpeg -y -nostdin -hide_banner -loglevel error \
   "<output>.mp4"
 ```
 
-`mask.png` = white rounded rect on black (canvas-drawn, same rect/radius as preview). `alphamerge` takes the mask stream's luma as the alpha for the video (FFmpeg's documented watermark pattern); `-loop 1` keeps the mask stream alive for the whole duration.
+`mask.png` = white rounded rect on black at exactly the video-content box (e.g. **1080×608**, from `ResolvedLayout.video` — same rect/radius as preview). `alphamerge` requires equal input dimensions and takes the mask stream's luma as the video's alpha (FFmpeg's documented watermark pattern); `-loop 1` keeps the mask stream alive for the whole duration.
 
 ### Case C — blurred background, no rounding
 
@@ -155,8 +155,8 @@ Runner also appends `-progress pipe:1 -nostats`.
 `{trim, no-trim} × {mute, keep-audio} × {black, blur-bg} × {corners: none, covers, alphamerge} × {x264, nvenc}` = 48 argv fixtures, plus input-edge fixtures:
 
 - unicode paths, spaces in paths, long path (>260 → `\\?\` prefix if needed)
-- 4:3 source, already-9:16 source
-- **phone clip with rotate metadata (portrait displayed)** — asserts layout used display dims
+- 4:3 source → asserts contained box **1080×810** (width-limited inside the 1080×980 target box)
+- already-9:16 source / phone clip with rotate metadata (portrait displayed) → asserts display-dim normalization **and** contained box **551×980** centered at x ≈ 264 (bounded target box working)
 - VFR source — asserts `fps=30` present
 - **no-audio source** — asserts no audio flags, exit 0
 - **5.1 surround source** — asserts output `ac: 2`

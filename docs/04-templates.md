@@ -36,13 +36,14 @@ Note: the TikTok chrome visible in the "after" screenshot (search pill at top, p
 
 ### Slot: `video` (the clip)
 
-- **Fit mode: CONTAIN** (never crop the content).
-- Width = full canvas width **1080px**; a 16:9 source lands at **1080 × 608** (607.5 rounded to even).
-- Horizontal: centered, x = 0.
-- Vertical: `videoTop = 520` default (knob: 480–700). Video bottom lands at ~1128, leaving the lower ~800px black — matches the screenshot's upper-middle placement.
-- Corner radius: `24px` default (knob 0–48; implemented via alpha-masked rounded rect in the overlay PNG; see render doc).
+- **Bounded target box: 1080 × 980 at y = 520** (bottom edge 1500 = canvas − bottom safe zone 420). **Fit mode: CONTAIN** (never crop) inside that box, centered — so *any* source aspect stays on-canvas (re-audit Issue 2):
+  - 16:9 source → **1080 × 608** (607.5 rounded to even), letterboxed top/bottom.
+  - Portrait 9:16 source → **551 × 980**, pillarboxed (black bars left/right), centered at x ≈ 264.
+  - 4:3 source → **1080 × 810** (width-limited).
+- Horizontal: content centered within the box; for 16:9 that means x = 0 full width.
+- Vertical: `videoTop = 520` default (knob: 480–700) sets the box top; a 16:9 video bottom lands at ~1128, leaving the lower ~800px black — matches the screenshot's upper-middle placement.
+- Corner radius: `24px` default (knob 0–48). Solid background → background-colored corner covers drawn on the overlay PNG; non-solid background → video-sized gray mask + `alphamerge` (see render doc).
 - Scale filter: `lanczos` for downscaling quality.
-- If the source is already portrait (9:18 etc.): CONTAIN still applies — scale to fit 1080 wide, pillarbox/black bars appear top+bottom; layout math is identical.
 
 ### Slot: `hook` (the text)
 
@@ -60,7 +61,7 @@ Note: the TikTok chrome visible in the "after" screenshot (search pill at top, p
 
 | Knob | Default | Range | Notes |
 |---|---|---|---|
-| `background` | `black` | black / white / dark-gray / blur-video | `blur-video` = scaled-up blurred copy of the clip behind the letterbox (classic repost look) |
+| `backgroundStyle` | `black` | black / white / darkGray / blurVideo | `blurVideo` = scaled-up blurred copy of the clip behind the letterbox (classic repost look) |
 | `videoTop` | 520 | 480–700 px | Push video lower to fit longer hooks — the anchored hook text follows the video automatically |
 | `videoCornerRadius` | 24 | 0–48 px | 0 = square corners like the screenshot |
 | `textAlign` | left | left / center | Screenshot is left |
@@ -88,7 +89,7 @@ These reuse the exact same schema/engine; each is mostly a JSON file + thumbnail
 
 | # | Name | Concept | Adds to engine |
 |---|---|---|---|
-| 2 | **Blur Letterbox** | Same as T1 but `background=blur-video` and rounded corners — the classic "repost" look | Nothing (knob promotion) |
+| 2 | **Blur Letterbox** | Same as T1 but `backgroundStyle=blurVideo` and rounded corners — the classic "repost" look | Nothing (knob promotion) |
 | 3 | **Caption Below** | Video top ⅔, auto-shrunk caption strip below video (for clips with burned subs in frame) | Nothing |
 | 4 | **Top/Bottom Bars** | Meme style: video center, white bars above+below with black Impact-ish text | New font bundle |
 | 5 | **Before/After Split** | Two video slots stacked, "before/after" labels — for transformation content | Multi-video slots (engine change, phase 3) |

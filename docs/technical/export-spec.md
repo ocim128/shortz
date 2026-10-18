@@ -40,7 +40,7 @@ Default pattern `{name}_{yyyyMMdd}_{HHmm}` → `air-17oct2026_20261018_0935.mp4`
 ## Post-export flow
 
 1. Toast with duration/size + **Open folder** (Explorer, file pre-selected via `explorer /select,`).
-2. History entry written (project + global log).
+2. History entry written to the project (`exportHistory` — the global log is deferred to M4).
 3. Uploading stays manual in v1: TikTok web/mobile upload, pick file, add caption/sound there (native sound = better reach, and it's the reason `mute` knob exists).
 
 ## Verification protocol (manual, per release)

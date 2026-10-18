@@ -66,7 +66,7 @@ shortz/
         components/              # PhonePreview, TemplatePicker, TrimRange…
         preview/
           apply-layout.ts        # ResolvedLayout → CSS/DOM (per-line spans)
-          font-loader.ts         # fetch-based opentype loader for the renderer
+          font-loader.ts         # opentype font loader backed by window.shortz.getFontBuffer (no fetch/asset paths)
         strings.ts  tokens.css
   tests/
     unit/                        # mirrors src/shared + core/argbuilder (vitest)
@@ -100,9 +100,9 @@ Chromium will not load `file://` media from the app origin (`Not allowed to load
 - Drag & drop gives the renderer a path → it asks main for the URL; main validates the path exists and is a media file before minting.
 - Dev mode works identically (the protocol is registered on the app session, independent of the Vite dev server origin).
 
-## IPC contract (v1 — hand-rolled, locked; ~13 methods)
+## IPC contract (v1 — hand-rolled, locked; ~14 methods)
 
-Decision locked per simplicity audit: `contextBridge` + typed `api.d.ts`. No electron-trpc — ~13 methods don't justify the dependency and its major-version churn.
+Decision locked per simplicity audit: `contextBridge` + typed `api.d.ts`. No electron-trpc — ~14 methods don't justify the dependency and its major-version churn.
 
 ```ts
 interface ShortzApi {
@@ -116,6 +116,7 @@ interface ShortzApi {
   // media
   pickFile(): Promise<string | null>              // native dialog
   getMediaUrl(sourcePath: string): Promise<string> // returns media:// URL (Range-capable)
+  getFontBuffer(key: FontKey): Promise<Uint8Array> // bundled TTF bytes for renderer-side opentype metrics
   // templates
   listTemplates(): Promise<TemplateMeta[]>        // includes invalid ones w/ errors
   // render
@@ -145,6 +146,29 @@ pnpm dist           # electron-builder → NSIS + portable in dist/
 ```
 
 Scaffold source: `pnpm create @quick-start/electron` (electron-vite template, React + TS), then restructure into the tiers above.
+
+## Packaging notes (electron-builder — re-audit Issue 3)
+
+Files read at runtime by **native or spawned-process code must live outside the ASAR archive**: Skia's `GlobalFonts.registerFromPath` goes through the OS `CreateFileW` API and cannot see virtual `app.asar` paths — same for `ffmpeg-static`'s binary that we spawn.
+
+```yaml
+# electron-builder.yml
+asarUnpack:
+  - "resources/fonts/**"             # GlobalFonts.registerFromPath + opentype.js loads
+  - "resources/templates/**"         # template registry reads these JSONs at runtime
+  - "node_modules/ffmpeg-static/**"  # spawned as a child process
+```
+
+(Alternative: `extraResources` with a matching path resolution — pick one, not both.)
+
+`core/render/fonts.ts` stays Electron-free: the **main process injects the resolved fonts directory** at startup —
+
+```ts
+// main (Tier 3) computes, core (Tier 2) consumes:
+const fontsDir = app.isPackaged
+  ? path.join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'fonts')
+  : path.join(__dirname, '../../resources/fonts');
+```
 
 ## Conventions
 

@@ -1,7 +1,7 @@
 # ShortZ — Fast TikTok Video Editor (Plan)
 
 **Working title:** ShortZ
-**Status:** Planning (nothing implemented yet) — **Rev 2**: external audit applied (filtergraph robustness, `media://` preview protocol, shared opentype.js text metrics, Windows process/file hardening, template geometry & knob model fixes, scope cuts)
+**Status:** Planning (nothing implemented yet) — **Rev 3**: second audit applied (bounded video target box for all aspect ratios, `alphamerge` mask dimensions, ASAR font/template unpacking, knob naming + diagram cleanups). Rev 2: external audit applied (filtergraph robustness, `media://` preview protocol, shared opentype.js text metrics, Windows process/file hardening, template geometry & knob model fixes, scope cuts)
 **Target platform:** Windows desktop (local app, no cloud, no accounts)
 
 ## What is ShortZ?

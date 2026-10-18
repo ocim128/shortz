@@ -96,7 +96,7 @@ Main: load project → Layout Engine → ResolvedLayout
    │
    ▼
 Render Orchestrator builds args:
-   ffmpeg -ss <trimStart> -to <trimEnd> -i source.mp4
+   ffmpeg -ss <trimStart> -t <duration> -i source.mp4
           -i overlay.png
           -filter_complex "…scale/pad to canvas…; …overlay text…"
           -c:v libx264 -crf 18 … out.mp4
