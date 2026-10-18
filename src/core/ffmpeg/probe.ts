@@ -1,8 +1,9 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { atomicWriteFile } from '../store/fs-utils'
+import { killProcessTree } from './runner'
 
 /**
  * Probe result with rotation-normalized display dimensions: a portrait phone
@@ -57,22 +58,54 @@ interface FfprobeOutput {
   format?: FormatInfo
 }
 
-function runFfprobeJson(ffprobePath: string, source: string): Promise<string> {
+/** No probe output (and no exit) for this long => ffprobe is wedged; kill it. */
+export const DEFAULT_PROBE_TIMEOUT_MS = 30_000
+
+function runFfprobeJson(ffprobePath: string, source: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const args = ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', source]
-    const child = spawn(ffprobePath, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    let child: ChildProcess
+    try {
+      child = spawn(ffprobePath, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    } catch (error) {
+      reject(new ProbeError(`Failed to start ffprobe: ${(error as Error).message}`))
+      return
+    }
     let stdout = ''
     let stderr = ''
-    child.stdout.on('data', (chunk: Buffer) => {
+    let timedOut = false
+    // A wedged ffprobe (network path, half-copied file) would hold the import
+    // forever — same rule as runFfmpeg's stall watchdog: kill the tree and
+    // surface an actionable error instead of hanging.
+    const timer = setTimeout(() => {
+      timedOut = true
+      const pid = child.pid
+      if (pid !== undefined) void killProcessTree(pid).catch(() => undefined)
+    }, timeoutMs)
+    timer.unref?.()
+    child.stdout?.on('data', (chunk: Buffer) => {
       stdout += chunk.toString('utf8')
     })
-    child.stderr.on('data', (chunk: Buffer) => {
+    child.stderr?.on('data', (chunk: Buffer) => {
       stderr += chunk.toString('utf8')
     })
     child.on('error', (error) => {
+      clearTimeout(timer)
+      if (timedOut) return
       reject(new ProbeError(`Failed to start ffprobe: ${error.message}`))
     })
     child.on('close', (code) => {
+      clearTimeout(timer)
+      if (timedOut) {
+        const tail = stderr.split(/\r?\n/).filter(Boolean).slice(-10)
+        reject(
+          new ProbeError(
+            `ffprobe timed out after ${timeoutMs / 1000}s on "${source}" and was terminated`,
+            tail
+          )
+        )
+        return
+      }
       if (code === 0) resolve(stdout)
       else {
         const tail = stderr.split(/\r?\n/).filter(Boolean).slice(-10)
@@ -147,14 +180,20 @@ function parseFfprobeJson(rawJson: string, source: string): ClipMeta {
   }
 }
 
-export async function probeSource(ffprobePath: string, source: string): Promise<ClipMeta> {
-  const json = await runFfprobeJson(ffprobePath, source)
+export async function probeSource(
+  ffprobePath: string,
+  source: string,
+  timeoutMs: number = DEFAULT_PROBE_TIMEOUT_MS
+): Promise<ClipMeta> {
+  const json = await runFfprobeJson(ffprobePath, source, timeoutMs)
   return parseFfprobeJson(json, source)
 }
 
 export interface ProbeCacheOptions {
   ffprobePath: string
   cacheDir?: string
+  /** Wedged-probe ceiling; defaults to DEFAULT_PROBE_TIMEOUT_MS. */
+  timeoutMs?: number
 }
 
 /**
@@ -179,7 +218,7 @@ export async function probeWithCache(
   options: ProbeCacheOptions
 ): Promise<ClipMeta> {
   const absolute = path.resolve(source)
-  const { cacheDir } = options
+  const { cacheDir, timeoutMs } = options
   let cacheFile: string | null = null
 
   if (cacheDir) {
@@ -202,7 +241,11 @@ export async function probeWithCache(
     }
   }
 
-  const meta = await probeSource(options.ffprobePath, absolute)
+  const meta = await probeSource(
+    options.ffprobePath,
+    absolute,
+    timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
+  )
   if (cacheFile && cacheDir) {
     try {
       const envelope: ProbeCacheEnvelope = { v: PROBE_CACHE_VERSION, meta }

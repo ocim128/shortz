@@ -13,7 +13,6 @@ import type {
   FontKey,
   Project,
   ProjectMeta,
-  RenderProgressEvent,
   Settings,
   TemplateMeta
 } from '../preload/api'
@@ -29,6 +28,7 @@ import {
   projectFilePath,
   projectsRoot,
   resourcesDir,
+  saveCurrentSettings,
   thumbAvailable,
   thumbPath,
   userTemplatesDir
@@ -52,20 +52,19 @@ import {
 import { assertProjectId } from '../core/store/projects'
 import { describeTemplateIssues } from '../shared/template/validate'
 import { VIDEO_EXTENSIONS } from '../shared/video-extensions'
-import { resolveFfmpegBinariesCached, type FfmpegSourcePreference } from '../core/ffmpeg/resolve-bin'
+import { resolveFfmpegBinariesCached } from '../core/ffmpeg/resolve-bin'
 import { probeWithCache } from '../core/ffmpeg/probe'
 import { generateThumbnail } from '../core/media/thumbnail'
-import { renderProject, defaultTmpRoot } from '../core/render/orchestrator'
-import type { OrchestratorProgress } from '../core/render/orchestrator'
+import { renderProject, defaultTmpRoot, RenderCancelledError, RenderError } from '../core/render/orchestrator'
 import { emojiFontBytes, FONT_FILES } from '../core/render/fonts'
-import { saveSettings as saveSettingsDoc, loadSettings } from '../core/store/settings'
+import { toProgressEvent } from './progress'
 import {
   deleteEditorConfig,
   listEditorConfigs,
   loadEditorConfig,
   saveEditorConfig
 } from '../core/store/editor-configs'
-import { logWarn } from '../core/log'
+import { logInfo, logWarn } from '../core/log'
 
 /**
  * Typed IPC handlers — the real product wiring (docs/technical/project-structure.md
@@ -96,7 +95,7 @@ async function resolveBinariesWithSettings(): Promise<
   Awaited<ReturnType<typeof resolveFfmpegBinariesCached>>
 > {
   const settings = await currentSettings()
-  return resolveFfmpegBinariesCached({ preference: settings.ffmpeg.source as FfmpegSourcePreference })
+  return resolveFfmpegBinariesCached({ preference: settings.ffmpeg.source })
 }
 
 // One render at a time (the renderer's store models a single job).
@@ -110,33 +109,7 @@ function outputPathFor(project: Project, templateId: string, dir: string, patter
 }
 
 // --- progress mapping --------------------------------------------------------
-
-function parseSpeed(raw: string | null | undefined): number {
-  if (!raw) return 0
-  const m = raw.match(/([\d.]+)x?/)
-  if (!m) return 0
-  const v = Number(m[1])
-  return Number.isFinite(v) ? v : 0
-}
-
-function toProgressEvent(p: OrchestratorProgress, durationSec: number): RenderProgressEvent {
-  const speed = parseSpeed(p.speed)
-  const pct = p.pct < 0 ? 0 : p.pct > 100 ? 100 : Math.round(p.pct)
-  const done = p.stage === 'done'
-  let etaSec: number | null = null
-  if (!done && speed > 0 && p.outTimeSec !== undefined && durationSec > p.outTimeSec) {
-    etaSec = (durationSec - p.outTimeSec) / speed
-  }
-  return {
-    jobId: p.jobId,
-    percent: pct,
-    outTimeSec: p.outTimeSec ?? 0,
-    speed,
-    etaSec,
-    done,
-    stage: p.stage
-  }
-}
+// (toProgressEvent lives in ./progress.ts — pure and unit-tested.)
 
 function wireTemplateMeta(m: CoreTemplateMeta, badge: 'built-in' | 'user'): TemplateMeta {
   if (m.valid) {
@@ -189,11 +162,17 @@ async function runExport(p: Project, opts: ExportOptions): Promise<ExportResult>
 
   // {0,0} (or unordered) trim = full clip; null forces no trim in the render.
   const trim = p.trim.end > p.trim.start && p.trim.start >= 0 ? p.trim : null
-  // Eta math needs the trimmed duration: probe snapshot when present, else 0 (no eta).
-  const durationForEta = p.source.probe?.duration ?? 0
+  // Eta math needs the TRIMMED duration: outTimeSec counts the post-trim
+  // output timeline, so the full-clip probe snapshot would over-estimate by
+  // (clip - trim) for the whole render.
+  const durationForEta = trim ? trim.end - trim.start : (p.source.probe?.duration ?? 0)
 
   const controller = new AbortController()
   activeAbort = controller
+  logInfo(
+    `[export] start — project=${p.id} template=${template.id} encoder=${encoder} crf=${crf} ` +
+      `trim=${trim ? `${trim.start}s-${trim.end}s` : 'full'}`
+  )
   try {
     const result = await renderProject({
       project: p,
@@ -224,6 +203,11 @@ async function runExport(p: Project, opts: ExportOptions): Promise<ExportResult>
       stage: 'done'
     })
 
+    logInfo(
+      `[export] ${result.jobId} done — ${(result.elapsedMs / 1000).toFixed(1)}s, ` +
+        `${(result.sizeBytes / 1e6).toFixed(1)} MB, ${result.videoCodec} -> ${result.outputPath}`
+    )
+
     return {
       jobId: result.jobId,
       path: result.outputPath,
@@ -232,6 +216,14 @@ async function runExport(p: Project, opts: ExportOptions): Promise<ExportResult>
       encoder: result.videoCodec,
       crf
     }
+  } catch (error) {
+    if (error instanceof RenderCancelledError) {
+      logInfo(`[export] ${p.id} cancelled by the user`)
+    } else {
+      const stage = error instanceof RenderError ? error.stage : '?'
+      logWarn(`[export] ${p.id} failed at ${stage}: ${(error as Error).message}`)
+    }
+    throw error
   } finally {
     activeAbort = null
   }
@@ -472,12 +464,9 @@ export function registerIpcHandlers(): void {
 
   // --- settings ---------------------------------------------------------------
 
-  handle('shortz:getSettings', async (): Promise<Settings> => loadSettings(dataDir()))
+  handle('shortz:getSettings', async (): Promise<Settings> => currentSettings())
 
-  handle('shortz:saveSettings', async (s: Settings): Promise<Settings> => {
-    await saveSettingsDoc(s, dataDir())
-    return loadSettings(dataDir())
-  })
+  handle('shortz:saveSettings', async (s: Settings): Promise<Settings> => saveCurrentSettings(s))
 
   // --- engine info (settings modal) -------------------------------------------
 

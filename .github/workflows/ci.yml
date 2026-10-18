@@ -1,0 +1,35 @@
+# CI gate — runs the fast, dependency-light tiers on every push/PR:
+# typecheck (all three tsconfig tiers), lint, and the unit suites. The
+# integration suites spawn real ffmpeg renders and the UI e2e spawns
+# Electron + CDP; both are candidates for a follow-up job once their
+# cross-platform determinism (golden frames, taskkill paths) is verified.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm lint
+
+      - run: pnpm vitest run tests/unit

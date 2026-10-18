@@ -1,7 +1,12 @@
 import path from 'node:path'
 import fsp from 'node:fs/promises'
 import { app } from 'electron'
-import { loadSettings, probeCacheDir } from '../core/store/settings'
+import {
+  loadSettings,
+  probeCacheDir,
+  saveSettings as saveSettingsDoc,
+  settingsFilePath
+} from '../core/store/settings'
 import type { Settings } from '../shared/domain'
 
 /**
@@ -63,8 +68,36 @@ export function probeCachesDir(): string {
   return probeCacheDir(dataDir())
 }
 
+/**
+ * Memoized settings — hot paths (every export/import/relink) call this, so
+ * the memo skips the read+parse+merge. It is mtime-validated: settings.json
+ * stays externally writable (tests, hand edits) and any write is picked up
+ * on the next call, while the common case pays one stat instead of a read.
+ */
+let settingsMemo: { dir: string; value: Settings; mtimeMs: number | null } | null = null
+
+async function settingsMtimeMs(dir: string): Promise<number | null> {
+  const stat = await fsp.stat(settingsFilePath(dir)).catch(() => null)
+  return stat?.mtimeMs ?? null
+}
+
 export async function currentSettings(): Promise<Settings> {
-  return loadSettings(dataDir())
+  const dir = dataDir()
+  const mtimeMs = await settingsMtimeMs(dir)
+  if (settingsMemo?.dir === dir && settingsMemo.mtimeMs === mtimeMs) return settingsMemo.value
+  const value = await loadSettings(dir)
+  settingsMemo = { dir, value, mtimeMs }
+  return value
+}
+
+export async function saveCurrentSettings(settings: Settings): Promise<Settings> {
+  const dir = dataDir()
+  await saveSettingsDoc(settings, dir)
+  // Re-load instead of echoing back: the store normalizes, so the memo stays
+  // byte-for-byte identical to what a fresh process would read from disk.
+  const value = await loadSettings(dir)
+  settingsMemo = { dir, value, mtimeMs: await settingsMtimeMs(dir) }
+  return value
 }
 
 /** Async so listing N projects never blocks the main-process event loop. */

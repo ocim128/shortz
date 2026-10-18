@@ -146,4 +146,18 @@ describe('probeWithCache — cache behavior', () => {
       /Failed to start ffprobe|No video stream|ffprobe exited/
     )
   })
+
+  it(
+    'kills a wedged probe via the timeout watchdog',
+    { timeout: 20_000 },
+    async () => {
+      // A real probe takes tens of milliseconds; a 5 ms ceiling means the
+      // watchdog must fire mid-probe, kill the tree and settle as a timeout.
+      const startedAt = Date.now()
+      await expect(
+        probeWithCache(fixture('landscape_1080p_10s.mp4'), { ffprobePath, timeoutMs: 5 })
+      ).rejects.toThrow(/timed out after 0\.005s/)
+      expect(Date.now() - startedAt).toBeLessThan(10_000)
+    }
+  )
 })

@@ -10,7 +10,7 @@ import type {
 } from '../preload/api'
 import { buildOutputPath } from './output-path'
 import { currentSettings, probeCachesDir, resourcesDir, dataDir } from './data'
-import { resolveFfmpegBinariesCached, type FfmpegSourcePreference } from '../core/ffmpeg/resolve-bin'
+import { resolveFfmpegBinariesCached } from '../core/ffmpeg/resolve-bin'
 import { probeWithCache } from '../core/ffmpeg/probe'
 import { loadTemplateById } from '../core/store/templates'
 import { loadEditorConfig } from '../core/store/editor-configs'
@@ -85,7 +85,7 @@ export async function runBatch(request: BatchRunRequest): Promise<BatchRunSummar
   try {
     const settings = await currentSettings()
     const binaries = await resolveFfmpegBinariesCached({
-      preference: settings.ffmpeg.source as FfmpegSourcePreference
+      preference: settings.ffmpeg.source
     })
 
     // Template + saved values are resolved ONCE for the whole queue: every line

@@ -69,7 +69,31 @@ async function tryBundled(): Promise<{ ffmpegPath: string; ffprobePath: string }
   }
 }
 
-let cachedAuto: FfmpegBinaries | null = null
+const RESOLVE_CACHE_TTL_MS = 5 * 60_000
+const resolveCache = new Map<string, { value: FfmpegBinaries; expiresAt: number }>()
+
+/**
+ * Cached resolver — one resolution per preference (and per explicit binary
+ * pair) per TTL window, instead of only 'auto'. Without this, a user who
+ * pinned ffmpeg.source in settings re-paid two `-version` subprocess spawns
+ * on every export/import/relink. Successes are cached only, so a broken PATH
+ * setup always re-resolves; the TTL also picks up a newly installed system
+ * ffmpeg without an app restart.
+ */
+export async function resolveFfmpegBinariesCached(
+  options: ResolveBinariesOptions = {}
+): Promise<FfmpegBinaries> {
+  const { preference = 'auto' } = options
+  const key =
+    options.ffmpegPath && options.ffprobePath
+      ? `custom|${options.ffmpegPath}|${options.ffprobePath}`
+      : `pref|${preference}`
+  const hit = resolveCache.get(key)
+  if (hit && hit.expiresAt > Date.now()) return hit.value
+  const value = await resolveFfmpegBinaries(options)
+  resolveCache.set(key, { value, expiresAt: Date.now() + RESOLVE_CACHE_TTL_MS })
+  return value
+}
 
 /**
  * Resolution order (per docs): system PATH first (full builds ship more filters),
@@ -123,16 +147,4 @@ export async function resolveFfmpegBinaries(
     'No usable FFmpeg found: not on PATH and ffmpeg-static/ffprobe-static are unavailable. ' +
       'Install FFmpeg or add the bundled binary packages.'
   )
-}
-
-/** Cached resolver for the 'auto' preference (startup cost paid once). */
-export async function resolveFfmpegBinariesCached(
-  options: ResolveBinariesOptions = {}
-): Promise<FfmpegBinaries> {
-  const { preference = 'auto' } = options
-  if (preference === 'auto' && !options.ffmpegPath && !options.ffprobePath) {
-    if (!cachedAuto) cachedAuto = await resolveFfmpegBinaries(options)
-    return cachedAuto
-  }
-  return resolveFfmpegBinaries(options)
 }

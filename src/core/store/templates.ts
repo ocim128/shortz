@@ -8,6 +8,25 @@ import {
 import type { Template } from '../../shared/template/types'
 import { stripBom } from './fs-utils'
 
+/**
+ * Template ids are filesystem slugs — template files are `<id>.json` and ids
+ * arrive from the renderer (project.templateId, batch requests), so the same
+ * containment rule as project/config ids applies: an id must never resolve
+ * outside the templates directory.
+ */
+const TEMPLATE_ID_RE = /^[a-z0-9][a-z0-9-_]*$/i
+
+export function isTemplateId(id: unknown): id is string {
+  return typeof id === 'string' && TEMPLATE_ID_RE.test(id)
+}
+
+/** IPC/file-boundary guard — throws a readable error on non-slug ids. */
+export function assertTemplateId(id: string): void {
+  if (!isTemplateId(id)) {
+    throw new Error(`Invalid template id: ${String(id)}`)
+  }
+}
+
 export interface LoadedTemplate {
   template: Template | null
   sourcePath: string
@@ -49,6 +68,7 @@ export async function loadTemplateById(
   resourcesDir: string,
   templateId: string
 ): Promise<Template> {
+  assertTemplateId(templateId)
   const filePath = path.join(resourcesDir, 'templates', `${templateId}.json`)
   const loaded = await loadTemplateFile(filePath)
   if (!loaded.template) {
