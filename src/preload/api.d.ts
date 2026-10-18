@@ -10,7 +10,7 @@
  * recorded the contract addition).
  */
 
-import type { Template } from '../../shared/template/types'
+import type { Template } from '../shared/template/types'
 
 export type { Template }
 
