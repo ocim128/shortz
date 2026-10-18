@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { app, BrowserWindow } from 'electron'
 import { registerMediaScheme, registerMediaProtocol } from './protocol/media'
 import { registerIpcHandlers } from './ipc'
@@ -9,6 +11,27 @@ import { createMainWindow } from './windows/main-window'
 if (process.env.SHORTZ_REMOTE_DEBUGGING && !app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.SHORTZ_REMOTE_DEBUGGING)
 }
+
+/**
+ * Portable mode (docs/technical/data-storage.md §"Folder layout"): when a
+ * `portable.flag` file sits next to the exe, the data dir moves to `.\data\`
+ * next to the exe instead of %APPDATA%\shortz. Must run before anything
+ * touches userData — including the single-instance lock, which is keyed on it.
+ *
+ * PORTABLE_EXECUTABLE_DIR: the electron-builder "portable" target self-extracts
+ * to a temp dir, so app.getPath('exe') points at the extraction — the flag and
+ * data dir belong next to the ORIGINAL exe, which the target tells us via env.
+ */
+function applyPortableMode(): void {
+  const exeDir = process.env.PORTABLE_EXECUTABLE_DIR ?? path.dirname(app.getPath('exe'))
+  if (!fs.existsSync(path.join(exeDir, 'portable.flag'))) return
+  const dataDir = path.join(exeDir, 'data')
+  fs.mkdirSync(dataDir, { recursive: true })
+  app.setPath('userData', dataDir)
+  console.log(`[shortz] portable mode active — userData: ${dataDir}`)
+}
+
+applyPortableMode()
 
 // Privileged scheme registration MUST happen before app ready.
 registerMediaScheme()
