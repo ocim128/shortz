@@ -43,7 +43,7 @@
     { "id": "videoFraming", "label": "Framing", "control": "select", "default": "letterbox",
       "options": [
         { "value": "letterbox", "label": "Letterbox (whole clip)" },
-        { "value": "auto",      "label": "Smart (fill landscape clips)" },
+        { "value": "auto",      "label": "Smart (whole clip, blurred fill — no crop)" },
         { "value": "fill",      "label": "Fill (crop to the box)" }
       ] },
     { "id": "textAlign", "label": "Text align", "control": "select", "default": "left",

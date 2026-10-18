@@ -260,11 +260,23 @@ describe('resolveLayout — videoFraming (smart sizing)', () => {
     expect(layout.video).toMatchObject({ x: 0, y: 520, w: 1080, h: 980, fit: 'cover' })
   })
 
-  it('auto fills a landscape clip but keeps a portrait clip contained', () => {
+  it('smart never crops: the whole clip stays contained and the dead space goes blurred', () => {
     const wide = resolve({ width: 1920, height: 1080 }, { knobs: { videoFraming: 'auto' } })
-    expect(wide.video).toMatchObject({ w: 1080, h: 980, fit: 'cover' })
+    expect(wide.video).toMatchObject({ x: 0, y: 520, w: 1080, h: 608, fit: 'contain' })
+    expect(wide.canvas.background).toBe('blurVideo')
+    expect(wide.canvas.blur).toEqual({ sigma: 30, darken: 0.05 })
     const tall = resolve({ width: 1080, height: 1920 }, { knobs: { videoFraming: 'auto' } })
     expect(tall.video).toMatchObject({ x: 265, y: 520, w: 551, h: 980, fit: 'contain' })
+    expect(tall.canvas.background).toBe('blurVideo')
+  })
+
+  it('an explicitly chosen Background wins over smart\u2019s blur fill', () => {
+    const layout = resolve(
+      { width: 1920, height: 1080 },
+      { knobs: { videoFraming: 'auto', backgroundStyle: 'white' } }
+    )
+    expect(layout.canvas.background).toBe('white')
+    expect(layout.video.fit).toBe('contain')
   })
 
   it('fill honours the videoTop knob and clips warnings stay silent', () => {

@@ -136,7 +136,7 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
 
   const canvasWidth = template.canvas.width
   const canvasHeight = template.canvas.height
-  const background = declared('backgroundStyle')
+  let background = declared('backgroundStyle')
     ? (knobs.backgroundStyle as BackgroundStyle)
     : template.canvas.backgroundStyle
 
@@ -161,15 +161,18 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
   const boxY = videoTop + centerOffset(videoSlot.height, boxH)
 
   // Effective fit: the template's slot.fit is the base; a declared framing
-  // knob overrides. "auto" only fills when the source is wider than the box —
-  // cropping a landscape clip's sides is usually free, cropping a portrait
-  // clip's head/feet is not.
+  // knob overrides. Smart never crops — cropping a clip's sides can cut its
+  // subject — so it keeps the whole clip contained and fills the dead space
+  // with a blurred copy of itself instead. An explicitly chosen Background
+  // still wins over Smart's blur.
   let fit: 'contain' | 'cover' = videoSlot.fit
   if (declared('videoFraming')) {
     const framing = knobs.videoFraming as 'letterbox' | 'auto' | 'fill'
     if (framing === 'fill') fit = 'cover'
-    else if (framing === 'letterbox') fit = 'contain'
-    else fit = clip.width / clip.height > boxW / boxH ? 'cover' : 'contain'
+    else fit = 'contain'
+    if (framing === 'auto' && values.knobs.backgroundStyle === undefined) {
+      background = 'blurVideo'
+    }
   }
 
   let video: ResolvedVideo

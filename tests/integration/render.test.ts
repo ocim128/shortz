@@ -327,8 +327,9 @@ describe('renderProject — smart framing (videoFraming knob)', () => {
     expect(fill).toBeGreaterThan(40)
   })
 
-  it('auto fills a landscape source (same pixels as fill)', async () => {
+  it('smart keeps the whole clip and blur-fills the dead space (no black, no crop)', async () => {
     const auto = await renderAndSample({ videoFraming: 'auto' })
-    expect(auto).toBeGreaterThan(40)
+    // Same band (below the contained video): blurred source instead of black.
+    expect(auto).toBeGreaterThan(30)
   })
 })

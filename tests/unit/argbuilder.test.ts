@@ -176,3 +176,16 @@ describe('buildFfmpegArgs — video framing (cover/contain)', () => {
     expect(filter).toContain('[bg]')
   })
 })
+
+describe('buildFfmpegArgs — smart framing (blur fill)', () => {
+  it('smart routes through the blurred-background path', () => {
+    const input = baseInput({
+      layout: layoutFor({ width: 1920, height: 1080 }, { videoFraming: 'auto' })
+    })
+    const filter = buildFilterComplex(input)
+    expect(filter).toContain('gblur=sigma=30')
+    // The video chain stays contain (no crop); only the blurred background
+    // copy cover-crops, which is its own chain.
+    expect(filter).toContain('[src]scale=1080:608:flags=lanczos,setsar=1')
+  })
+})
