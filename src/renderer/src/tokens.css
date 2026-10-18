@@ -1,0 +1,70 @@
+/*
+ * Design tokens — docs/technical/ui-spec.md §"Design tokens" (exact values).
+ * Structural helpers below the marker are derived additions.
+ */
+:root {
+  --bg-0: #0d0d0f; /* app background        */
+  --bg-1: #16161a; /* panels                */
+  --bg-2: #1f1f25; /* inputs, cards         */
+  --fg-0: #f2f2f4; /* primary text          */
+  --fg-1: #9a9aa6; /* secondary text        */
+  --accent: #fe2c55; /* TikTok-ish red-pink   */
+  --ok: #2bd576;
+  --err: #ff5252;
+
+  /* derived helpers (not in the token block of the doc) */
+  --warn: #ff9f43;
+  --trim: #8b5cf6; /* violet trim region (ui-spec mockup) */
+  --border: #2a2a32;
+  --radius: 8px;
+  --radius-sm: 5px;
+  --focus-ring: 0 0 0 2px rgba(254, 44, 85, 0.55);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+}
+
+::selection {
+  background: rgba(254, 44, 85, 0.4);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+/* scrollbars, dark */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
