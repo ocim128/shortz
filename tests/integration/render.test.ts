@@ -104,7 +104,10 @@ describe('renderProject — acceptance matrix', () => {
     expect(result.audioChannels).toBe(2)
     expect(result.durationSec).toBeCloseTo(7, 1)
     expect(result.layout.video).toMatchObject({ x: 0, y: 520, w: 1080, h: 608 })
-    expect(result.warnings.some((w) => w.includes('clamped'))).toBe(true)
+    // The shipped sample must render warning-free at default knobs (P2): the
+    // hook fits the 338px above-video room without clamping. Clamp behaviour
+    // itself stays covered by tests/unit/layout-engine.test.ts.
+    expect(result.warnings).toEqual([])
 
     const out = await probeSource(ffprobePath, result.outputPath)
     expect(out.width).toBe(1080)

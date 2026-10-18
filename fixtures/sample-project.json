@@ -18,7 +18,7 @@
   "templateId": "hook-letterbox",
   "values": {
     "fields": {
-      "hook": "A wildlife photographer put a microphone beside a baby squirrel. These are its actual eating sounds."
+      "hook": "A wildlife photographer put a microphone beside a baby squirrel."
     },
     "knobs": {
       "backgroundStyle": "black",
