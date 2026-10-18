@@ -468,13 +468,14 @@
   filter: blur(46px) brightness(0.7) saturate(1.1);
 }
 
-.text-layer {
+/* TextLayer's canvas: must be positioned to paint above the positioned
+   .video-layer siblings (a static canvas paints below them, which hid the
+   hook behind the full-bleed blur background). DOM order keeps it on top. */
+.text-canvas {
   position: absolute;
-  white-space: pre;
-}
-.text-layer__line {
-  display: block;
-  white-space: pre;
+  left: 0;
+  top: 0;
+  pointer-events: none;
 }
 
 /* Preview-only: dashed marker at the geometry a required-but-empty text slot

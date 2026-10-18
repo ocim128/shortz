@@ -311,6 +311,27 @@ await test('safe-zone overlay toggles', async () => {
   }
 })
 
+await test('text layer paints above video layers (blur-bg text regression)', async () => {
+  assert(editorUp, 'skipped: editor never rendered')
+  const info = await evaluate(`(() => {
+    const root = document.querySelector('.design-root')
+    const canvas = root?.querySelector('.text-canvas')
+    if (!root || !canvas) return null
+    const pos = getComputedStyle(canvas).position
+    const videos = Array.from(root.querySelectorAll('.video-layer'))
+    const canvasAfterVideos = videos.every(
+      (v) => canvas.compareDocumentPosition(v) & Node.DOCUMENT_POSITION_PRECEDING
+    )
+    return { pos, canvasAfterVideos, videos: videos.length }
+  })()`)
+  assert(info, 'design-root or text-canvas missing')
+  assert(
+    info.pos === 'absolute',
+    `text-canvas must be positioned to paint above the (positioned) video layers - got "${info.pos}" (regression: a static canvas hid the hook text behind the full-bleed blur background)`
+  )
+  assert(info.canvasAfterVideos, 'text-canvas must come after the video layers in DOM order')
+})
+
 await test('trim handle drags and snaps to 0.1 s', async () => {
   assert(videoOk, 'skipped: video never loaded (duration unknown)')
   const before = await evaluate(`document.querySelector('.trim-range__handle[aria-label="Trim end"] .trim-range__value')?.textContent ?? ''`)
