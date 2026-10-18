@@ -14,16 +14,31 @@ export interface FontMetrics {
   descender: number
 }
 
-/** Cache is keyed by loader identity so different hosts/tests never share stale fonts. */
+/**
+ * Cache is keyed by loader identity so different hosts/tests never share stale
+ * fonts. It is bounded: a host that hands out a fresh loader per call would
+ * otherwise pin one parsed font per invocation forever (the renderer did
+ * exactly that), so the oldest host entry is evicted past the cap.
+ */
+const MAX_CACHED_LOADERS = 4
 const fontCache = new Map<FontLoader, Map<FontKey, ReturnType<typeof parse>>>()
 
 export function clearFontCache(): void {
   fontCache.clear()
 }
 
+/** Number of cached loader entries — exposed for leak-regression tests. */
+export function fontCacheSize(): number {
+  return fontCache.size
+}
+
 function getFont(loader: FontLoader, key: FontKey): ReturnType<typeof parse> {
   let byKey = fontCache.get(loader)
   if (!byKey) {
+    if (fontCache.size >= MAX_CACHED_LOADERS) {
+      const oldest = fontCache.keys().next().value
+      if (oldest !== undefined) fontCache.delete(oldest)
+    }
     byKey = new Map()
     fontCache.set(loader, byKey)
   }

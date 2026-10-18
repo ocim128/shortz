@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { atomicWriteFile } from '../store/fs-utils'
 
 /**
  * Probe result with rotation-normalized display dimensions: a portrait phone
@@ -173,6 +174,21 @@ export interface ProbeCacheOptions {
   cacheDir?: string
 }
 
+/**
+ * On-disk envelope. `v` makes invalidation explicit: bump it whenever ClipMeta
+ * gains a field, and old entries fall through to a fresh probe instead of
+ * silently serving stale shapes.
+ */
+interface ProbeCacheEnvelope {
+  v: number
+  meta: ClipMeta
+}
+
+const PROBE_CACHE_VERSION = 1
+const PROBE_CACHE_MAX_ENTRIES = 2000
+const PROBE_CACHE_MAX_BYTES = 50 * 1024 * 1024
+const PROBE_CACHE_MAX_AGE_MS = 30 * 24 * 3600_000
+
 export async function probeWithCache(
   source: string,
   options: ProbeCacheOptions
@@ -188,32 +204,79 @@ export async function probeWithCache(
       cacheKey = createHash('sha1').update(`${absolute}|${stat.size}|${stat.mtimeMs}`).digest('hex')
       cacheFile = path.join(cacheDir, `${cacheKey}.json`)
       const cached = await fs.readFile(cacheFile, 'utf8')
-      const meta = JSON.parse(cached) as ClipMeta
-      if (isValidCachedMeta(meta) && meta.path === absolute) return meta
+      const envelope = JSON.parse(cached) as Partial<ProbeCacheEnvelope> | null
+      const meta = envelope?.meta
+      if (
+        envelope?.v === PROBE_CACHE_VERSION &&
+        isValidCachedMeta(meta) &&
+        meta.path === absolute
+      ) {
+        return meta
+      }
     } catch {
       // cache miss or unreadable cache — fall through to probing
     }
   }
 
   const meta = await probeSource(options.ffprobePath, absolute)
-  if (cacheFile) {
+  if (cacheFile && cacheDir) {
     try {
-      await fs.mkdir(path.dirname(cacheFile), { recursive: true })
-      await fs.writeFile(cacheFile, JSON.stringify(meta, null, 2), 'utf8')
+      const envelope: ProbeCacheEnvelope = { v: PROBE_CACHE_VERSION, meta }
+      await atomicWriteFile(cacheFile, JSON.stringify(envelope, null, 2))
     } catch {
       // caching is best-effort
     }
+    // Bounded growth, once per process per dir — never on the probe path.
+    sweepProbeCache(cacheDir).catch(() => undefined)
   }
   return meta
 }
 
-function isValidCachedMeta(meta: ClipMeta): boolean {
+const sweptCacheDirs = new Set<string>()
+
+/**
+ * Opportunistic cache eviction, once per process per dir: drop entries older
+ * than the age floor, then trim oldest-first until the entry/byte caps hold.
+ */
+async function sweepProbeCache(cacheDir: string): Promise<void> {
+  if (sweptCacheDirs.has(cacheDir)) return
+  let names: string[]
+  try {
+    names = (await fs.readdir(cacheDir)).filter((n) => n.endsWith('.json'))
+  } catch {
+    return
+  }
+  sweptCacheDirs.add(cacheDir)
+  try {
+    const now = Date.now()
+    const entries: Array<{ name: string; mtimeMs: number; size: number }> = []
+    for (const name of names) {
+      const stat = await fs.stat(path.join(cacheDir, name)).catch(() => null)
+      if (stat?.isFile()) entries.push({ name, mtimeMs: stat.mtimeMs, size: stat.size })
+    }
+    entries.sort((a, b) => a.mtimeMs - b.mtimeMs)
+    let remaining = entries.length
+    let totalBytes = entries.reduce((sum, e) => sum + e.size, 0)
+    for (const entry of entries) {
+      const overAge = now - entry.mtimeMs > PROBE_CACHE_MAX_AGE_MS
+      const overCaps = remaining > PROBE_CACHE_MAX_ENTRIES || totalBytes > PROBE_CACHE_MAX_BYTES
+      if (!overAge && !overCaps) continue
+      await fs.rm(path.join(cacheDir, entry.name), { force: true }).catch(() => undefined)
+      remaining -= 1
+      totalBytes -= entry.size
+    }
+  } catch {
+    // best effort — the next process retries
+  }
+}
+
+function isValidCachedMeta(meta: unknown): meta is ClipMeta {
+  if (typeof meta !== 'object' || meta === null) return false
+  const m = meta as Partial<ClipMeta>
   return (
-    typeof meta === 'object' &&
-    meta !== null &&
-    typeof meta.width === 'number' &&
-    typeof meta.height === 'number' &&
-    typeof meta.durationSec === 'number' &&
-    Number.isFinite(meta.durationSec)
+    typeof m.width === 'number' &&
+    typeof m.height === 'number' &&
+    typeof m.durationSec === 'number' &&
+    Number.isFinite(m.durationSec)
   )
 }

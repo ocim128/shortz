@@ -4,8 +4,10 @@ import { app, BrowserWindow } from 'electron'
 import { registerMediaScheme, registerMediaProtocol } from './protocol/media'
 import { registerIpcHandlers } from './ipc'
 import { buildAppMenu } from './menu'
+import { initFileLogger, logFatal } from './logger'
 import { sweepStaleRenderTemp } from './sweep'
 import { createMainWindow } from './windows/main-window'
+import { logError } from '../core/log'
 
 // Dev-only: enable remote debugging for the verification harness (CDP).
 if (process.env.SHORTZ_REMOTE_DEBUGGING && !app.isPackaged) {
@@ -33,6 +35,17 @@ function applyPortableMode(): void {
 
 applyPortableMode()
 
+// Persistent, size-capped log + last-resort handlers — installed before
+// anything that can fail. Packaged builds have no console; without this a
+// field crash leaves no artifact behind.
+process.on('uncaughtException', (error) => {
+  void logFatal('uncaughtException', error)
+})
+process.on('unhandledRejection', (reason) => {
+  void logFatal('unhandledRejection', reason)
+})
+void initFileLogger()
+
 // Privileged scheme registration MUST happen before app ready.
 registerMediaScheme()
 
@@ -53,7 +66,9 @@ if (!app.requestSingleInstanceLock()) {
     registerIpcHandlers()
     buildAppMenu()
     // Crash-leftover temp dirs (older than 24h) — never blocks startup.
-    void sweepStaleRenderTemp()
+    sweepStaleRenderTemp().catch((error) => {
+      logError('temp sweep', error)
+    })
     createMainWindow()
 
     app.on('activate', () => {

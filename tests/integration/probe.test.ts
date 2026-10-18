@@ -71,13 +71,19 @@ describe('probeWithCache — fixture matrix', () => {
 })
 
 describe('probeWithCache — cache behavior', () => {
-  it('writes a cache entry and serves repeat probes from it', async () => {
+  it('writes a versioned envelope and serves repeat probes from it', async () => {
     const dir = await makeScratchDir('probe-cache-hit')
     try {
       const source = fixture('tiny_2s.mp4')
       const first = await probeWithCache(source, { ffprobePath, cacheDir: dir })
       const entries = (await readdir(dir)).filter((f) => f.endsWith('.json'))
       expect(entries).toHaveLength(1)
+      const envelope = JSON.parse(await readFile(path.join(dir, entries[0]!), 'utf8')) as {
+        v: number
+        meta: { width: number }
+      }
+      expect(envelope.v).toBe(1)
+      expect(envelope.meta.width).toBe(first.width)
       const second = await probeWithCache(source, { ffprobePath, cacheDir: dir })
       expect(second).toEqual(first)
     } finally {
@@ -95,9 +101,49 @@ describe('probeWithCache — cache behavior', () => {
       const meta = await probeWithCache(source, { ffprobePath, cacheDir: dir })
       expect(meta.durationSec).toBeGreaterThan(1)
       const healed = JSON.parse(await readFile(path.join(dir, entries[0]!), 'utf8')) as {
-        width: number
+        v: number
+        meta: { width: number }
       }
-      expect(healed.width).toBe(meta.width)
+      expect(healed.v).toBe(1)
+      expect(healed.meta.width).toBe(meta.width)
+    } finally {
+      await removeScratchDir(dir)
+    }
+  })
+
+  it('re-probes and rewrites entries from an unknown cache version', async () => {
+    const dir = await makeScratchDir('probe-cache-version')
+    try {
+      const source = fixture('tiny_2s.mp4')
+      await probeWithCache(source, { ffprobePath, cacheDir: dir })
+      const entries = (await readdir(dir)).filter((f) => f.endsWith('.json'))
+      const file = path.join(dir, entries[0]!)
+      // Simulate a future schema: same payload, different version marker.
+      const future = JSON.parse(await readFile(file, 'utf8')) as { v: number; meta: unknown }
+      await writeFile(file, JSON.stringify({ ...future, v: future.v + 1 }), 'utf8')
+      const meta = await probeWithCache(source, { ffprobePath, cacheDir: dir })
+      expect(meta.durationSec).toBeGreaterThan(1)
+      const healed = JSON.parse(await readFile(file, 'utf8')) as { v: number }
+      expect(healed.v).toBe(1)
+    } finally {
+      await removeScratchDir(dir)
+    }
+  })
+
+  it('re-probes legacy unversioned cache files', async () => {
+    const dir = await makeScratchDir('probe-cache-legacy')
+    try {
+      const source = fixture('tiny_2s.mp4')
+      const first = await probeWithCache(source, { ffprobePath, cacheDir: dir })
+      const entries = (await readdir(dir)).filter((f) => f.endsWith('.json'))
+      const file = path.join(dir, entries[0]!)
+      // Legacy shape: the bare ClipMeta at the top level, no envelope.
+      const legacy = JSON.parse(await readFile(file, 'utf8')) as { meta: unknown }
+      await writeFile(file, JSON.stringify(legacy.meta), 'utf8')
+      const meta = await probeWithCache(source, { ffprobePath, cacheDir: dir })
+      expect(meta).toEqual(first)
+      const healed = JSON.parse(await readFile(file, 'utf8')) as { v: number }
+      expect(healed.v).toBe(1)
     } finally {
       await removeScratchDir(dir)
     }

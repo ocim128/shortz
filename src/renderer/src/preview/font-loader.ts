@@ -52,11 +52,19 @@ export function fontsReady(): boolean {
 /**
  * Sync loader for the shared layout engine (resolveLayout/wrapAndShrink).
  * Throws unless loadBundledFonts() has completed — gate callers on it.
+ *
+ * Memoized: the shared text engine caches parsed fonts per loader identity, so
+ * returning a fresh closure per call would defeat that cache (one TTF parse
+ * per layout) and pin every parsed font forever.
  */
+let cachedLoader: FontLoader | null = null
+
 export function getFontLoader(): FontLoader {
-  return (key: SharedFontKey): ArrayBuffer => {
+  if (cachedLoader) return cachedLoader
+  cachedLoader = (key: SharedFontKey): ArrayBuffer => {
     const buf = cache.get(key)
     if (!buf) throw new Error(`Font "${key}" is not loaded yet (fonts must be awaited first)`)
     return buf
   }
+  return cachedLoader
 }

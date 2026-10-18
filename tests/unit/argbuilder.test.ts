@@ -94,6 +94,13 @@ describe('buildFfmpegArgs — encode and trim', () => {
   })
 })
 
+describe('buildFfmpegArgs — static inputs', () => {
+  it('decodes the overlay PNG once instead of at the output fps', () => {
+    const args = buildFfmpegArgs(baseInput())
+    expect(args.join(' ')).toContain('-loop 1 -framerate 1 -i overlay.png')
+  })
+})
+
 describe('buildFfmpegArgs — background cases', () => {
   it('draws a solid color base for case A', () => {
     const filter = buildFilterComplex(baseInput())

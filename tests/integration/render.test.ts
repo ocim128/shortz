@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
 import path from 'node:path'
 import pixelmatch from 'pixelmatch'
 import { PNG } from 'pngjs'
@@ -85,6 +86,36 @@ function assertFaststart(filePath: string): void {
   expect(moov).toBeGreaterThan(0)
   expect(mdat).toBeGreaterThan(0)
   expect(moov).toBeLessThan(mdat)
+}
+
+/** Decode-count the video stream (ffprobe -count_frames). */
+function countFrames(videoPath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      ffprobePath,
+      ['-v', 'error', '-print_format', 'json', '-select_streams', 'v:0', '-count_frames', '-show_streams', videoPath],
+      { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }
+    )
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8')
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8')
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`ffprobe -count_frames exited ${code}: ${stderr}`))
+        return
+      }
+      const parsed = JSON.parse(stdout) as { streams?: Array<{ nb_read_frames?: string }> }
+      const frames = Number(parsed.streams?.[0]?.nb_read_frames)
+      if (!Number.isFinite(frames)) reject(new Error('nb_read_frames missing'))
+      else resolve(frames)
+    })
+  })
 }
 
 describe('renderProject — acceptance matrix', () => {
@@ -195,6 +226,18 @@ describe('renderProject — acceptance matrix', () => {
     ).rejects.toBeInstanceOf(RenderCancelledError)
     expect(existsSync(path.join(scratchRoot, 'jobs', jobId))).toBe(false)
     expect(existsSync(path.join(scratchRoot, 'cancelled.mp4'))).toBe(false)
+  })
+
+  it('keeps CFR frame count and duration with the decode-once overlay input', async () => {
+    // The overlay PNG is fed at -framerate 1 (one decode, repeated by the
+    // overlay filter). Regression guard: the output must still be 30fps CFR
+    // spanning the full clip — frames == duration x fps.
+    const result = await renderProject(requestFor(makeProject('landscape_1080p_10s.mp4'), 'frames.mp4'))
+    const out = await probeSource(ffprobePath, result.outputPath)
+    expect(out.durationSec).toBeGreaterThan(9)
+    expect(out.durationSec).toBeLessThan(11)
+    const frames = await countFrames(result.outputPath)
+    expect(Math.abs(frames - out.durationSec * 30)).toBeLessThanOrEqual(1)
   })
 })
 

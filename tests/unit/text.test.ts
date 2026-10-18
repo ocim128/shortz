@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   ascentPx,
+  clearFontCache,
+  fontCacheSize,
   fontKeyFor,
   measureAdvance,
   wrapAndShrink,
   wrapText,
-  type FontKey
+  type FontKey,
+  type FontLoader
 } from '../../src/shared/layout/text'
 import { loadFont } from '../helpers/env'
 
@@ -108,5 +111,31 @@ describe('wrapAndShrink', () => {
   it('returns null when even the floor cannot fit', () => {
     const text = 'materializing '.repeat(30)
     expect(wrapAndShrink({ ...base, text })).toBeNull()
+  })
+})
+
+describe('font cache', () => {
+  it('parses each font once per stable loader identity', () => {
+    clearFontCache()
+    let loads = 0
+    const counting: FontLoader = (key) => {
+      loads += 1
+      return loadFont(key)
+    }
+    for (let i = 0; i < 10; i += 1) {
+      measureAdvance(counting, 'inter-600', 'Hello world', 68)
+      ascentPx(counting, 'inter-400', 68)
+    }
+    expect(loads).toBe(2)
+    expect(fontCacheSize()).toBe(1)
+  })
+
+  it('stays bounded when a host passes a fresh loader per call', () => {
+    clearFontCache()
+    for (let i = 0; i < 50; i += 1) {
+      const fresh: FontLoader = (key) => loadFont(key)
+      measureAdvance(fresh, 'inter-600', 'x', 68)
+    }
+    expect(fontCacheSize()).toBeLessThanOrEqual(4)
   })
 })

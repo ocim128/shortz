@@ -181,14 +181,25 @@ export async function runFfmpeg(options: RunFfmpegOptions): Promise<RunFfmpegRes
       }
     })
 
-    const stallTimer = setInterval(() => {
-      if (settled) return
-      if (stalled) return
-      if (Date.now() - lastProgressAt > stallTimeoutMs) {
-        stalled = true
-        emit(true)
-      }
-    }, STALL_CHECK_MS)
+    const stallTimer = setInterval(
+      () => {
+        if (settled) return
+        if (stalled) return
+        if (Date.now() - lastProgressAt > stallTimeoutMs) {
+          stalled = true
+          emit(true)
+          // A wedged ffmpeg would hold the export slot forever — kill the tree
+          // so the run settles as a stalled failure (the orchestrator maps that
+          // to an actionable RenderError) instead of hanging. Distinct from a
+          // user cancel: `cancelled` stays false.
+          const pid = child.pid
+          if (child.exitCode !== null || pid === undefined) return
+          void killProcessTree(pid).catch(() => undefined)
+        }
+      },
+      // Check at the stall horizon, never slower than the default cadence.
+      Math.min(STALL_CHECK_MS, Math.max(250, stallTimeoutMs))
+    )
     stallTimer.unref?.()
 
     const onAbort = (): void => {

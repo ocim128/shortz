@@ -1,6 +1,7 @@
-import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { app } from 'electron'
+import { logInfo } from '../core/log'
+import { sweepStaleDirs } from '../core/store/fs-utils'
 
 /**
  * Startup sweep of stale render temp dirs (docs/02-architecture.md §failure
@@ -9,23 +10,8 @@ import { app } from 'electron'
  */
 export async function sweepStaleRenderTemp(): Promise<void> {
   const dir = path.join(app.getPath('temp'), 'shortz')
-  const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => null)
-  if (!entries) return
-  const cutoff = Date.now() - 24 * 3600_000
-  let removed = 0
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name)
-    const stat = await fsp.stat(full).catch(() => null)
-    if (!stat) continue
-    if (stat.mtimeMs >= cutoff) continue
-    await fsp
-      .rm(full, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
-      .then(() => {
-        removed += 1
-      })
-      .catch(() => {
-        /* best-effort; next launch retries */
-      })
+  const removed = await sweepStaleDirs(dir, 24 * 3600_000)
+  if (removed.length > 0) {
+    logInfo(`[shortz] temp sweep removed ${removed.length} stale dir(s) under ${dir}`)
   }
-  if (removed > 0) console.log(`[shortz] temp sweep removed ${removed} stale dir(s) under ${dir}`)
 }

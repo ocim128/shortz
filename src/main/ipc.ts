@@ -41,6 +41,7 @@ import {
   validateForSave
 } from './wire'
 import { listTemplates as listTemplateFiles, loadTemplateById } from '../core/store/templates'
+import { assertProjectId } from '../core/store/projects'
 import { describeTemplateIssues, type ValidationIssue } from '../shared/template/validate'
 import type { Template } from '../shared/template/types'
 import { resolveFfmpegBinariesCached, type FfmpegSourcePreference } from '../core/ffmpeg/resolve-bin'
@@ -50,6 +51,7 @@ import { renderProject, defaultTmpRoot } from '../core/render/orchestrator'
 import type { OrchestratorProgress } from '../core/render/orchestrator'
 import { saveSettings as saveSettingsDoc, loadSettings } from '../core/store/settings'
 import { rmWithRetry } from '../core/store/fs-utils'
+import { logWarn } from '../core/log'
 
 /**
  * Typed IPC handlers — the real product wiring (docs/technical/project-structure.md
@@ -217,7 +219,7 @@ async function runExport(p: Project, opts: ExportOptions): Promise<ExportResult>
   // fall back to software with a logged note rather than failing the export.
   const encoder = preferred === 'h264_nvenc' ? 'h264_nvenc' : 'libx264'
   if (encoder !== preferred) {
-    console.warn(`[shortz] encoder "${preferred}" unsupported in v1 — using ${encoder}`)
+    logWarn(`[shortz] encoder "${preferred}" unsupported in v1 — using ${encoder}`)
   }
   const crf = opts.crf ?? settings.encoder.crf
 
@@ -332,7 +334,7 @@ export function registerIpcHandlers(): void {
         outputPath: thumbPath(doc.id)
       })
     } catch (error) {
-      console.warn(`[shortz] thumbnail unavailable for ${doc.id}: ${(error as Error).message}`)
+      logWarn(`[shortz] thumbnail unavailable for ${doc.id}: ${(error as Error).message}`)
     }
 
     return toWireProject(doc, false)
@@ -341,22 +343,33 @@ export function registerIpcHandlers(): void {
   handle('shortz:listProjects', async (): Promise<ProjectMeta[]> => {
     const root = projectsRoot()
     const ids = await listProjectIds(root)
-    const metas: ProjectMeta[] = []
-    for (const id of ids) {
-      const doc = await loadProjectSafe(root, id)
-      if (!doc) continue // corrupt project.json was quarantined and logged
-      metas.push(toMeta(doc, await sourceMissing(doc.source.path), thumbAvailable(id)))
-    }
-    return metas.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    // The per-project round-trips (read+parse project.json, source stat, thumb
+    // stat) are independent — fan out instead of serializing ~3N awaits.
+    const metas = await Promise.all(
+      ids.map(async (id) => {
+        const doc = await loadProjectSafe(root, id)
+        if (!doc) return null // corrupt project.json was quarantined and logged
+        const [missing, hasThumb] = await Promise.all([
+          sourceMissing(doc.source.path),
+          thumbAvailable(id)
+        ])
+        return toMeta(doc, missing, hasThumb)
+      })
+    )
+    return metas
+      .filter((m): m is ProjectMeta => m !== null)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   })
 
   handle('shortz:openProject', async (id: string): Promise<Project> => {
+    assertProjectId(id)
     const doc = await loadProjectSafe(projectsRoot(), id)
     if (!doc) throw new Error(`No such project: ${id}`)
     return toWireProject(doc, await sourceMissing(doc.source.path))
   })
 
   handle('shortz:saveProject', async (p: Project): Promise<void> => {
+    assertProjectId(p.id)
     // Recreate the folder if something (a delete from Explorer) removed it below
     // an in-flight autosave; normal saves silence nothing.
     if (!fss.existsSync(projectFilePath(p.id))) {
@@ -366,10 +379,12 @@ export function registerIpcHandlers(): void {
   })
 
   handle('shortz:deleteProject', async (id: string): Promise<void> => {
+    assertProjectId(id)
     await deleteProjectDir(projectsRoot(), id)
   })
 
   handle('shortz:relinkSource', async (id: string, newPath: string): Promise<Project> => {
+    assertProjectId(id)
     const doc = await loadProjectSafe(projectsRoot(), id)
     if (!doc) throw new Error(`No such project: ${id}`)
     const abs = path.resolve(newPath)
@@ -387,7 +402,7 @@ export function registerIpcHandlers(): void {
       doc.source.probe = probeSnapshot(clip)
       repairTrim(doc, clip.durationSec)
     } catch (error) {
-      console.warn(`[shortz] relink probe failed for ${id}: ${(error as Error).message}`)
+      logWarn(`[shortz] relink probe failed for ${id}: ${(error as Error).message}`)
     }
     const saved = await saveProjectDocumentTo(projectsRoot(), validateForSave(doc))
     return toWireProject(saved, false)
@@ -410,6 +425,7 @@ export function registerIpcHandlers(): void {
   handle('shortz:getMediaUrl', async (sourcePath: string) => getMediaUrlForFile(sourcePath))
 
   handle('shortz:getThumbUrl', async (id: string): Promise<string | null> => {
+    assertProjectId(id)
     const file = thumbPath(id)
     const stat = await fsp.stat(file).catch(() => null)
     if (!stat || !stat.isFile()) return null

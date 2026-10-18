@@ -55,6 +55,24 @@ export class ProjectFileError extends Error {
   }
 }
 
+/**
+ * Project ids are ULIDs (Crockford Base32, 26 chars) minted by
+ * createProjectDocument — anything else arriving from a renderer is joined
+ * into filesystem paths and must be rejected outright.
+ */
+export const PROJECT_ID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/
+
+export function isProjectId(id: unknown): id is string {
+  return typeof id === 'string' && PROJECT_ID_RE.test(id)
+}
+
+/** IPC-boundary guard: never trust a renderer-supplied project id. */
+export function assertProjectId(id: unknown): asserts id is string {
+  if (!isProjectId(id)) {
+    throw new Error(`Invalid project id: ${String(id)}`)
+  }
+}
+
 export function createProjectDocument(input: {
   name: string
   sourcePath: string

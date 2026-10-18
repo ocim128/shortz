@@ -91,7 +91,12 @@ export function buildFfmpegArgs(input: BuildArgsInput): string[] {
     args.push('-ss', formatSeconds(input.trim.start), '-t', formatSeconds(input.durationSec))
   }
   args.push('-i', input.source)
-  args.push('-loop', '1', '-framerate', String(input.fps), '-i', input.overlayPath)
+  // The overlay is a single unchanging PNG: decode it once (-framerate 1) and
+  // let the overlay filter repeat the last frame. Output is pixel-identical to
+  // decoding at the output fps (verified via framemd5) but skips one PNG decode
+  // per output frame. The mask stays at output fps — the blur path showed no
+  // measurable win there.
+  args.push('-loop', '1', '-framerate', '1', '-i', input.overlayPath)
   if (input.maskPath) {
     args.push('-loop', '1', '-framerate', String(input.fps), '-i', input.maskPath)
   }

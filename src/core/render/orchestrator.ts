@@ -242,6 +242,17 @@ export async function renderProject(request: RenderRequest): Promise<RenderResul
     if (run.cancelled) {
       throw new RenderCancelledError(jobId)
     }
+    if (run.stalled) {
+      // runFfmpeg already killed the tree; the forced exit lands here with an
+      // otherwise opaque non-zero code, so name the actual failure mode.
+      const tail = run.stderrTail.slice(-30)
+      throw new RenderError(
+        jobId,
+        'render',
+        'FFmpeg stopped responding and was terminated — try a shorter trim or the system encoder',
+        tail
+      )
+    }
     if (run.code !== 0) {
       const tail = run.stderrTail.slice(-30)
       throw new RenderError(jobId, 'render', `FFmpeg exited with code ${String(run.code)}`, tail)

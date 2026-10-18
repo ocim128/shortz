@@ -11,6 +11,7 @@ import {
   type ProjectDocument
 } from '../core/store/projects'
 import type { ClipMeta } from '../core/ffmpeg/probe'
+import { logWarn } from '../core/log'
 import { rmWithRetry } from '../core/store/fs-utils'
 
 /**
@@ -134,7 +135,7 @@ export async function loadProjectSafe(projectsRoot: string, id: string): Promise
   try {
     return await loadProjectDocument(file)
   } catch (error) {
-    console.warn(`[shortz] project ${id} unreadable — quarantining: ${(error as Error).message}`)
+    logWarn(`[shortz] project ${id} unreadable — quarantining: ${(error as Error).message}`)
     if (fss.existsSync(file)) {
       const corrupt = path.join(projectsRoot, id, `project.corrupt-${Date.now()}.json`)
       await fsp.rename(file, corrupt).catch(() => undefined)
@@ -153,7 +154,12 @@ export async function saveProjectDocumentTo(
 // --- lifecycle ---------------------------------------------------------------
 
 export async function deleteProjectDir(projectsRoot: string, id: string): Promise<void> {
-  const dir = path.join(projectsRoot, id)
+  // Same containment rule as data.ts projectDir — this is the destructive path.
+  const root = path.resolve(projectsRoot)
+  const dir = path.resolve(root, id)
+  if (!dir.startsWith(root + path.sep)) {
+    throw new Error(`Invalid project id: ${id}`)
+  }
   if (!fss.existsSync(dir)) return
   try {
     // Doc rule: recycle bin when possible, else plain delete (exports untouched).

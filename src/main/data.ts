@@ -1,6 +1,6 @@
 import path from 'node:path'
+import fsp from 'node:fs/promises'
 import { app } from 'electron'
-import { existsSync } from 'node:fs'
 import { loadSettings, probeCacheDir, type ShortzSettings } from '../core/store/settings'
 
 /**
@@ -36,7 +36,14 @@ export function projectsRoot(): string {
 }
 
 export function projectDir(projectId: string): string {
-  return path.join(projectsRoot(), projectId)
+  // Belt-and-braces behind the IPC-boundary ULID check: an id must never
+  // resolve outside the projects root (e.g. "../../evil").
+  const root = path.resolve(projectsRoot())
+  const dir = path.resolve(root, projectId)
+  if (!dir.startsWith(root + path.sep)) {
+    throw new Error(`Invalid project id: ${projectId}`)
+  }
+  return dir
 }
 
 export function projectFilePath(projectId: string): string {
@@ -59,6 +66,8 @@ export async function currentSettings(): Promise<ShortzSettings> {
   return loadSettings(dataDir())
 }
 
-export function thumbAvailable(projectId: string): boolean {
-  return existsSync(thumbPath(projectId))
+/** Async so listing N projects never blocks the main-process event loop. */
+export async function thumbAvailable(projectId: string): Promise<boolean> {
+  const st = await fsp.stat(thumbPath(projectId)).catch(() => null)
+  return !!(st && st.isFile())
 }

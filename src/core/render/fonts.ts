@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { GlobalFonts } from '@napi-rs/canvas'
+import { logWarn } from '../log'
 import type { FontKey, FontLoader } from '../../shared/layout/text'
 
 export const FONT_FILES: Record<FontKey, string> = {
@@ -60,7 +61,7 @@ export function registerFonts(fontsDir: string): void {
     if (registered.has(mark)) continue
     const filePath = fontFilePath(fontsDir, key)
     const ok = GlobalFonts.registerFromPath(filePath, family)
-    if (!ok) console.warn(`[fonts] could not register ${filePath}`)
+    if (!ok) logWarn(`[fonts] could not register ${filePath}`)
     registered.add(mark)
   }
 }
