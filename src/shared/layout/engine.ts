@@ -48,6 +48,8 @@ export interface ResolvedText {
   ascentPx: number
   color: string
   align: 'left' | 'center' | 'right'
+  /** Soft drop shadow — set when the block sits on top of the video. */
+  shadow?: boolean
   tStart?: number
   tEnd?: number
 }
@@ -93,6 +95,13 @@ export function backgroundColorHex(style: BackgroundStyle): string | null {
 
 /** Text ink is warned about when it reaches past this x (right action rail at 940). */
 export const RIGHT_RAIL_INK_LIMIT = 920
+
+/**
+ * Smart framing never crops the source past this aspect (w/h). 4:3 keeps the
+ * crop gentle — a 16:9 clip loses 12.5% per side — while still growing the
+ * clip ~33% taller than a plain contain against a blurred fill.
+ */
+export const SMART_CROP_MAX_ASPECT = 4 / 3
 
 export interface ResolveLayoutInput {
   template: Template
@@ -161,22 +170,63 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
   const boxY = videoTop + centerOffset(videoSlot.height, boxH)
 
   // Effective fit: the template's slot.fit is the base; a declared framing
-  // knob overrides. Smart never crops — cropping a clip's sides can cut its
-  // subject — so it keeps the whole clip contained and fills the dead space
-  // with a blurred copy of itself instead. An explicitly chosen Background
-  // still wins over Smart's blur.
+  // knob overrides. Smart is the aesthetic middle between Letterbox (clip
+  // drowns in background) and Fill (a full cover-crop butchers the source):
+  // - wider than the box: cover-crop at most to SMART_CROP_MAX_ASPECT (16:9
+  //   loses 12.5% per side — too little to cut a centered subject), centered
+  //   in the box, blur filling the rest;
+  // - portrait/square: as big as the canvas allows — a 9:16 source fills the
+  //   frame edge to edge and the hook overlays it with a drop shadow.
+  // An explicitly chosen Background still wins over Smart's blur.
   let fit: 'contain' | 'cover' = videoSlot.fit
+  let smartFraming = false
+  let smartRect: { x: number; y: number; w: number; h: number } | null = null
   if (declared('videoFraming')) {
     const framing = knobs.videoFraming as 'letterbox' | 'auto' | 'fill'
-    if (framing === 'fill') fit = 'cover'
-    else fit = 'contain'
-    if (framing === 'auto' && values.knobs.backgroundStyle === undefined) {
-      background = 'blurVideo'
+    fit = framing === 'fill' ? 'cover' : 'contain'
+    smartFraming = framing === 'auto'
+    if (framing === 'auto') {
+      const srcAspect = clip.width / clip.height
+      const boxAspect = boxW / boxH
+      if (srcAspect > boxAspect) {
+        // Never crop past 4:3, and never make the rect taller than the box
+        // (the cap rises to the box aspect for wider-than-4:3 boxes).
+        const capped = Math.min(srcAspect, Math.max(SMART_CROP_MAX_ASPECT, boxAspect))
+        fit = 'cover'
+        smartRect = {
+          x: boxX,
+          y: boxY + centerOffset(boxH, boxW / capped),
+          w: roundPixel(boxW),
+          h: roundPixel(boxW / capped)
+        }
+      } else {
+        const full = containFit(clip.width, clip.height, canvasWidth, canvasHeight)
+        smartRect = {
+          x: centerOffset(canvasWidth, full.width),
+          y: centerOffset(canvasHeight, full.height),
+          w: full.width,
+          h: full.height
+        }
+      }
+      if (values.knobs.backgroundStyle === undefined) {
+        background = 'blurVideo'
+      }
     }
   }
 
   let video: ResolvedVideo
-  if (fit === 'cover') {
+  if (smartRect !== null) {
+    video = {
+      x: smartRect.x,
+      y: smartRect.y,
+      w: smartRect.w,
+      h: smartRect.h,
+      fit,
+      cornerRadius,
+      borderWidth: videoSlot.borderWidth,
+      borderColor: videoSlot.borderColor
+    }
+  } else if (fit === 'cover') {
     // Cover fills the box exactly (the crop happens inside the scaled video),
     // so the resolved rect IS the box.
     video = {
@@ -201,6 +251,18 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
       borderWidth: videoSlot.borderWidth,
       borderColor: videoSlot.borderColor
     }
+  }
+
+  // A video that covers the whole canvas hides the background entirely —
+  // resolve it to black so no pipeline stage pays for an invisible blur pass.
+  if (
+    background === 'blurVideo' &&
+    video.x <= 0 &&
+    video.y <= 0 &&
+    video.w >= canvasWidth &&
+    video.h >= canvasHeight
+  ) {
+    background = 'black'
   }
 
   // --- Text ------------------------------------------------------------------
@@ -253,13 +315,18 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
       const bottom = video.y - textSlot.anchor.gap
       const targetTop = bottom - blockHeight
       y = Math.max(textSlot.anchor.minY, targetTop)
-      if (y > targetTop) {
-        warnings.push(
-          `Text slot "${textSlot.id}" clamped to minY ${textSlot.anchor.minY} (needs ${roundPixel(blockHeight)}px, room is ${roundPixel(bottom - textSlot.anchor.minY)}px)`
-        )
-      }
-      if (y + blockHeight > video.y) {
-        warnings.push(`Text slot "${textSlot.id}" overlaps the video area`)
+      // In smart framing the clip can reach the canvas top, which leaves no
+      // above-space by design — the hook overlays the video (with a shadow),
+      // so clamping and overlap are the intended look, not layout failures.
+      if (!smartFraming) {
+        if (y > targetTop) {
+          warnings.push(
+            `Text slot "${textSlot.id}" clamped to minY ${textSlot.anchor.minY} (needs ${roundPixel(blockHeight)}px, room is ${roundPixel(bottom - textSlot.anchor.minY)}px)`
+          )
+        }
+        if (y + blockHeight > video.y) {
+          warnings.push(`Text slot "${textSlot.id}" overlaps the video area`)
+        }
       }
     } else {
       const boxTop = textSlot.anchor.y
@@ -298,6 +365,14 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
       )
     }
 
+    // Hook sitting on the video (smart full-bleed) needs a drop shadow to stay
+    // readable; separated text stays crisp without one.
+    const onVideo =
+      y < video.y + video.h &&
+      y + blockHeight > video.y &&
+      textSlot.x < video.x + video.w &&
+      textSlot.x + textSlot.width > video.x
+
     texts.push({
       slotId: textSlot.id,
       lines: result.lines,
@@ -312,6 +387,7 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
       ascentPx: ascentPx(loadFont, fontKey, result.fontSize),
       color: textSlot.color,
       align: textAlign,
+      ...(onVideo ? { shadow: true } : {}),
       ...(textSlot.tStart !== undefined ? { tStart: textSlot.tStart } : {}),
       ...(textSlot.tEnd !== undefined ? { tEnd: textSlot.tEnd } : {})
     })

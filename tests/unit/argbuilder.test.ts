@@ -186,6 +186,19 @@ describe('buildFfmpegArgs — smart framing (blur fill)', () => {
     expect(filter).toContain('gblur=sigma=30')
     // The video chain stays contain (no crop); only the blurred background
     // copy cover-crops, which is its own chain.
-    expect(filter).toContain('[src]scale=1080:608:flags=lanczos,setsar=1')
+    expect(filter).toContain('[src]scale=1080:810:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:810,setsar=1')
+  })
+})
+
+describe('buildFfmpegArgs — smart full-bleed portrait', () => {
+  it('a 9:16 source skips the blur pass entirely (video hides the canvas)', () => {
+    const input = baseInput({
+      layout: layoutFor({ width: 720, height: 1280 }, { videoFraming: 'auto' })
+    })
+    const filter = buildFilterComplex(input)
+    expect(filter).not.toContain('gblur')
+    expect(filter).toContain('color=c=black')
+    // Aspect matches exactly -> plain scale, no crop.
+    expect(filter).toContain('scale=1080:1920:flags=lanczos,setsar=1')
   })
 })

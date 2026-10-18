@@ -327,9 +327,42 @@ describe('renderProject — smart framing (videoFraming knob)', () => {
     expect(fill).toBeGreaterThan(40)
   })
 
-  it('smart keeps the whole clip and blur-fills the dead space (no black, no crop)', async () => {
+  it('smart fills gently: capped crop + blur, no dead black band', async () => {
     const auto = await renderAndSample({ videoFraming: 'auto' })
-    // Same band (below the contained video): blurred source instead of black.
+    // Same band (below the 810px crop at y605..1415): video or blur, never black.
     expect(auto).toBeGreaterThan(30)
+  })
+
+  it('smart full-bleeds a portrait source — no pillarbox margins', async () => {
+    const sample = async (knobs: ProjectDocument['values']['knobs']): Promise<number> => {
+      const project = makeProject('portrait_rotated.mp4', {
+        values: { fields: { hook: 'Portrait probe' }, knobs }
+      })
+      const result = await renderProject(requestFor(project, `portrait-${Date.now()}.mp4`))
+      const framePath = path.join(scratchRoot, `portrait-frame-${Date.now()}.png`)
+      const run = await runFfmpeg({
+        ffmpegPath,
+        args: ['-y', '-ss', '1', '-i', result.outputPath, '-frames:v', '1', framePath],
+        durationSec: 0.5
+      })
+      expect(run.code).toBe(0)
+      const png = PNG.sync.read(await readFile(framePath))
+      // Left column: under letterbox a 9:16 clip pillarboxes to x265 — black;
+      // under smart the video reaches the edge.
+      let sum = 0
+      let n = 0
+      for (let y = 700; y < 1200; y += 3) {
+        for (let x = 15; x < 60; x += 3) {
+          const i = (y * png.width + x) * 4
+          sum += 0.2126 * png.data[i]! + 0.7152 * png.data[i + 1]! + 0.0722 * png.data[i + 2]!
+          n += 1
+        }
+      }
+      return sum / n
+    }
+    const letterbox = await sample({ videoFraming: 'letterbox' })
+    const smart = await sample({ videoFraming: 'auto' })
+    expect(letterbox).toBeLessThan(8)
+    expect(smart).toBeGreaterThan(25)
   })
 })

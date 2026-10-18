@@ -28,6 +28,16 @@ export function TextLayer({ layout }: { layout: SharedResolvedLayout }): JSX.Ele
       ctx.textBaseline = 'alphabetic'
       ctx.textAlign = text.align === 'center' ? 'center' : text.align === 'right' ? 'right' : 'left'
       ctx.font = canvasFontFamilySpec(text.fontFamily, text.fontWeight, text.fontSize)
+      if (text.shadow === true) {
+        // Mirrors the render overlay's drop shadow for hooks on the video.
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
+        ctx.shadowBlur = Math.max(4, text.fontSize / 7)
+        ctx.shadowOffsetY = Math.max(1, Math.round(text.fontSize / 34))
+      } else {
+        ctx.shadowColor = 'transparent'
+        ctx.shadowBlur = 0
+        ctx.shadowOffsetY = 0
+      }
 
       const anchorX =
         text.align === 'center'

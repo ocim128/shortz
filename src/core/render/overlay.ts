@@ -90,6 +90,17 @@ function drawTexts(ctx: SKRSContext2D, layout: ResolvedLayout): void {
     ctx.fillStyle = text.color
     ctx.textBaseline = 'alphabetic'
     ctx.textAlign = text.align === 'center' ? 'center' : text.align === 'right' ? 'right' : 'left'
+    if (text.shadow === true) {
+      // Hook overlays the video (smart full-bleed) — soft shadow for contrast.
+      // Mirrored exactly in the preview's TextLayer.
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
+      ctx.shadowBlur = Math.max(4, text.fontSize / 7)
+      ctx.shadowOffsetY = Math.max(1, Math.round(text.fontSize / 34))
+    } else {
+      ctx.shadowColor = 'transparent'
+      ctx.shadowBlur = 0
+      ctx.shadowOffsetY = 0
+    }
 
     const anchorX =
       text.align === 'center'

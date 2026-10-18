@@ -260,14 +260,38 @@ describe('resolveLayout — videoFraming (smart sizing)', () => {
     expect(layout.video).toMatchObject({ x: 0, y: 520, w: 1080, h: 980, fit: 'cover' })
   })
 
-  it('smart never crops: the whole clip stays contained and the dead space goes blurred', () => {
+  it('smart gently fills: crops at most to 4:3, centered, blur behind', () => {
     const wide = resolve({ width: 1920, height: 1080 }, { knobs: { videoFraming: 'auto' } })
-    expect(wide.video).toMatchObject({ x: 0, y: 520, w: 1080, h: 608, fit: 'contain' })
+    // 16:9 capped at 4:3 -> 1080x810, vertically centered in the 980 box (85
+    // each side), cover-cropped, blurred fill instead of black.
+    expect(wide.video).toMatchObject({ x: 0, y: 605, w: 1080, h: 810, fit: 'cover' })
     expect(wide.canvas.background).toBe('blurVideo')
     expect(wide.canvas.blur).toEqual({ sigma: 30, darken: 0.05 })
+    // Ultra-wide is still capped at 4:3 (never the full box crop Fill would do).
+    const cinema = resolve({ width: 2350, height: 1000 }, { knobs: { videoFraming: 'auto' } })
+    expect(cinema.video).toMatchObject({ w: 1080, h: 810, fit: 'cover' })
+  })
+
+  it('smart full-bleeds a 9:16 source: whole canvas, no background pass, shadowed hook', () => {
     const tall = resolve({ width: 1080, height: 1920 }, { knobs: { videoFraming: 'auto' } })
-    expect(tall.video).toMatchObject({ x: 265, y: 520, w: 551, h: 980, fit: 'contain' })
-    expect(tall.canvas.background).toBe('blurVideo')
+    expect(tall.video).toMatchObject({ x: 0, y: 0, w: 1080, h: 1920, fit: 'contain' })
+    // The video hides the canvas entirely — the blur pass is optimized away.
+    expect(tall.canvas.background).toBe('black')
+    expect(tall.texts[0]).toMatchObject({ shadow: true })
+    expect(tall.warnings).toEqual([])
+  })
+
+  it('smart gives square and 4:5 sources the full canvas with blur bands', () => {
+    const square = resolve({ width: 1000, height: 1000 }, { knobs: { videoFraming: 'auto' } })
+    expect(square.video).toMatchObject({ x: 0, y: 420, w: 1080, h: 1080, fit: 'contain' })
+    expect(square.canvas.background).toBe('blurVideo')
+    const portrait45 = resolve({ width: 1080, height: 1350 }, { knobs: { videoFraming: 'auto' } })
+    expect(portrait45.video).toMatchObject({ x: 0, y: 285, w: 1080, h: 1350, fit: 'contain' })
+  })
+
+  it('letterbox text stays crisp — no shadow when the hook sits above the video', () => {
+    const layout = resolve({ width: 1920, height: 1080 })
+    expect(layout.texts[0]!.shadow).toBeUndefined()
   })
 
   it('an explicitly chosen Background wins over smart\u2019s blur fill', () => {
@@ -276,7 +300,7 @@ describe('resolveLayout — videoFraming (smart sizing)', () => {
       { knobs: { videoFraming: 'auto', backgroundStyle: 'white' } }
     )
     expect(layout.canvas.background).toBe('white')
-    expect(layout.video.fit).toBe('contain')
+    expect(layout.video).toMatchObject({ w: 1080, h: 810, fit: 'cover' })
   })
 
   it('fill honours the videoTop knob and clips warnings stay silent', () => {
