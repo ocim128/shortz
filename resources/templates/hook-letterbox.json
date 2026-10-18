@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "id": "hook-letterbox",
+  "name": "Hook Letterbox",
+  "description": "Clip letterboxed upper-center, bold hook on top. Classic story opener.",
+  "thumbnail": "thumb-hook-letterbox.png",
+  "canvas": {
+    "width": 1080, "height": 1920,
+    "backgroundStyle": "black",
+    "blur": { "sigma": 30, "darken": 0.05 }
+  },
+  "safeZones": { "top": 150, "right": 140, "bottom": 420, "left": 0 },
+  "slots": [
+    {
+      "type": "video", "id": "video",
+      "x": 0, "y": 520, "width": 1080, "height": 980,
+      "fit": "contain", "scale": 1.0,
+      "cornerRadius": 24, "borderWidth": 0, "borderColor": "#FFFFFF",
+      "visible": true
+    },
+    {
+      "type": "text", "id": "hook",
+      "bindsTo": "hook",
+      "x": 48, "width": 880,
+      "anchor": { "kind": "aboveVideo", "gap": 32, "minY": 150 },
+      "fontFamily": "inter", "fontWeight": 600,
+      "fontSize": 68, "fontSizeMin": 44, "lineHeight": 1.25,
+      "color": "#FFFFFF", "align": "left", "vAlign": "bottom",
+      "maxLines": 4, "wordBreak": "normal",
+      "visible": true
+    }
+  ],
+  "knobs": [
+    { "id": "backgroundStyle", "label": "Background", "control": "select", "default": "black",
+      "options": [
+        { "value": "black",    "label": "Black" },
+        { "value": "white",    "label": "White" },
+        { "value": "darkGray", "label": "Dark gray" },
+        { "value": "blurVideo","label": "Blurred video" }
+      ] },
+    { "id": "videoTop", "label": "Video position ↓", "control": "slider", "default": 520, "min": 480, "max": 700, "step": 4 },
+    { "id": "videoCornerRadius", "label": "Corner rounding", "control": "slider", "default": 24, "min": 0, "max": 48, "step": 4 },
+    { "id": "textAlign", "label": "Text align", "control": "select", "default": "left",
+      "options": [ { "value": "left", "label": "Left" }, { "value": "center", "label": "Center" } ] }
+  ],
+  "inputs": [
+    { "key": "hook", "label": "Hook text", "control": "textarea",
+      "placeholder": "A wildlife photographer put a microphone beside a baby squirrel…",
+      "maxLength": 220, "required": true }
+  ]
+}
