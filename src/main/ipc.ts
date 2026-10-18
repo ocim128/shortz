@@ -245,7 +245,7 @@ export function registerIpcHandlers(): void {
     const stat = await fsp.stat(abs).catch(() => null)
     if (!stat || !stat.isFile()) throw new Error(`File not found: ${abs}`)
 
-    // ffprobe at import (docs: probe snapshot + default trim = full clip).
+    // ffprobe at import (docs: probe snapshot; trim starts disabled — {0,0}).
     const binaries = await resolveBinariesWithSettings()
     const clip = await probeWithCache(abs, {
       ffprobePath: binaries.ffprobePath,

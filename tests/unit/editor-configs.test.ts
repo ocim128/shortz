@@ -180,4 +180,9 @@ describe('sanitizeEditorConfig', () => {
       expect(() => sanitizeEditorConfig(doc)).toThrow(/editor config:/)
     }
   })
+
+  it('accepts {0,0} — the documented "no trim" value a disabled editor saves', () => {
+    const out = sanitizeEditorConfig({ ...valid, trim: { start: 0, end: 0 } })
+    expect(out.trim).toEqual({ start: 0, end: 0 })
+  })
 })

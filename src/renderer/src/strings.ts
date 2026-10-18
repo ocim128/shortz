@@ -62,6 +62,7 @@ export const S = {
   audioMute: 'mute',
   trimStart: 'Trim start (s)',
   trimEnd: 'Trim end (s)',
+  trimOff: 'off',
   resetTrim: 'Reset trim',
 
   // Editor — named configurations (fixed folder, no dialogs)

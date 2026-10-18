@@ -17,6 +17,11 @@ export function TrimRange({ duration, trim, onChange }: TrimRangeProps): JSX.Ele
   const trackRef = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState<Handle | null>(null)
 
+  // {0,0} = trim disabled — display and drag against the full clip; any
+  // handle drag activates trim at that range.
+  const off = trim.end <= trim.start
+  const eff = off ? { start: 0, end: duration } : trim
+
   const pct = useCallback(
     (t: number) => (duration > 0 ? clamp((t / duration) * 100, 0, 100) : 0),
     [duration]
@@ -35,12 +40,12 @@ export function TrimRange({ duration, trim, onChange }: TrimRangeProps): JSX.Ele
   const applyHandle = useCallback(
     (handle: Handle, t: number) => {
       if (handle === 'start') {
-        onChange({ start: clamp(t, 0, trim.end - 0.1), end: trim.end })
+        onChange({ start: clamp(t, 0, eff.end - 0.1), end: eff.end })
       } else {
-        onChange({ start: trim.start, end: clamp(t, trim.start + 0.1, duration) })
+        onChange({ start: eff.start, end: clamp(t, eff.start + 0.1, duration) })
       }
     },
-    [duration, onChange, trim.end, trim.start]
+    [duration, onChange, eff.end, eff.start]
   )
 
   const onPointerDown = (handle: Handle) => (e: React.PointerEvent<HTMLDivElement>): void => {
@@ -85,33 +90,33 @@ export function TrimRange({ duration, trim, onChange }: TrimRangeProps): JSX.Ele
       >
         <div
           className="trim-range__region"
-          style={{ left: `${pct(trim.start)}%`, width: `${Math.max(0, pct(trim.end) - pct(trim.start))}%` }}
+          style={{ left: `${pct(eff.start)}%`, width: `${Math.max(0, pct(eff.end) - pct(eff.start))}%` }}
         />
         <div
           className={`trim-range__handle${dragging === 'start' ? ' is-active' : ''}`}
-          style={{ left: `${pct(trim.start)}%` }}
+          style={{ left: `${pct(eff.start)}%` }}
           onPointerDown={onPointerDown('start')}
           role="slider"
           tabIndex={0}
           aria-label="Trim start"
-          aria-valuenow={trim.start}
+          aria-valuenow={eff.start}
           aria-valuemin={0}
           aria-valuemax={duration}
         >
-          <span className={`trim-range__value${valueAnchor(trim.start)}`}>{label(trim.start)}</span>
+          <span className={`trim-range__value${valueAnchor(eff.start)}`}>{label(eff.start)}</span>
         </div>
         <div
           className={`trim-range__handle${dragging === 'end' ? ' is-active' : ''}`}
-          style={{ left: `${pct(trim.end)}%` }}
+          style={{ left: `${pct(eff.end)}%` }}
           onPointerDown={onPointerDown('end')}
           role="slider"
           tabIndex={0}
           aria-label="Trim end"
-          aria-valuenow={trim.end}
+          aria-valuenow={eff.end}
           aria-valuemin={0}
           aria-valuemax={duration}
         >
-          <span className={`trim-range__value${valueAnchor(trim.end)}`}>{label(trim.end)}</span>
+          <span className={`trim-range__value${valueAnchor(eff.end)}`}>{label(eff.end)}</span>
         </div>
       </div>
     </div>

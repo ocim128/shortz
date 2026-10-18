@@ -111,9 +111,10 @@ export function newProjectDocument(input: {
     sourcePath: input.sourcePath,
     templateId: input.templateId ?? defaultTemplateId(),
     values: { fields: { hook: '' }, knobs: {} },
-    trim: input.probe
-      ? { start: 0, end: Math.round(input.probe.duration * 100) / 100 }
-      : undefined,
+    // {0,0} — trim starts DISABLED. Never pre-fill the probed duration: a
+    // range tied to this clip would leak into saved configs and later cut a
+    // different (longer) video short.
+    trim: { start: 0, end: 0 },
     audio: 'keep'
   })
   if (input.probe) doc.source.probe = input.probe
@@ -121,16 +122,17 @@ export function newProjectDocument(input: {
 }
 
 /**
- * Clamp/repair trim against a (possibly new) probed duration — used at create
- * (fresh trim) and on relink (the reprobe may change the duration).
+ * Clamp/repair trim against a (possibly new) probed duration — used on relink
+ * (the reprobe may change the duration). {0,0} is the documented "no trim"
+ * value and stays untouched; degenerate ranges reset to disabled.
  */
 export function repairTrim(doc: Project, durationSec: number): void {
-  const dur = Math.max(0.1, Math.round(durationSec * 100) / 100)
   const existing = doc.trim
-  if (!existing || existing.end <= existing.start || existing.start < 0) {
-    doc.trim = { start: 0, end: dur }
+  if (!existing || existing.start < 0 || existing.end <= existing.start) {
+    doc.trim = { start: 0, end: 0 }
     return
   }
+  const dur = Math.max(0.1, Math.round(durationSec * 100) / 100)
   const start = Math.min(existing.start, Math.max(0, dur - 0.1))
   const end = Math.max(start + 0.1, Math.min(existing.end, dur))
   doc.trim = { start: Math.round(start * 100) / 100, end: Math.round(end * 100) / 100 }

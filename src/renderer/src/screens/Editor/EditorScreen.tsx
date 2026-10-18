@@ -272,8 +272,15 @@ export function EditorScreen(): JSX.Element {
         if (!proj || duration <= 0) return
         const t = snapTenths(clamp(player.current, 0, duration))
         useProjectStore.getState().patchActive((d) => {
-          if (e.key.toLowerCase() === 'i') d.trim.start = clamp(t, 0, d.trim.end - 0.1)
-          else d.trim.end = clamp(t, d.trim.start + 0.1, duration)
+          // Trim disabled ({0,0}) — the shortcut activates it against the
+          // full clip instead of clamping into the degenerate stored range.
+          if (e.key.toLowerCase() === 'i') {
+            if (d.trim.end <= d.trim.start) d.trim = { start: clamp(t, 0, duration - 0.1), end: duration }
+            else d.trim.start = clamp(t, 0, d.trim.end - 0.1)
+          } else {
+            if (d.trim.end <= d.trim.start) d.trim = { start: 0, end: clamp(t, 0.1, duration) }
+            else d.trim.end = clamp(t, d.trim.start + 0.1, duration)
+          }
         })
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault()

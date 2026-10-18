@@ -101,12 +101,15 @@ export function VideoLayer({ mediaUrl, layout, muted }: VideoLayerProps): JSX.El
           setDuration(el.duration)
           setVideoSize(el.videoWidth, el.videoHeight)
           setReady(true)
-          // Safety net for legacy projects whose stored trim is unset/invalid —
-          // new projects get trim.end = duration from the import-time ffprobe.
+          // Safety net for stale docs whose stored trim outlives the current
+          // source (e.g. a legacy full-clip range after relink to a shorter
+          // file) — clamp it. {0,0} is the documented "trim disabled" value
+          // and must never be re-filled here.
           const p = useProjectStore.getState().active
-          if (p && (p.trim.end <= 0 || p.trim.end > el.duration)) {
+          if (p && p.trim.end > el.duration) {
+            const end = Math.floor(el.duration * 10) / 10
             useProjectStore.getState().patchActive((d) => {
-              d.trim = { start: 0, end: Math.round(el.duration * 10) / 10 }
+              d.trim = d.trim.start < end ? { start: d.trim.start, end } : { start: 0, end: 0 }
             })
           }
         }}
@@ -114,7 +117,9 @@ export function VideoLayer({ mediaUrl, layout, muted }: VideoLayerProps): JSX.El
           const el = e.currentTarget
           setCurrent(el.currentTime)
           const { start, end } = trimRef.current
-          if (end > 0 && el.currentTime >= end - 0.02) {
+          // Trim disabled ({0,0}) → loop at the clip's natural end instead.
+          const loopEnd = end > start ? end : el.duration
+          if (el.currentTime >= loopEnd - 0.02) {
             el.currentTime = start // loop within trim (ui-spec §preview)
           }
         }}

@@ -25,10 +25,14 @@ interface FieldPanelProps {
 }
 
 export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, duration, onPatch }: FieldPanelProps): JSX.Element {
+  // {0,0} is the documented "no trim" value — trim is disabled until the user
+  // actually types a range; it must never silently carry a clip's duration.
+  const trimOff = project.trim.end <= project.trim.start
   // Named configurations: fixed folder, no dialogs (docs/technical/data-storage.md
   // §editor-configs). Save snapshots the editor under a name — saving with an
-  // existing name updates it; Load applies the selected one here, with trim
-  // clamped to the current clip so a longer saved range cannot leak in.
+  // existing name updates it; Load applies the selected one here — a config
+  // saved with trim off ({0,0}) keeps trim off, a tuned range is clamped to
+  // the current clip so it cannot leak outside it.
   const [configs, setConfigs] = useState<EditorConfigMeta[]>([])
   const [configName, setConfigName] = useState('')
   const [selectedConfigId, setSelectedConfigId] = useState('')
@@ -65,6 +69,11 @@ export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, durati
       return
     }
     try {
+      // Legacy projects carry an auto-filled {0, fullDuration} range — a range
+      // that covers the whole clip is "never tuned" and saves as disabled, so
+      // it can never cut a different (longer) video short later.
+      const fullClip =
+        project.trim.start === 0 && duration > 0 && project.trim.end >= duration - 0.05
       const meta = await window.shortz.saveEditorConfig({
         schemaVersion: 1,
         name,
@@ -73,7 +82,7 @@ export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, durati
           fields: { ...project.values.fields },
           knobs: { ...project.values.knobs }
         },
-        trim: { ...project.trim },
+        trim: trimOff || fullClip ? { start: 0, end: 0 } : { ...project.trim },
         audio: project.audio
       })
       setConfigName(meta.name)
@@ -101,10 +110,15 @@ export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, durati
         knobs: { ...saved.values.knobs }
       }
       const maxT = duration > 0 ? duration : saved.trim.end
-      d.trim = {
-        start: Math.max(0, Math.min(saved.trim.start, Math.max(0, maxT - 0.1))),
-        end: Math.max(0.1, Math.min(saved.trim.end, maxT))
-      }
+      // {0,0} — trim was disabled when the config was saved; keep it disabled
+      // instead of importing a range tied to a different clip.
+      d.trim =
+        saved.trim.end <= saved.trim.start
+          ? { start: 0, end: 0 }
+          : {
+              start: Math.max(0, Math.min(saved.trim.start, Math.max(0, maxT - 0.1))),
+              end: Math.max(0.1, Math.min(saved.trim.end, maxT))
+            }
       d.audio = saved.audio
     })
     toast.ok(S.configLoadedToast(saved.name))
@@ -282,11 +296,25 @@ export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, durati
           className="input field__number"
           type="number"
           min={0}
-          max={project.trim.end - 0.1}
+          max={trimOff ? Math.max(0.1, duration - 0.1) : project.trim.end - 0.1}
           step={0.1}
-          value={project.trim.start}
+          value={trimOff ? '' : project.trim.start}
+          placeholder={trimOff ? S.trimOff : undefined}
           onChange={(e) =>
             onPatch((d) => {
+              if (e.target.value === '') {
+                d.trim = { start: 0, end: 0 } // cleared → disabled
+                return
+              }
+              if (trimOff) {
+                if (duration <= 0) return // enabling needs the clip duration
+                // First touch activates trim against the full clip.
+                d.trim = {
+                  start: Math.round(Math.max(0, Math.min(Number(e.target.value) || 0, duration - 0.1)) * 10) / 10,
+                  end: Math.round(duration * 10) / 10
+                }
+                return
+              }
               d.trim.start = Math.max(0, Math.min(Number(e.target.value) || 0, d.trim.end - 0.1))
             })
           }
@@ -298,23 +326,39 @@ export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, durati
           id="trim-end"
           className="input field__number"
           type="number"
-          min={project.trim.start + 0.1}
+          min={trimOff ? 0.1 : project.trim.start + 0.1}
           max={Math.max(0.1, duration)}
           step={0.1}
-          value={project.trim.end}
+          value={trimOff ? '' : project.trim.end}
+          placeholder={trimOff ? S.trimOff : undefined}
           onChange={(e) =>
             onPatch((d) => {
-              d.trim.end = Math.max(d.trim.start + 0.1, Math.min(Number(e.target.value) || 0, duration || d.trim.end))
+              if (e.target.value === '') {
+                d.trim = { start: 0, end: 0 } // cleared → disabled
+                return
+              }
+              const v = Number(e.target.value) || 0
+              if (trimOff) {
+                // First touch activates trim from 0 up to the typed end.
+                d.trim = {
+                  start: 0,
+                  end: Math.round(Math.max(0.1, Math.min(v, duration > 0 ? duration : v)) * 10) / 10
+                }
+                return
+              }
+              d.trim.end = Math.max(d.trim.start + 0.1, Math.min(v, duration || d.trim.end))
             })
           }
         />
-        <div className="field__hint">{formatTime(Math.max(0, project.trim.end - project.trim.start))} kept</div>
+        <div className="field__hint">
+          {formatTime(trimOff ? duration : Math.max(0, project.trim.end - project.trim.start))} kept
+        </div>
         <button
           type="button"
           className="btn btn-ghost btn-sm"
           onClick={() =>
             onPatch((d) => {
-              d.trim = { start: 0, end: duration > 0 ? Math.round(duration * 10) / 10 : 0 }
+              d.trim = { start: 0, end: 0 }
             })
           }
         >

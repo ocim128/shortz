@@ -8,9 +8,10 @@ import { atomicWriteFile, rmWithRetry, stripBom } from './fs-utils'
 /**
  * Named editor configurations — everything the user tweaks in the editor that
  * is NOT tied to the specific clip: template choice, text fields, knob values,
- * trim and audio. Stored as one JSON per config under
- * <dataDir>/editor-configs/<id>.json (id = ULID), so in-app Save/Load/Delete
- * need no file dialogs.
+ * audio, and (only when the user actually set one) a trim range — {0,0} means
+ * "no trim" and never carries a duration baked in from another clip. Stored as
+ * one JSON per config under <dataDir>/editor-configs/<id>.json (id = ULID), so
+ * in-app Save/Load/Delete need no file dialogs.
  */
 
 export const EDITOR_CONFIG_NAME_MAX = 60
@@ -60,7 +61,15 @@ export function sanitizeEditorConfig(raw: unknown): EditorConfig {
   if (typeof start !== 'number' || !Number.isFinite(start) || start < 0) {
     throw new Error('editor config: trim.start must be a non-negative number')
   }
-  if (typeof end !== 'number' || !Number.isFinite(end) || end <= start) {
+  // {0,0} is the documented "no trim" value — a config saved with trim
+  // disabled must not carry a range tied to the clip it was saved on.
+  const unset = start === 0 && end === 0
+  if (
+    typeof end !== 'number' ||
+    !Number.isFinite(end) ||
+    end < 0 ||
+    (!unset && end <= start)
+  ) {
     throw new Error('editor config: trim.end must be a number greater than trim.start')
   }
 

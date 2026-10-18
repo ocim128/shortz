@@ -73,7 +73,9 @@ const initial = {
 
 export const useBatchStore = create<BatchStoreState>((set, get) => ({
   ...initial,
-  draft: { text: '', configId: '', applyTrim: true },
+  // applyTrim defaults OFF: a saved config's range is tied to the clip it was
+  // tuned on and would silently cut other (longer) videos short.
+  draft: { text: '', configId: '', applyTrim: false },
 
   setDraft: (patch) => set((prev) => ({ draft: { ...prev.draft, ...patch } })),
 
