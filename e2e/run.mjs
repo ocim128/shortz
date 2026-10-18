@@ -18,13 +18,21 @@
 //     engine) or enabled (integrated engine).
 //   - The clip comes from fixtures/ when present, else a tmp fallback.
 
-import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, openSync, writeSync, closeSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { spawn, execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, writeSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const PORT = process.env.SHORTZ_E2E_PORT ?? String(9250 + Math.floor(Math.random() * 100))
 const DEV_TIMEOUT_MS = 120_000
+
+// ffprobe for artifact verification: bundled binary (always present after
+// `pnpm install`), falling back to PATH.
+const FFPROBE = (() => {
+  const bundled = resolve(ROOT, 'node_modules', 'ffprobe-static', 'bin', 'win32', 'x64', 'ffprobe.exe')
+  return existsSync(bundled) ? bundled : 'ffprobe'
+})()
 
 function findClip() {
   for (const c of ['fixtures/landscape_1080p_10s.mp4', 'tmp/test-clip.mp4']) {
@@ -84,7 +92,7 @@ async function waitForPage() {
   while (Date.now() < deadline) {
     try {
       const list = await fetch(`http://127.0.0.1:${PORT}/json/list`).then((r) => r.json())
-      const page = list.find((t) => t.type === 'page')
+      const page = list.find((t) => t.type === 'page' && t.url && !t.url.startsWith('about:'))
       if (page) return page
     } catch {
       /* not up yet */
@@ -98,6 +106,8 @@ let ws
 let msgId = 0
 const pending = new Map()
 const consoleErrors = []
+// Set by the export test, consumed by the exportHistory test.
+let exportArtifact = null
 
 function send(method, params = {}) {
   return new Promise((res, rej) => {
@@ -215,12 +225,13 @@ async function waitFor(expression, timeoutMs = 12_000, what = 'condition') {
 }
 
 await test('app opens to Home (drop zone + recent section)', async () => {
-  const home = await waitFor(`({
-    home: !!document.querySelector('.home'),
-    dropzone: !!document.querySelector('.dropzone'),
-    cards: document.querySelectorAll('.project-card').length,
-    empty: !!document.querySelector('.home__empty')
-  })`, 15_000, 'Home to render').then((r) => (r.home && r.dropzone ? r : null))
+  const home = await waitFor(`(() => {
+    const home = !!document.querySelector('.home')
+    const dropzone = !!document.querySelector('.dropzone')
+    // waitFor is truthy-driven: objects never lie about absence — return
+    // null until the actual contract (home + dropzone) holds.
+    return home && dropzone ? { home, dropzone, cards: document.querySelectorAll('.project-card').length, empty: !!document.querySelector('.home__empty') } : null
+  })()`, 15_000, 'Home to render')
   assert(home, 'home/dropzone not rendered')
   assert(home.cards > 0 || home.empty, 'neither project cards nor empty state rendered')
 })
@@ -231,12 +242,27 @@ await test('opening a clip reaches the Editor (three panes, phone frame)', async
   // Fire-and-poll: awaiting the store promise inside Runtime.evaluate races
   // context churn during the screen switch ("Promise was collected").
   await evaluate(`void window.__shortzDev.openPath(${JSON.stringify(clip.replace(/\\/g, '/'))}); true`)
+  // The shared layout engine refuses an empty required hook (missing-input) and
+  // the phone preview stays dark until something resolves — typing the hook is
+  // the same thing a user does, mock or real engine.
+  await waitFor(`(() => {
+    const ta = document.querySelector('textarea')
+    return ta ? ta.id : null
+  })()`, 10_000, 'hook textarea')
+  await evaluate(`(() => {
+    const ta = document.querySelector('textarea')
+    const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
+    set.call(ta, 'A wildlife photographer put a microphone beside a baby squirrel')
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    return true
+  })()`)
   const ed = await waitFor(`(() => {
     const editor = document.querySelector('.editor')
     if (!editor) return null
     const panes = [document.querySelector('.template-picker'), document.querySelector('.editor__preview-pane'), document.querySelector('.field-panel')]
     if (!panes.every(Boolean)) return null
-    return { phone: !!document.querySelector('.phone-frame') }
+    const phone = !!document.querySelector('.phone-frame')
+    return phone ? { phone } : null
   })()`, 15_000, 'Editor three panes')
   assert(ed.phone, 'phone frame missing')
   editorUp = true
@@ -298,6 +324,86 @@ await test('export control reflects engine state (disabled+pending or enabled)',
   // Pre-integration: disabled with a "pending" tooltip. Post-integration:
   // enabled. Both are the correct state for their respective build.
   assert(ex.disabled ? /pending/i.test(ex.title) : true, `export disabled but tooltip is not engine-pending: "${ex.title}"`)
+})
+
+// --- full product loop: drop → template → hook → preview → export → probe ------
+// This is the integration proof (docs/01-goals.md A1). It runs the REAL engine
+// through the REAL IPC + orchestrator and inspects the artifact on disk.
+
+await test('export runs the real engine and produces a TikTok-ready MP4', async () => {
+  assert(editorUp, 'skipped: editor never rendered')
+  const enabled = await evaluate(`(() => {
+    const b = document.querySelector('.editor__topbar .btn-primary')
+    return b ? !b.disabled : false
+  })()`)
+  assert(enabled, 'export button disabled after a valid hook — integration not wired')
+
+  // Snapshot the output dir so we identify exactly the artifact this run makes.
+  const outDir = process.env.SHORTZ_E2E_OUTDIR || join(homedir(), 'Videos', 'ShortZ')
+  const before = new Set(existsSync(outDir) ? readdirSync(outDir) : [])
+
+  await evaluate(`document.querySelector('.editor__topbar .btn-primary').click(); true`)
+
+  // The render bar appears while the job runs and disappears when it settles.
+  const sawBusy = await waitFor(`!!document.querySelector('.export-bar--busy')`, 10_000, 'render bar to appear')
+  assert(sawBusy, 'render bar never appeared — export did not start')
+
+  const settled = await waitFor(`(() => {
+    const busy = !!document.querySelector('.export-bar--busy')
+    const err = document.querySelector('.export-bar--error')
+    if (err) return { failed: err.textContent.slice(0, 400) }
+    return busy ? null : { done: true }
+  })()`, 180_000, 'export to finish')
+  assert(!settled.failed, `export failed: ${settled.failed}`)
+
+  // Exactly one new MP4 in the output dir.
+  const after = (existsSync(outDir) ? readdirSync(outDir) : []).filter(
+    (f) => f.toLowerCase().endsWith('.mp4') && !before.has(f)
+  )
+  assert(after.length === 1, `expected 1 new mp4 in ${outDir}, got ${after.length}: ${after.join(', ')}`)
+  const artifact = resolve(outDir, after[0])
+
+  // Artifact contract (A1): 1080×1920, h264, yuv420p, aac stereo, faststart.
+  const probe = JSON.parse(
+    execFileSync(FFPROBE, ['-v', 'error', '-show_entries',
+      'format=duration,size:stream=codec_type,codec_name,width,height,pix_fmt,channels,sample_rate',
+      '-of', 'json', artifact], { encoding: 'utf8' })
+  )
+  const v = probe.streams.find((s) => s.codec_type === 'video')
+  const a = probe.streams.find((s) => s.codec_type === 'audio')
+  assert(v, 'no video stream in export')
+  assert(v.width === 1080 && v.height === 1920, `wrong dimensions ${v.width}x${v.height}`)
+  assert(v.codec_name === 'h264', `wrong video codec ${v.codec_name}`)
+  assert(v.pix_fmt === 'yuv420p', `wrong pixel format ${v.pix_fmt} (TikTok needs yuv420p)`)
+  assert(a, 'no audio stream in export')
+  assert(a.codec_name === 'aac' && a.channels === 2, `audio not AAC stereo (${a.codec_name}/${a.channels})`)
+  assert(Number(a.sample_rate) === 48000, `audio not 48 kHz (${a.sample_rate})`)
+
+  // faststart: moov precedes mdat.
+  const buf = readFileSync(artifact)
+  const moov = buf.indexOf(Buffer.from('moov'))
+  const mdat = buf.indexOf(Buffer.from('mdat'))
+  assert(moov > 0 && mdat > 0 && moov < mdat, `not faststart (moov=${moov}, mdat=${mdat})`)
+
+  exportArtifact = artifact
+})
+
+await test('export is recorded in the project exportHistory', async () => {
+  assert(exportArtifact, 'skipped: no export artifact this run')
+  // The renderer reloads the project after a successful export; the persisted
+  // document is the source of truth for the history entry.
+  const recorded = await evaluate(`(async () => {
+    const list = await window.shortz.listProjects()
+    const newest = list[0]
+    if (!newest) return null
+    const p = await window.shortz.openProject(newest.id)
+    return { history: p.exportHistory ?? [], sourcePath: p.source.path }
+  })()`)
+  assert(recorded, 'no project found after export')
+  const entry = recorded.history.find((h) => resolve(h.path) === resolve(exportArtifact))
+  assert(entry, `artifact ${exportArtifact} not in exportHistory (${recorded.history.length} entries)`)
+  assert(entry.sizeBytes > 0, 'exportHistory entry has no size')
+  assert(entry.durationSec > 0, 'exportHistory entry has no duration')
 })
 
 await test('renderer console is clean', async () => {
