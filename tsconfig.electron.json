@@ -14,5 +14,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/main/**/*", "src/preload/index.ts", "electron.vite.config.ts"]
+  "include": ["src/main/**/*", "src/preload/index.ts", "src/core/ffmpeg/optional-bins.d.ts", "electron.vite.config.ts"]
 }

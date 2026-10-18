@@ -16,6 +16,7 @@ const CHANNEL = {
   relinkSource: 'shortz:relinkSource',
   pickFile: 'shortz:pickFile',
   getMediaUrl: 'shortz:getMediaUrl',
+  getThumbUrl: 'shortz:getThumbUrl',
   getFontBuffer: 'shortz:getFontBuffer',
   listTemplates: 'shortz:listTemplates',
   exportProject: 'shortz:exportProject',
@@ -25,6 +26,11 @@ const CHANNEL = {
   openUserTemplatesFolder: 'shortz:openUserTemplatesFolder',
   getSettings: 'shortz:getSettings',
   saveSettings: 'shortz:saveSettings',
+  ffmpegInfo: 'shortz:ffmpegInfo',
+  ffmpegTest: 'shortz:ffmpegTest',
+  probeCacheInfo: 'shortz:probeCacheInfo',
+  probeCacheClear: 'shortz:probeCacheClear',
+  appVersion: 'shortz:appVersion',
   menuCommand: 'shortz:menu:command'
 } as const
 
@@ -47,6 +53,7 @@ const api: ShortzApi = {
   // media
   pickFile: () => ipcRenderer.invoke(CHANNEL.pickFile),
   getMediaUrl: (sourcePath) => ipcRenderer.invoke(CHANNEL.getMediaUrl, sourcePath),
+  getThumbUrl: (id) => ipcRenderer.invoke(CHANNEL.getThumbUrl, id),
   getFontBuffer: (key) => ipcRenderer.invoke(CHANNEL.getFontBuffer, key),
   // templates
   listTemplates: () => ipcRenderer.invoke(CHANNEL.listTemplates),
@@ -59,6 +66,11 @@ const api: ShortzApi = {
   openUserTemplatesFolder: () => ipcRenderer.invoke(CHANNEL.openUserTemplatesFolder),
   getSettings: () => ipcRenderer.invoke(CHANNEL.getSettings),
   saveSettings: (s) => ipcRenderer.invoke(CHANNEL.saveSettings, s),
+  ffmpegInfo: () => ipcRenderer.invoke(CHANNEL.ffmpegInfo),
+  ffmpegTest: () => ipcRenderer.invoke(CHANNEL.ffmpegTest),
+  probeCacheInfo: () => ipcRenderer.invoke(CHANNEL.probeCacheInfo),
+  probeCacheClear: () => ipcRenderer.invoke(CHANNEL.probeCacheClear),
+  appVersion: () => ipcRenderer.invoke(CHANNEL.appVersion),
   // UI shell
   onMenuCommand: (cb) => subscribe(CHANNEL.menuCommand, cb),
   getPathForFile: (file) => webUtils.getPathForFile(file)

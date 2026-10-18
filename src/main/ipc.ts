@@ -1,23 +1,61 @@
 import fsp from 'node:fs/promises'
+import fss from 'node:fs'
 import path from 'node:path'
 import { app, dialog, ipcMain, shell, BrowserWindow } from 'electron'
-import fss from 'node:fs'
 import type {
   ExportOptions,
   ExportResult,
   FontKey,
   Project,
+  ProjectMeta,
+  RenderProgressEvent,
   Settings,
   TemplateMeta
 } from '../preload/api'
-import { getMediaUrlForFile } from './protocol/media'
-import { mockSettings, mockTemplates, nextMockId, projects, setMockSettings, toMeta, touch } from './mock/data'
+import { getMediaUrlForFile, mintMediaUrl } from './protocol/media'
+import {
+  currentSettings,
+  dataDir,
+  fontsDir,
+  probeCachesDir,
+  projectDir,
+  projectFilePath,
+  projectsRoot,
+  resourcesDir,
+  thumbAvailable,
+  thumbPath,
+  userTemplatesDir
+} from './data'
+import {
+  deleteProjectDir,
+  listProjectIds,
+  loadProjectSafe,
+  newProjectDocument,
+  probeSnapshot,
+  repairTrim,
+  saveProjectDocumentTo,
+  sourceMissing,
+  toDocument,
+  toMeta,
+  toWireProject,
+  validateForSave
+} from './wire'
+import { listTemplates as listTemplateFiles, loadTemplateById } from '../core/store/templates'
+import { describeTemplateIssues, type ValidationIssue } from '../shared/template/validate'
+import type { Template } from '../shared/template/types'
+import { resolveFfmpegBinariesCached, type FfmpegSourcePreference } from '../core/ffmpeg/resolve-bin'
+import { probeWithCache } from '../core/ffmpeg/probe'
+import { generateThumbnail } from '../core/media/thumbnail'
+import { renderProject, defaultTmpRoot } from '../core/render/orchestrator'
+import type { OrchestratorProgress } from '../core/render/orchestrator'
+import { saveSettings as saveSettingsDoc, loadSettings } from '../core/store/settings'
+import { rmWithRetry } from '../core/store/fs-utils'
 
 /**
- * Typed IPC handlers (docs/technical/project-structure.md §"IPC contract").
- * Everything engine-shaped is a documented-shape MOCK until Agent A's
- * src/core exists — the full list lives in tmp/NOTES-B.md as the
- * integration checklist. Shell/media methods are real.
+ * Typed IPC handlers — the real product wiring (docs/technical/project-structure.md
+ * §"IPC contract" + tmp/NOTES-B.md integration checklist).
+ * Shell/media methods stay as B built them; everything engine-shaped now goes
+ * through src/core (the render engine + stores).
  */
 
 const FONT_FILES: Record<FontKey, string> = {
@@ -27,25 +65,9 @@ const FONT_FILES: Record<FontKey, string> = {
   'poppins-semibold': 'Poppins-SemiBold.ttf'
 }
 
-function dataDir(): string {
-  return app.getPath('userData')
-}
-
-function fontsDir(): string {
-  // docs/technical/project-structure.md §packaging notes — main computes,
-  // core consumes. Fonts are asarUnpacked when packaged.
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'fonts')
-    : path.join(app.getAppPath(), 'resources', 'fonts')
-}
-
-function mainWindow(): BrowserWindow | null {
-  const wins = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed())
-  return wins[0] ?? null
-}
-
 function sendToRenderer(channel: string, payload: unknown): void {
-  const win = mainWindow()
+  const wins = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed())
+  const win = wins[0]
   if (win) win.webContents.send(channel, payload)
 }
 
@@ -57,72 +79,324 @@ function handle<A extends unknown[]>(channel: string, fn: (...args: A) => Promis
   ipcMain.handle(channel, (_event, ...args: A) => fn(...args))
 }
 
-export function registerIpcHandlers(): void {
-  // --- projects (MOCK persistence: in-memory Map) --------------------------
+function firstWindow(): BrowserWindow | null {
+  const wins = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed())
+  return wins[0] ?? null
+}
 
-  handle('shortz:createProject', async (sourcePath: string) => {
+async function resolveBinariesWithSettings(): Promise<
+  Awaited<ReturnType<typeof resolveFfmpegBinariesCached>>
+> {
+  const settings = await currentSettings()
+  return resolveFfmpegBinariesCached({ preference: settings.ffmpeg.source as FfmpegSourcePreference })
+}
+
+// One render at a time (the renderer's store models a single job).
+const activeAborts = new Map<string, AbortController>()
+let exportInFlight = false
+
+// --- output filename (docs/technical/export-spec.md §filename convention) ----
+
+function sanitizeNamePart(value: string): string {
+  return value.replace(/[\\/:*?"<>|]/g, '_').trim()
+}
+
+function pad2(n: number): string {
+  return n.toString().padStart(2, '0')
+}
+
+function outputPathFor(project: Project, templateId: string, dir: string, pattern: string): string {
+  const now = new Date()
+  const tokens: Record<string, string> = {
+    name: sanitizeNamePart(project.name),
+    template: sanitizeNamePart(templateId),
+    date: `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}`,
+    time: `${pad2(now.getHours())}${pad2(now.getMinutes())}`,
+    seq: '1',
+    yyyyMMdd: `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}`,
+    HHmm: `${pad2(now.getHours())}${pad2(now.getMinutes())}`
+  }
+  let base = ''
+  const tokensRe = /\{(\w+)\}/g
+  let last = 0
+  for (const m of pattern.matchAll(tokensRe)) {
+    const key = m[1] as string
+    base += pattern.slice(last, m.index ?? 0)
+    base += sanitizeNamePart(tokens[key] ?? `{${key}}`)
+    last = (m.index ?? 0) + m[0].length
+  }
+  base += pattern.slice(last)
+  base = sanitizeNamePart(base).replace(/^_+|_+$/g, '').slice(0, 80)
+  if (base.length === 0) base = 'export'
+  return path.join(dir, `${base}.mp4`)
+}
+
+// --- progress mapping --------------------------------------------------------
+
+function parseSpeed(raw: string | null | undefined): number {
+  if (!raw) return 0
+  const m = raw.match(/([\d.]+)x?/)
+  if (!m) return 0
+  const v = Number(m[1])
+  return Number.isFinite(v) ? v : 0
+}
+
+function toProgressEvent(p: OrchestratorProgress, durationSec: number): RenderProgressEvent {
+  const speed = parseSpeed(p.speed)
+  const pct = p.pct < 0 ? 0 : p.pct > 100 ? 100 : Math.round(p.pct)
+  const done = p.stage === 'done'
+  let etaSec: number | null = null
+  if (!done && speed > 0 && p.outTimeSec !== undefined && durationSec > p.outTimeSec) {
+    etaSec = (durationSec - p.outTimeSec) / speed
+  }
+  return {
+    jobId: p.jobId,
+    percent: pct,
+    outTimeSec: p.outTimeSec ?? 0,
+    speed,
+    etaSec,
+    done,
+    stage: p.stage
+  }
+}
+
+type WireTemplateMeta = TemplateMeta
+type CoreTemplateMeta = {
+  id: string
+  name: string
+  description: string
+  thumbnail: string
+  sourcePath: string
+  valid: boolean
+  issues: ValidationIssue[]
+  template?: Template
+}
+
+function wireTemplateMeta(m: CoreTemplateMeta, badge: 'built-in' | 'user'): WireTemplateMeta {
+  if (m.valid) {
+    return {
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      badge,
+      valid: true,
+      body: m.template
+    }
+  }
+  return {
+    id: m.id,
+    name: m.name,
+    description: m.description,
+    badge,
+    valid: false,
+    error: describeTemplateIssues(m.issues)
+  }
+}
+
+// --- the export job ----------------------------------------------------------
+
+async function runExport(p: Project, opts: ExportOptions): Promise<ExportResult> {
+  const settings = await currentSettings()
+  const resources = resourcesDir()
+  const template = await loadTemplateById(resources, p.templateId)
+  const binaries = await resolveBinariesWithSettings()
+
+  const requestedFps = opts.fps ?? settings.encoder.fps
+  let fpsOverride: number | undefined
+  if (requestedFps === 'source') {
+    // The render probes with the same cache dir, so this costs one cache read.
+    const clip = await probeWithCache(path.resolve(p.source.path), {
+      ffprobePath: binaries.ffprobePath,
+      cacheDir: probeCachesDir()
+    })
+    fpsOverride = Math.max(1, Math.round(clip.fps))
+  }
+
+  const preferred = opts.encoder ?? settings.encoder.preferred
+  // amf/qsv variants are settings-visible but outside the v1 arg-builder union —
+  // fall back to software with a logged note rather than failing the export.
+  const encoder = preferred === 'h264_nvenc' ? 'h264_nvenc' : 'libx264'
+  if (encoder !== preferred) {
+    console.warn(`[shortz] encoder "${preferred}" unsupported in v1 — using ${encoder}`)
+  }
+  const crf = opts.crf ?? settings.encoder.crf
+
+  const outDir = opts.outputDir ?? settings.output.dir
+  const outputTarget = outputPathFor(p, template.id, outDir, settings.output.filenamePattern)
+
+  const doc = toDocument(p)
+  const trim = doc.trim && doc.trim.end > doc.trim.start && doc.trim.start >= 0 ? doc.trim : undefined
+  const jobDoc: Project = trim ? p : { ...p, trim: { start: 0, end: 0 } }
+
+  // Eta math needs the trimmed duration: probe snapshot when present, else 0 (no eta).
+  const durationForEta = doc.source.probe?.duration ?? 0
+
+  const controller = new AbortController()
+  try {
+    const result = await renderProject({
+      project: {
+        ...toDocument(jobDoc),
+        trim: trim ? trim : undefined,
+        source: { path: jobDoc.source.path, probe: doc.source.probe ? { ...doc.source.probe } : undefined }
+      },
+      template,
+      outputPath: outputTarget,
+      resourcesDir: resources,
+      tmpRoot: defaultTmpRoot(),
+      encoder,
+      crf,
+      ...(fpsOverride !== undefined ? { fps: fpsOverride } : {}),
+      ffmpegPath: binaries.ffmpegPath,
+      ffprobePath: binaries.ffprobePath,
+      probeCacheDir: probeCachesDir(),
+      signal: controller.signal,
+      onProgress: (progress) => {
+        activeAborts.set(progress.jobId, controller)
+        sendToRenderer('shortz:render:progress', toProgressEvent(progress, durationForEta))
+      }
+    })
+
+    activeAborts.delete(result.jobId)
+    sendToRenderer('shortz:render:progress', {
+      jobId: result.jobId,
+      percent: 100,
+      outTimeSec: result.durationSec,
+      speed: 0,
+      etaSec: 0,
+      done: true,
+      stage: 'done'
+    })
+
+    // exportHistory — load-modify-save the FRESH document so concurrent renderer
+    // autosaves don't clobber the entry.
+    const fresh = await loadProjectSafe(projectsRoot(), doc.id)
+    if (fresh) {
+      fresh.exportHistory = [
+        ...(fresh.exportHistory ?? []),
+        {
+          path: result.outputPath,
+          createdAt: new Date().toISOString(),
+          durationSec: Math.round(result.durationSec * 1000) / 1000,
+          sizeBytes: result.sizeBytes,
+          encoder: result.videoCodec,
+          crf
+        }
+      ]
+      await saveProjectDocumentTo(projectsRoot(), validateForSave(fresh))
+    }
+
+    return {
+      jobId: result.jobId,
+      path: result.outputPath,
+      durationSec: Math.round(result.durationSec * 1000) / 1000,
+      sizeBytes: result.sizeBytes,
+      encoder: result.videoCodec,
+      crf
+    }
+  } finally {
+    activeAborts.clear()
+  }
+}
+
+export function registerIpcHandlers(): void {
+  // --- projects ---------------------------------------------------------------
+
+  handle('shortz:createProject', async (sourcePath: string): Promise<Project> => {
     const abs = path.resolve(sourcePath)
     const stat = await fsp.stat(abs).catch(() => null)
     if (!stat || !stat.isFile()) throw new Error(`File not found: ${abs}`)
-    // TODO(integration): run ffprobe here (A's src/core/ffmpeg/probe) and store
-    // the snapshot; the renderer meanwhile derives duration/dims from <video>.
-    const project: Project = {
-      schemaVersion: 1,
-      id: nextMockId(),
+
+    // ffprobe at import (docs: probe snapshot + default trim = full clip).
+    const binaries = await resolveBinariesWithSettings()
+    const clip = await probeWithCache(abs, {
+      ffprobePath: binaries.ffprobePath,
+      cacheDir: probeCachesDir()
+    })
+    const probe = probeSnapshot(clip)
+
+    const doc = newProjectDocument({
       name: path.basename(abs, path.extname(abs)),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      source: { path: abs, probe: null },
-      templateId: 'hook-letterbox',
-      values: { fields: { hook: '' }, knobs: {} },
-      trim: { start: 0, end: 0 },
-      audio: 'keep',
-      exportHistory: []
+      sourcePath: abs,
+      probe
+    })
+    await saveProjectDocumentTo(projectsRoot(), validateForSave(doc))
+
+    // Home thumbnail: frame at 10% duration, 360px wide → projects/<id>/thumb.jpg.
+    // Best-effort: a failed thumbnail never blocks the import itself.
+    try {
+      await generateThumbnail({
+        ffmpegPath: binaries.ffmpegPath,
+        source: abs,
+        atSec: clip.durationSec * 0.1,
+        width: 360,
+        outputPath: thumbPath(doc.id)
+      })
+    } catch (error) {
+      console.warn(`[shortz] thumbnail unavailable for ${doc.id}: ${(error as Error).message}`)
     }
-    projects.set(project.id, project)
-    return project
+
+    return toWireProject(doc, false)
   })
 
-  handle('shortz:listProjects', async () =>
-    [...projects.values()].map(toMeta).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  )
-
-  handle('shortz:openProject', async (id: string) => {
-    const p = projects.get(id)
-    if (!p) throw new Error(`No such project: ${id}`)
-    // Real existence check so the re-link banner shows for moved files.
-    const st = await fsp.stat(p.source.path).catch(() => null)
-    p.source.missing = !(st && st.isFile())
-    return p
+  handle('shortz:listProjects', async (): Promise<ProjectMeta[]> => {
+    const root = projectsRoot()
+    const ids = await listProjectIds(root)
+    const metas: ProjectMeta[] = []
+    for (const id of ids) {
+      const doc = await loadProjectSafe(root, id)
+      if (!doc) continue // corrupt project.json was quarantined and logged
+      metas.push(toMeta(doc, await sourceMissing(doc.source.path), thumbAvailable(id)))
+    }
+    return metas.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   })
 
-  handle('shortz:saveProject', async (p: Project) => {
-    projects.set(p.id, p)
-    touch(p)
+  handle('shortz:openProject', async (id: string): Promise<Project> => {
+    const doc = await loadProjectSafe(projectsRoot(), id)
+    if (!doc) throw new Error(`No such project: ${id}`)
+    return toWireProject(doc, await sourceMissing(doc.source.path))
   })
 
-  handle('shortz:deleteProject', async (id: string) => {
-    projects.delete(id)
+  handle('shortz:saveProject', async (p: Project): Promise<void> => {
+    // Recreate the folder if something (a delete from Explorer) removed it below
+    // an in-flight autosave; normal saves silence nothing.
+    if (!fss.existsSync(projectFilePath(p.id))) {
+      await fsp.mkdir(projectDir(p.id), { recursive: true })
+    }
+    await saveProjectDocumentTo(projectsRoot(), validateForSave(toDocument(p)))
   })
 
-  handle('shortz:relinkSource', async (id: string, newPath: string) => {
-    const p = projects.get(id)
-    if (!p) throw new Error(`No such project: ${id}`)
+  handle('shortz:deleteProject', async (id: string): Promise<void> => {
+    await deleteProjectDir(projectsRoot(), id)
+  })
+
+  handle('shortz:relinkSource', async (id: string, newPath: string): Promise<Project> => {
+    const doc = await loadProjectSafe(projectsRoot(), id)
+    if (!doc) throw new Error(`No such project: ${id}`)
     const abs = path.resolve(newPath)
     const st = await fsp.stat(abs).catch(() => null)
     if (!st || !st.isFile()) throw new Error(`File not found: ${abs}`)
-    p.source.path = abs
-    p.source.missing = false
-    // TODO(integration): re-run probe on relink (docs/02-architecture failure table).
-    touch(p)
-    return p
+
+    doc.source.path = abs
+    try {
+      // Re-probe on relink (docs failure table): fresh snapshot + repaired trim.
+      const binaries = await resolveBinariesWithSettings()
+      const clip = await probeWithCache(abs, {
+        ffprobePath: binaries.ffprobePath,
+        cacheDir: probeCachesDir()
+      })
+      doc.source.probe = probeSnapshot(clip)
+      repairTrim(doc, clip.durationSec)
+    } catch (error) {
+      console.warn(`[shortz] relink probe failed for ${id}: ${(error as Error).message}`)
+    }
+    const saved = await saveProjectDocumentTo(projectsRoot(), validateForSave(doc))
+    return toWireProject(saved, false)
   })
 
-  // --- media ----------------------------------------------------------------
+  // --- media ------------------------------------------------------------------
 
   handle('shortz:pickFile', async () => {
-    const win = mainWindow()
-    const result = await dialog.showOpenDialog(win!, {
+    const result = await dialog.showOpenDialog(firstWindow()!, {
       title: 'Choose a video',
       properties: ['openFile'],
       filters: [
@@ -135,6 +409,16 @@ export function registerIpcHandlers(): void {
 
   handle('shortz:getMediaUrl', async (sourcePath: string) => getMediaUrlForFile(sourcePath))
 
+  handle('shortz:getThumbUrl', async (id: string): Promise<string | null> => {
+    const file = thumbPath(id)
+    const stat = await fsp.stat(file).catch(() => null)
+    if (!stat || !stat.isFile()) return null
+    // Thumbnails stream through the same media:// handler (image MIME added there).
+    return mintMediaUrl(file)
+  })
+
+  // --- fonts (strict — fonts ship in resources/fonts, verified baseline) ------
+
   handle('shortz:getFontBuffer', async (key: FontKey) => {
     const file = FONT_FILES[key]
     if (!file) throw new Error(`Unknown font key: ${key}`)
@@ -142,37 +426,35 @@ export function registerIpcHandlers(): void {
     try {
       const buf = await fsp.readFile(fontPath)
       return new Uint8Array(buf)
-    } catch {
-      // Engine-pending period: fonts are Agent A's resources/fonts lane.
-      // Return an empty buffer (font-loader skips it, CSS falls back to
-      // system fonts) instead of a rejected promise that spams the console.
-      // TODO(integration): throw again once fonts are guaranteed present.
-      return new Uint8Array(0)
+    } catch (error) {
+      throw new Error(`Font "${key}" missing at ${fontPath}: ${(error as Error).message}`)
     }
   })
 
-  // --- templates (MOCK: metas only; bodies live in renderer mock) -----------
+  // --- templates (core registry; TemplateMeta carries the full body) ----------
 
-  handle('shortz:listTemplates', async (): Promise<TemplateMeta[]> => mockTemplates)
+  handle('shortz:listTemplates', async (): Promise<TemplateMeta[]> => {
+    const builtin = await listTemplateFiles(path.join(resourcesDir(), 'templates'))
+    const userDir = userTemplatesDir()
+    await fsp.mkdir(userDir, { recursive: true }).catch(() => undefined)
+    const user = await listTemplateFiles(userDir)
+    return [...builtin.map((m) => wireTemplateMeta(m, 'built-in')), ...user.map((m) => wireTemplateMeta(m, 'user'))]
+  })
 
-  // --- render (MOCK — engine pending) ----------------------------------------
+  // --- render -----------------------------------------------------------------
 
-  handle('shortz:exportProject', async (_p: Project, _opts: ExportOptions): Promise<ExportResult> => {
-    // The renderer keeps Export disabled with a "pending engine" tooltip, so
-    // reaching this means wiring work, not a user action. Return the
-    // documented shape with clearly-pending values.
-    return {
-      jobId: 'mock',
-      path: '(engine pending)',
-      durationSec: 0,
-      sizeBytes: 0,
-      encoder: 'libx264',
-      crf: 18
+  handle('shortz:exportProject', async (p: Project, opts: ExportOptions = {}): Promise<ExportResult> => {
+    if (exportInFlight) throw new Error('An export is already running — cancel it first')
+    exportInFlight = true
+    try {
+      return await runExport(p, opts)
+    } finally {
+      exportInFlight = false
     }
   })
 
-  handle('shortz:cancelExport', async (_jobId: string) => {
-    /* no mock job ever runs */
+  handle('shortz:cancelExport', async (jobId: string): Promise<void> => {
+    activeAborts.get(jobId)?.abort()
   })
 
   // --- shell ------------------------------------------------------------------
@@ -183,19 +465,59 @@ export function registerIpcHandlers(): void {
       return
     }
     // Fall back to the containing folder; surface a readable error when even
-    // that is gone (missing-source mock projects) instead of failing silently.
+    // that is gone instead of failing silently.
     const dir = path.dirname(p)
     const err = await shell.openPath(dir)
     if (err) throw new Error(`Cannot open "${dir}": ${err}`)
   })
 
   handle('shortz:openUserTemplatesFolder', async () => {
-    const dir = path.join(dataDir(), 'templates', 'user')
+    const dir = userTemplatesDir()
     await fsp.mkdir(dir, { recursive: true })
     await shell.openPath(dir)
   })
 
-  handle('shortz:getSettings', async (): Promise<Settings> => mockSettings)
+  // --- settings ---------------------------------------------------------------
 
-  handle('shortz:saveSettings', async (s: Settings): Promise<Settings> => setMockSettings(s))
+  handle('shortz:getSettings', async (): Promise<Settings> => (await loadSettings(dataDir())) as unknown as Settings)
+
+  handle('shortz:saveSettings', async (s: Settings): Promise<Settings> => {
+    await saveSettingsDoc(s as Parameters<typeof saveSettingsDoc>[0], dataDir())
+    return (await loadSettings(dataDir())) as unknown as Settings
+  })
+
+  // --- engine info (settings modal — formerly engine-pending rows) -------------
+
+  handle('shortz:ffmpegInfo', async () => {
+    const binaries = await resolveBinariesWithSettings()
+    return { source: binaries.source, version: binaries.version }
+  })
+
+  handle('shortz:ffmpegTest', async () => {
+    const binaries = await resolveBinariesWithSettings()
+    return { ok: binaries.version !== null, version: binaries.version, source: binaries.source }
+  })
+
+  handle('shortz:probeCacheInfo', async (): Promise<{ entries: number; bytes: number }> => {
+    const dir = probeCachesDir()
+    let entries: string[]
+    try {
+      entries = await fsp.readdir(dir)
+    } catch {
+      return { entries: 0, bytes: 0 }
+    }
+    let bytes = 0
+    for (const f of entries.filter((e) => e.endsWith('.json'))) {
+      const st = await fsp.stat(path.join(dir, f)).catch(() => null)
+      if (st) bytes += st.size
+    }
+    return { entries: entries.filter((e) => e.endsWith('.json')).length, bytes }
+  })
+
+  handle('shortz:probeCacheClear', async () => {
+    await rmWithRetry(probeCachesDir())
+    return { entries: 0, bytes: 0 }
+  })
+
+  handle('shortz:appVersion', async () => app.getVersion())
 }

@@ -23,6 +23,8 @@ export interface TemplateMeta {
   sourcePath: string
   valid: boolean
   issues: ValidationIssue[]
+  /** The validated template body (absent on invalid templates). */
+  template?: Template
 }
 
 export async function loadTemplateFile(filePath: string): Promise<LoadedTemplate> {
@@ -76,7 +78,8 @@ export async function listTemplates(templatesDir: string): Promise<TemplateMeta[
         thumbnail: t.thumbnail,
         sourcePath: loaded.sourcePath,
         valid: true,
-        issues: []
+        issues: [],
+        template: t
       })
     } else {
       metas.push({

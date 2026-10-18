@@ -32,7 +32,12 @@ const MIME_BY_EXT: Record<string, string> = {
   '.avi': 'video/x-msvideo',
   '.mpg': 'video/mpeg',
   '.mpeg': 'video/mpeg',
-  '.ts': 'video/mp2t'
+  '.ts': 'video/mp2t',
+  // Project card thumbnails stream through the same handler (minted only via
+  // shortz:getThumbUrl; getMediaUrl still validates clips strictly above).
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png'
 }
 
 /** Must run before app ready (docs snippet, verbatim privileges). */
