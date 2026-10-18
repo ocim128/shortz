@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { EditorConfig, EditorConfigMeta, Project } from '../../../preload/api'
 import type { FieldDef, KnobDef, TextSlot } from '../../../shared/template/types'
 import { fontKeyFor, wrapAndShrink, type FontLoader } from '../../../shared/layout/text'
+import { Icon } from './Icon'
 import { formatTime } from '../lib/format'
 import { toast } from '../stores/toastStore'
 import { S } from '../strings'
@@ -257,113 +258,127 @@ export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, durati
       <div className="field-panel__divider" role="presentation" />
       <h2 className="pane-title">{S.clipTitle}</h2>
 
-      <div className="field field--audio" role="radiogroup" aria-label="Audio">
-        <span className="field__label">Audio</span>
-        <label className="radio">
-          <input
-            type="radio"
-            name="audio"
-            checked={project.audio === 'keep'}
-            onChange={() =>
-              onPatch((d) => {
-                d.audio = 'keep'
-              })
-            }
-          />
-          {S.audioKeep}
-        </label>
-        <label className="radio">
-          <input
-            type="radio"
-            name="audio"
-            checked={project.audio === 'mute'}
-            onChange={() =>
-              onPatch((d) => {
-                d.audio = 'mute'
-              })
-            }
-          />
-          {S.audioMute}
-        </label>
+      <div className="field field--audio">
+        <span className="field__label">{S.audioLabel}</span>
+        <div className="segmented" role="radiogroup" aria-label={S.audioLabel}>
+          <label className="segmented__item">
+            <input
+              type="radio"
+              name="audio"
+              className="segmented__input"
+              checked={project.audio === 'keep'}
+              onChange={() =>
+                onPatch((d) => {
+                  d.audio = 'keep'
+                })
+              }
+            />
+            <Icon name="music" size={13} />
+            {S.audioKeep}
+          </label>
+          <label className="segmented__item">
+            <input
+              type="radio"
+              name="audio"
+              className="segmented__input"
+              checked={project.audio === 'mute'}
+              onChange={() =>
+                onPatch((d) => {
+                  d.audio = 'mute'
+                })
+              }
+            />
+            <Icon name="volumeX" size={13} />
+            {S.audioMute}
+          </label>
+        </div>
       </div>
 
       <div className="field field--trim">
-        <label className="field__label" htmlFor="trim-start">
-          {S.trimStart}
-        </label>
-        <input
-          id="trim-start"
-          className="input field__number"
-          type="number"
-          min={0}
-          max={trimOff ? Math.max(0.1, duration - 0.1) : project.trim.end - 0.1}
-          step={0.1}
-          value={trimOff ? '' : project.trim.start}
-          placeholder={trimOff ? S.trimOff : undefined}
-          onChange={(e) =>
-            onPatch((d) => {
-              if (e.target.value === '') {
-                d.trim = { start: 0, end: 0 } // cleared → disabled
-                return
+        <div className="trim-inputs">
+          <div className="trim-input">
+            <label className="field__label" htmlFor="trim-start">
+              {S.trimStart}
+            </label>
+            <input
+              id="trim-start"
+              className="input field__number"
+              type="number"
+              min={0}
+              max={trimOff ? Math.max(0.1, duration - 0.1) : project.trim.end - 0.1}
+              step={0.1}
+              value={trimOff ? '' : project.trim.start}
+              placeholder={trimOff ? S.trimOff : undefined}
+              onChange={(e) =>
+                onPatch((d) => {
+                  if (e.target.value === '') {
+                    d.trim = { start: 0, end: 0 } // cleared → disabled
+                    return
+                  }
+                  if (trimOff) {
+                    if (duration <= 0) return // enabling needs the clip duration
+                    // First touch activates trim against the full clip.
+                    d.trim = {
+                      start: Math.round(Math.max(0, Math.min(Number(e.target.value) || 0, duration - 0.1)) * 10) / 10,
+                      end: Math.round(duration * 10) / 10
+                    }
+                    return
+                  }
+                  d.trim.start = Math.max(0, Math.min(Number(e.target.value) || 0, d.trim.end - 0.1))
+                })
               }
-              if (trimOff) {
-                if (duration <= 0) return // enabling needs the clip duration
-                // First touch activates trim against the full clip.
-                d.trim = {
-                  start: Math.round(Math.max(0, Math.min(Number(e.target.value) || 0, duration - 0.1)) * 10) / 10,
-                  end: Math.round(duration * 10) / 10
-                }
-                return
+            />
+          </div>
+          <div className="trim-input">
+            <label className="field__label" htmlFor="trim-end">
+              {S.trimEnd}
+            </label>
+            <input
+              id="trim-end"
+              className="input field__number"
+              type="number"
+              min={trimOff ? 0.1 : project.trim.start + 0.1}
+              max={Math.max(0.1, duration)}
+              step={0.1}
+              value={trimOff ? '' : project.trim.end}
+              placeholder={trimOff ? S.trimOff : undefined}
+              onChange={(e) =>
+                onPatch((d) => {
+                  if (e.target.value === '') {
+                    d.trim = { start: 0, end: 0 } // cleared → disabled
+                    return
+                  }
+                  const v = Number(e.target.value) || 0
+                  if (trimOff) {
+                    // First touch activates trim from 0 up to the typed end.
+                    d.trim = {
+                      start: 0,
+                      end: Math.round(Math.max(0.1, Math.min(v, duration > 0 ? duration : v)) * 10) / 10
+                    }
+                    return
+                  }
+                  d.trim.end = Math.max(d.trim.start + 0.1, Math.min(v, duration || d.trim.end))
+                })
               }
-              d.trim.start = Math.max(0, Math.min(Number(e.target.value) || 0, d.trim.end - 0.1))
-            })
-          }
-        />
-        <label className="field__label" htmlFor="trim-end">
-          {S.trimEnd}
-        </label>
-        <input
-          id="trim-end"
-          className="input field__number"
-          type="number"
-          min={trimOff ? 0.1 : project.trim.start + 0.1}
-          max={Math.max(0.1, duration)}
-          step={0.1}
-          value={trimOff ? '' : project.trim.end}
-          placeholder={trimOff ? S.trimOff : undefined}
-          onChange={(e) =>
-            onPatch((d) => {
-              if (e.target.value === '') {
-                d.trim = { start: 0, end: 0 } // cleared → disabled
-                return
-              }
-              const v = Number(e.target.value) || 0
-              if (trimOff) {
-                // First touch activates trim from 0 up to the typed end.
-                d.trim = {
-                  start: 0,
-                  end: Math.round(Math.max(0.1, Math.min(v, duration > 0 ? duration : v)) * 10) / 10
-                }
-                return
-              }
-              d.trim.end = Math.max(d.trim.start + 0.1, Math.min(v, duration || d.trim.end))
-            })
-          }
-        />
-        <div className="field__hint">
-          {formatTime(trimOff ? duration : Math.max(0, project.trim.end - project.trim.start))} kept
+            />
+          </div>
         </div>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={() =>
-            onPatch((d) => {
-              d.trim = { start: 0, end: 0 }
-            })
-          }
-        >
-          {S.resetTrim}
-        </button>
+        <div className="trim-foot">
+          <div className="field__hint">
+            {formatTime(trimOff ? duration : Math.max(0, project.trim.end - project.trim.start))} kept
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() =>
+              onPatch((d) => {
+                d.trim = { start: 0, end: 0 }
+              })
+            }
+          >
+            {S.resetTrim}
+          </button>
+        </div>
       </div>
 
       <div className="field-panel__divider" role="presentation" />
@@ -395,7 +410,8 @@ export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, durati
             title={S.saveConfigTitle(configName)}
             onClick={() => void saveConfig()}
           >
-            💾 {S.saveConfig}
+            <Icon name="save" size={14} />
+            {S.saveConfig}
           </button>
         </div>
 
@@ -428,7 +444,8 @@ export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, durati
                 title={S.loadConfigTitle}
                 onClick={() => void loadConfig()}
               >
-                📂 {S.loadConfig}
+                <Icon name="folderOpen" size={14} />
+                {S.loadConfig}
               </button>
               <button
                 type="button"
@@ -436,7 +453,8 @@ export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, durati
                 title={S.deleteConfigTitle}
                 onClick={() => void deleteConfig()}
               >
-                🗑 {S.deleteConfig}
+                <Icon name="trash" size={14} />
+                {S.deleteConfig}
               </button>
             </div>
           </>

@@ -4,6 +4,7 @@ import { LayoutError, resolveLayout, type ResolvedLayout } from '../../../../sha
 import type { Slot, TextSlot } from '../../../../shared/template/types'
 import { ExportBar } from '../../components/ExportBar'
 import { FieldPanel } from '../../components/FieldPanel'
+import { Icon } from '../../components/Icon'
 import { PhonePreview } from '../../components/PhonePreview'
 import { PlaybackBar } from '../../components/PlaybackBar'
 import { RelinkBanner } from '../../components/RelinkBanner'
@@ -307,11 +308,16 @@ export function EditorScreen(): JSX.Element {
     <div className="editor">
       <header className="editor__topbar">
         <button type="button" className="btn btn-ghost" onClick={closeActive} title={`${S.back} (autosaves)`}>
-          ← {S.back}
+          <Icon name="arrowLeft" />
+          {S.back}
         </button>
         <div className="editor__chips">
           {chips.map((c, i) => (
-            <span key={i} className={`chip${i === 0 ? ' chip--name' : ''}${c === '●' ? ' chip--dirty' : ''}`}>
+            <span
+              key={i}
+              className={`chip${i === 0 ? ' chip--name' : ''}${c === '●' ? ' chip--dirty' : ''}`}
+              title={c === '●' ? S.unsavedDot : undefined}
+            >
               {c}
             </span>
           ))}
@@ -323,7 +329,8 @@ export function EditorScreen(): JSX.Element {
           title={exportDisabledTitle}
           onClick={() => void useRenderStore.getState().runJob()}
         >
-          {S.export} ▶
+          <Icon name="upload" />
+          {S.export}
         </button>
       </header>
 
@@ -331,7 +338,17 @@ export function EditorScreen(): JSX.Element {
 
       <div className="editor__panes">
         {templates === null ? (
-          <div className="template-picker" aria-busy></div>
+          <div className="template-picker" aria-busy="true">
+            <h2 className="pane-title">{S.templatesTitle}</h2>
+            <div className="template-picker__list">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="card template-card template-card--skeleton" aria-hidden="true">
+                  <div className="skeleton mini-mockup" />
+                  <div className="skeleton template-card__name" style={{ width: '58%', height: '12px' }} />
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
           <TemplatePicker
             templates={templates}
@@ -353,13 +370,17 @@ export function EditorScreen(): JSX.Element {
               aria-pressed={showSafeZones}
               title={S.safeZones}
             >
-              ◉ {S.safeZones}
+              <Icon name="eye" size={14} />
+              {S.safeZones}
             </button>
           </div>
           {activeInvalid || !activeTemplate?.body ? (
             <div className="layout-warnings">
               <div className="layout-warnings__item">
-                ⚠ {S.invalidTemplate}: {byId?.error ?? 'unknown error'}
+                <Icon name="alert" size={14} />
+                <span>
+                  {S.invalidTemplate}: {byId?.error ?? 'unknown error'}
+                </span>
               </div>
             </div>
           ) : previewLayout !== null ? (
@@ -372,8 +393,9 @@ export function EditorScreen(): JSX.Element {
               ghostSlots={ghostSlots}
             />
           ) : (
-            <div className="layout-warnings">
-              <div className="layout-warnings__item">…</div>
+            <div className="preview-loading" aria-busy="true">
+              <div className="spinner" />
+              <span>{S.exportDisabledResolving}</span>
             </div>
           )}
           <PlaybackBar />
@@ -390,12 +412,16 @@ export function EditorScreen(): JSX.Element {
             <div className="layout-warnings">
               {layoutOutcome?.kind === 'error' && (
                 <div key="err" className="layout-warnings__item">
-                  ⚠ {S.previewLimited}: {layoutOutcome.error.message}
+                  <Icon name="alert" size={14} />
+                  <span>
+                    {S.previewLimited}: {layoutOutcome.error.message}
+                  </span>
                 </div>
               )}
               {layout?.warnings.map((w, i) => (
                 <div key={i} className="layout-warnings__item">
-                  ⚠ {w}
+                  <Icon name="alert" size={14} />
+                  <span>{w}</span>
                 </div>
               ))}
             </div>

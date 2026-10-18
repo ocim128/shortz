@@ -9,6 +9,7 @@ import {
 } from '../../../../shared/batch/parse'
 import { VIDEO_EXTENSIONS } from '../../../../shared/video-extensions'
 import { useBatchStore } from '../../stores/batchStore'
+import { Icon } from '../../components/Icon'
 import { toast } from '../../stores/toastStore'
 import { S } from '../../strings'
 
@@ -171,6 +172,7 @@ export function BatchScreen({ onBack }: BatchScreenProps): JSX.Element {
     <div className="batch">
       <header className="batch__topbar">
         <button type="button" className="btn btn-ghost" onClick={onBack} disabled={running}>
+          <Icon name="arrowLeft" />
           {S.batchBack}
         </button>
         <div className="batch__chips">
@@ -189,7 +191,8 @@ export function BatchScreen({ onBack }: BatchScreenProps): JSX.Element {
           title={startDisabledReason}
           onClick={() => void start()}
         >
-          {S.batchStart} ▶
+          <Icon name="upload" />
+          {S.batchStart}
         </button>
       </header>
 
@@ -267,7 +270,8 @@ export function BatchScreen({ onBack }: BatchScreenProps): JSX.Element {
               disabled={running}
               onClick={() => void refreshConfigs()}
             >
-              ⟳ {S.batchConfigReload}
+              <Icon name="refresh" size={14} />
+              {S.batchConfigReload}
             </button>
           </div>
           <div className="field__hint">{S.batchConfigHint}</div>

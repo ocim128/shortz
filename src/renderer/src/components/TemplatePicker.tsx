@@ -1,5 +1,6 @@
 import type { TemplateMeta } from '../../../preload/api'
 import { isVideoSlot, type Template } from '../../../shared/template/types'
+import { Icon } from './Icon'
 import { S } from '../strings'
 
 /**
@@ -72,7 +73,9 @@ export function TemplatePicker({ templates, activeId, onSelect }: TemplatePicker
             title={`${S.invalidTemplate}: ${t.error ?? 'unknown error'}`}
             aria-disabled
           >
-            <div className="mini-mockup mini-mockup--invalid">⚠</div>
+            <div className="mini-mockup mini-mockup--invalid">
+              <Icon name="alert" size={16} />
+            </div>
             <div className="template-card__name">{t.name}</div>
             <span className="badge badge--user">{S.badgeUser}</span>
           </div>
@@ -83,7 +86,9 @@ export function TemplatePicker({ templates, activeId, onSelect }: TemplatePicker
           onClick={() => void window.shortz.openUserTemplatesFolder()}
           title={S.addUserTemplateTitle}
         >
-          <div className="mini-mockup mini-mockup--add">＋</div>
+          <div className="mini-mockup mini-mockup--add">
+            <Icon name="plus" size={16} />
+          </div>
           <div className="template-card__name">{S.addUserTemplate}</div>
         </button>
       </div>

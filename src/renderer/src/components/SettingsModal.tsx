@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FfmpegInfo, Settings } from '../../../preload/api'
+import { Icon } from './Icon'
 import { useSettingsStore } from '../stores/settingsStore'
 import { toast } from '../stores/toastStore'
 import { S } from '../strings'
@@ -17,6 +18,30 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
   const [draft, setDraft] = useState<Settings | null>(settings)
   const [ffmpeg, setFfmpeg] = useState<FfmpegInfo | null>(null)
   const [appVersion, setAppVersion] = useState<string | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // Focus the dialog on open (screen readers announce it) and keep Tab inside.
+  useEffect(() => {
+    dialogRef.current?.focus()
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Tab' || !dialogRef.current) return
+      const focusables = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>('button, input, select, textarea, [href]')
+      ).filter((el) => !(el as HTMLInputElement).disabled && el.offsetParent !== null)
+      if (focusables.length === 0) return
+      const first = focusables[0] as HTMLElement
+      const last = focusables[focusables.length - 1] as HTMLElement
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     if (!settings) void load()
@@ -77,9 +102,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
 
   return (
     <div className="modal-overlay" onClick={onClose} role="presentation">
-      <div className="modal" role="dialog" aria-modal aria-label={S.settingsTitle} onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal
+        aria-label={S.settingsTitle}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <header className="modal__header">
           <h2>{S.settingsTitle}</h2>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={S.settingsCancel} title={S.settingsCancel}>
+            <Icon name="x" size={16} />
+          </button>
         </header>
 
         <div className="modal__body">

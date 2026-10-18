@@ -1,4 +1,5 @@
 import { useRenderStore } from '../stores/renderStore'
+import { Icon } from './Icon'
 import { S } from '../strings'
 
 /**
@@ -32,7 +33,10 @@ export function ExportBar(): JSX.Element | null {
   if (status === 'error') {
     return (
       <footer className="export-bar export-bar--error" role="alert">
-        <span className="export-bar__label">{S.exportErrorTitle}</span>
+        <span className="export-bar__label">
+          <Icon name="alert" size={15} />
+          {S.exportErrorTitle}
+        </span>
         {error && (
           <details className="export-bar__stderr">
             <summary>stderr tail</summary>
