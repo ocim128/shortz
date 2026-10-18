@@ -28,6 +28,7 @@ export const S = {
   exportDisabledEmptyHook: 'Type a hook first',
   exportDisabledTooLong: 'Hook text does not fit — shorten it',
   exportDisabledNoVideo: 'Load a video first',
+  exportDisabledResolving: 'Preparing the layout…',
   exportDisabledMissing: 'Source file missing — re-link first',
   exportHint: 'Ctrl+E',
   unsavedDot: 'Unsaved changes',
@@ -45,7 +46,7 @@ export const S = {
   play: 'Play',
   pause: 'Pause',
   noVideoLoaded: 'No video',
-  layoutErrorTitle: 'Preview unavailable',
+  previewLimited: 'Video-only preview',
 
   // Editor — field panel
   templateSettingsTitle: 'TEMPLATE SETTINGS',

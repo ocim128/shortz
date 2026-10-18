@@ -18,15 +18,35 @@ const BG_COLOR: Record<Exclude<BackgroundStyle, 'blurVideo'>, string> = {
   darkGray: '#0f0f0f'
 }
 
+/**
+ * A preview-only marker for a required-but-empty text slot: a dashed box at
+ * the geometry where the slot's first line will land once it is typed. Never
+ * part of the export.
+ */
+export interface GhostSlot {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 interface PhonePreviewProps {
   layout: SharedResolvedLayout
   mediaUrl: string | null
   muted: boolean
   showSafeZones: boolean
   safeZones: { top: number; right: number; bottom: number; left: number }
+  ghostSlots?: GhostSlot[]
 }
 
-export function PhonePreview({ layout, mediaUrl, muted, showSafeZones, safeZones }: PhonePreviewProps): JSX.Element {
+export function PhonePreview({
+  layout,
+  mediaUrl,
+  muted,
+  showSafeZones,
+  safeZones,
+  ghostSlots
+}: PhonePreviewProps): JSX.Element {
   return (
     <div className="phone-frame">
       <div
@@ -43,6 +63,13 @@ export function PhonePreview({ layout, mediaUrl, muted, showSafeZones, safeZones
       >
         <VideoLayer mediaUrl={mediaUrl} layout={layout} muted={muted} />
         <TextLayer layout={layout} />
+        {ghostSlots?.map((g, i) => (
+          <div
+            key={i}
+            className="ghost-slot"
+            style={{ left: g.x, top: g.y, width: g.width, height: g.height }}
+          />
+        ))}
         {showSafeZones && <SafeZoneOverlay safeZones={safeZones} />}
       </div>
     </div>

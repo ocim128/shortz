@@ -106,19 +106,22 @@ export function EditorScreen(): JSX.Element {
   const activeTemplate = byId ?? firstValid ?? null
   const activeInvalid = byId !== undefined && !byId.valid
 
+  // Clip dims: the import-time probe has display (rotation-normalized) dims —
+  // prefer them; fall back to the <video> element's intrinsic size.
+  const probe = project?.source.probe
+  const clip = useMemo(() => {
+    if (probe && probe.width > 0 && probe.height > 0) {
+      return { width: probe.width, height: probe.height }
+    }
+    if (videoWidth > 0 && videoHeight > 0) return { width: videoWidth, height: videoHeight }
+    return null
+  }, [probe?.width, probe?.height, videoWidth, videoHeight])
+
   const layoutOutcome: LayoutOutcome | null = useMemo(() => {
     if (!project) return null
-    if (!fontsLoaded || !activeTemplate || activeInvalid) return null
-    // Clip dims: the import-time probe has display (rotation-normalized) dims —
-    // prefer them; fall back to the <video> element's intrinsic size.
-    const probe = project.source.probe
-    const clip =
-      probe && probe.width > 0 && probe.height > 0
-        ? { width: probe.width, height: probe.height }
-        : videoWidth > 0 && videoHeight > 0
-          ? { width: videoWidth, height: videoHeight }
-          : null
+    if (!activeTemplate || activeInvalid) return null
     if (!clip) return { kind: 'unavailable', reason: 'no-clip-dims' }
+    if (!fontsLoaded) return null
     try {
       return {
         kind: 'ok',
@@ -127,7 +130,10 @@ export function EditorScreen(): JSX.Element {
           // LayoutError import keeps the narrow class for catch-mapping below.
           values: project.values,
           clip,
-          loadFont: getFontLoader()
+          loadFont: getFontLoader(),
+          // Preview degrades in place on an empty required field (slot skipped
+          // + warning) instead of throwing — the video layer must stay live.
+          emptyRequired: 'skip-slot'
         })
       }
     } catch (err) {
@@ -137,16 +143,77 @@ export function EditorScreen(): JSX.Element {
           : new LayoutError('invalid-template', err instanceof Error ? err.message : String(err))
       return { kind: 'error', error }
     }
-  }, [project, project?.values, activeTemplate, activeInvalid, fontsLoaded, videoWidth, videoHeight])
+  }, [project, activeTemplate, activeInvalid, clip, fontsLoaded])
 
   const layout = layoutOutcome?.kind === 'ok' ? layoutOutcome.layout : null
   const hookTooLong = layoutOutcome?.kind === 'error' && layoutOutcome.error.code === 'text-too-long'
+
+  // Required-but-empty inputs: they no longer fail the resolve (skip-slot), so
+  // export gating tracks them explicitly — a required-empty project must never
+  // render, and the main-process engine still enforces the same rule strictly.
+  const emptyRequired = useMemo(() => {
+    const body = activeTemplate?.body
+    if (!project || !body) return [] as string[]
+    return body.inputs
+      .filter((f) => f.required && (project.values.fields[f.key] ?? '').trim().length === 0)
+      .map((f) => f.key)
+  }, [project?.values, activeTemplate])
+
+  // When the real resolve fails (text-too-long, …) the preview must not go
+  // dark: re-resolve with every text field emptied. The video geometry still
+  // comes from the shared engine with the live knobs, so this degraded frame
+  // cannot drift from the real one — only the (broken) text layer is missing.
+  const degradedLayout = useMemo(() => {
+    if (layout !== null || !project || !activeTemplate?.body || activeInvalid || !clip) return null
+    try {
+      return resolveLayout({
+        template: activeTemplate.body,
+        values: { fields: {}, knobs: project.values.knobs },
+        clip,
+        loadFont: getFontLoader(),
+        emptyRequired: 'skip-slot'
+      })
+    } catch {
+      return null
+    }
+  }, [layout, project, activeTemplate, activeInvalid, clip])
+
+  const previewLayout = layout ?? degradedLayout
+
+  // Ghost boxes (preview-only affordance, never exported): where each
+  // required-but-empty text slot's first line will land once it is typed —
+  // one line at the slot's start size for aboveVideo anchors, the fixed box
+  // itself otherwise. Same math as the engine's single-line block.
+  const ghostSlots = useMemo(() => {
+    const body = activeTemplate?.body
+    if (!project || !body || layout === null) return []
+    const out: Array<{ x: number; y: number; width: number; height: number }> = []
+    for (const slot of body.slots) {
+      if (slot.type !== 'text' || slot.visible === false) continue
+      const field = body.inputs.find((f) => f.key === slot.bindsTo)
+      if (!field?.required) continue
+      if ((project.values.fields[field.key] ?? '').trim().length > 0) continue
+      if (slot.anchor.kind === 'aboveVideo') {
+        const lineH = slot.fontSize * slot.lineHeight
+        out.push({
+          x: slot.x,
+          y: Math.max(slot.anchor.minY, layout.video.y - slot.anchor.gap - lineH),
+          width: slot.width,
+          height: lineH
+        })
+      } else {
+        out.push({ x: slot.x, y: slot.anchor.y, width: slot.width, height: slot.anchor.height })
+      }
+    }
+    return out
+  }, [project?.values, activeTemplate, layout])
 
   const canExport =
     project !== null &&
     project.source.missing !== true &&
     !activeInvalid &&
     layout !== null &&
+    emptyRequired.length === 0 &&
     mediaUrl !== null
 
   const exportDisabledTitle = !canExport
@@ -154,12 +221,14 @@ export function EditorScreen(): JSX.Element {
       ? S.exportDisabledMissing
       : hookTooLong
         ? S.exportDisabledTooLong
-        : layout === null
-          ? mediaUrl === null
-            ? S.exportDisabledNoVideo
-            : S.exportDisabledEmptyHook
-          : S.exportHint
-    : S.exportHint
+        : emptyRequired.length > 0
+          ? S.exportDisabledEmptyHook
+          : layout === null
+            ? mediaUrl === null
+              ? S.exportDisabledNoVideo
+              : S.exportDisabledResolving
+            : S.exportHint
+  : S.exportHint
 
   const relink = useCallback(async () => {
     if (!project) return
@@ -218,7 +287,6 @@ export function EditorScreen(): JSX.Element {
 
   if (!project) return <div className="editor editor--empty" />
 
-  const probe = project.source.probe
   const chips: string[] = [project.name]
   const w = probe?.width || (videoWidth > 0 ? videoWidth : 0)
   const h = probe?.height || (videoHeight > 0 ? videoHeight : 0)
@@ -281,30 +349,25 @@ export function EditorScreen(): JSX.Element {
               ◉ {S.safeZones}
             </button>
           </div>
-          {activeInvalid ? (
+          {activeInvalid || !activeTemplate?.body ? (
             <div className="layout-warnings">
               <div className="layout-warnings__item">
                 ⚠ {S.invalidTemplate}: {byId?.error ?? 'unknown error'}
               </div>
             </div>
-          ) : layoutOutcome?.kind === 'error' && !hookTooLong ? (
-            <div className="layout-warnings">
-              <div className="layout-warnings__item">
-                ⚠ {S.layoutErrorTitle}: {layoutOutcome.error.message}
-              </div>
-            </div>
-          ) : layout === null ? (
-            <div className="layout-warnings">
-              <div className="layout-warnings__item">…</div>
-            </div>
-          ) : (
+          ) : previewLayout !== null ? (
             <PhonePreview
-              layout={layout}
+              layout={previewLayout}
               mediaUrl={mediaUrl}
               muted={project.audio === 'mute'}
               showSafeZones={showSafeZones}
               safeZones={activeTemplate!.body!.safeZones}
+              ghostSlots={ghostSlots}
             />
+          ) : (
+            <div className="layout-warnings">
+              <div className="layout-warnings__item">…</div>
+            </div>
           )}
           <PlaybackBar />
           <TrimRange
@@ -316,9 +379,14 @@ export function EditorScreen(): JSX.Element {
               })
             }
           />
-          {layout !== null && layout.warnings.length > 0 && (
+          {(layoutOutcome?.kind === 'error' || (layout !== null && layout.warnings.length > 0)) && (
             <div className="layout-warnings">
-              {layout.warnings.map((w, i) => (
+              {layoutOutcome?.kind === 'error' && (
+                <div key="err" className="layout-warnings__item">
+                  ⚠ {S.previewLimited}: {layoutOutcome.error.message}
+                </div>
+              )}
+              {layout?.warnings.map((w, i) => (
                 <div key={i} className="layout-warnings__item">
                   ⚠ {w}
                 </div>

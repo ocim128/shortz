@@ -477,6 +477,16 @@
   white-space: pre;
 }
 
+/* Preview-only: dashed marker at the geometry a required-but-empty text slot
+   will occupy once typed (design-space px; scaled with the design root). */
+.ghost-slot {
+  position: absolute;
+  box-sizing: border-box;
+  border: 4px dashed rgba(255, 255, 255, 0.38);
+  border-radius: 10px;
+  pointer-events: none;
+}
+
 .safe-zone-overlay {
   position: absolute;
   top: 0;
