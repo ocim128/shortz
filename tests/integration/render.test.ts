@@ -287,3 +287,48 @@ describe('golden frame', () => {
     expect(ratio).toBeLessThan(0.02)
   })
 })
+
+describe('renderProject — smart framing (videoFraming knob)', () => {
+  function bandMeanLuminance(png: PNG, y0: number, y1: number): number {
+    let sum = 0
+    let n = 0
+    for (let y = y0; y < y1; y += 3) {
+      for (let x = 60; x < 1020; x += 6) {
+        const i = (y * png.width + x) * 4
+        sum += 0.2126 * png.data[i]! + 0.7152 * png.data[i + 1]! + 0.0722 * png.data[i + 2]!
+        n += 1
+      }
+    }
+    return sum / n
+  }
+
+  async function renderAndSample(knobs: ProjectDocument['values']['knobs']): Promise<number> {
+    const project = makeProject('landscape_1080p_10s.mp4', {
+      values: { fields: { hook: 'Framing probe' }, knobs }
+    })
+    const result = await renderProject(requestFor(project, `framing-${Date.now()}.mp4`))
+    const framePath = path.join(scratchRoot, `framing-frame-${Date.now()}.png`)
+    const run = await runFfmpeg({
+      ffmpegPath,
+      args: ['-y', '-ss', '1', '-i', result.outputPath, '-frames:v', '1', framePath],
+      durationSec: 0.5
+    })
+    expect(run.code).toBe(0)
+    const png = PNG.sync.read(await readFile(framePath))
+    // Inside the video box but below where letterbox content reaches (y 1128):
+    // black under letterbox, source pixels under fill.
+    return bandMeanLuminance(png, 1250, 1450)
+  }
+
+  it('fill cover-fills the safe box and removes the dead band under the video', async () => {
+    const letterbox = await renderAndSample({ videoFraming: 'letterbox' })
+    const fill = await renderAndSample({ videoFraming: 'fill' })
+    expect(letterbox).toBeLessThan(8)
+    expect(fill).toBeGreaterThan(40)
+  })
+
+  it('auto fills a landscape source (same pixels as fill)', async () => {
+    const auto = await renderAndSample({ videoFraming: 'auto' })
+    expect(auto).toBeGreaterThan(40)
+  })
+})

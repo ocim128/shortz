@@ -92,6 +92,7 @@ describe('bundled template sanity', () => {
       'backgroundStyle',
       'videoTop',
       'videoCornerRadius',
+      'videoFraming',
       'textAlign'
     ])
     expect(template.inputs[0]!.key).toBe('hook')

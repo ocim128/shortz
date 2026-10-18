@@ -39,6 +39,18 @@ export function formatSeconds(value: number): string {
   return String(rounded)
 }
 
+/**
+ * Source → layout.video rect. Contain's rect already matches the source aspect
+ * (the engine computed it), so a plain scale is lossless. Cover must scale to
+ * cover and center-crop — a plain scale would squash the aspect instead.
+ */
+function videoScaleChain(w: number, h: number, fit: 'contain' | 'cover'): string {
+  if (fit === 'cover') {
+    return `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h},setsar=1`
+  }
+  return `scale=${w}:${h}:flags=lanczos,setsar=1`
+}
+
 /** FFmpeg `color=` literal for solid backgrounds. */
 export function ffmpegBackgroundColor(style: BackgroundStyle): string {
   const hex = backgroundColorHex(style)
@@ -64,7 +76,7 @@ export function buildFilterComplex(input: BuildArgsInput): string {
         `crop=${canvas.width}:${canvas.height},gblur=sigma=${blur.sigma},` +
         `eq=brightness=${blur.darken > 0 ? `-${formatSeconds(blur.darken)}` : '0'}[bg]`
     )
-    parts.push(`[src]scale=${video.w}:${video.h}:flags=lanczos,setsar=1[vid]`)
+    parts.push(`[src]${videoScaleChain(video.w, video.h, video.fit)}[vid]`)
     let overlaySource = 'vid'
     if (maskPath) {
       parts.push(`[2:v]format=gray[mask]`)
@@ -75,7 +87,7 @@ export function buildFilterComplex(input: BuildArgsInput): string {
   } else {
     // Case A — solid background; rounded corners are drawn as corner covers on the overlay PNG.
     const color = ffmpegBackgroundColor(canvas.background)
-    parts.push(`[0:v]fps=${fps},scale=${video.w}:${video.h}:flags=lanczos,setsar=1[vid]`)
+    parts.push(`[0:v]fps=${fps},${videoScaleChain(video.w, video.h, video.fit)}[vid]`)
     parts.push(`color=c=${color}:s=${canvas.width}x${canvas.height}:r=${fps}:d=${duration}[bg]`)
     parts.push(`[bg][vid]overlay=${video.x}:${video.y}:shortest=1[base]`)
   }

@@ -86,6 +86,7 @@ export function VideoLayer({ mediaUrl, layout, muted }: VideoLayerProps): JSX.El
           top: layout.video.y,
           width: layout.video.w,
           height: layout.video.h,
+          objectFit: layout.video.fit === 'cover' ? 'cover' : 'contain',
           borderRadius: layout.video.cornerRadius,
           ...(layout.video.borderWidth > 0
             ? { border: `${layout.video.borderWidth}px solid ${layout.video.borderColor}` }

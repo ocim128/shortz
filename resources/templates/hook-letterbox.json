@@ -40,6 +40,12 @@
       ] },
     { "id": "videoTop", "label": "Video position ↓", "control": "slider", "default": 520, "min": 480, "max": 700, "step": 4 },
     { "id": "videoCornerRadius", "label": "Corner rounding", "control": "slider", "default": 24, "min": 0, "max": 48, "step": 4 },
+    { "id": "videoFraming", "label": "Framing", "control": "select", "default": "letterbox",
+      "options": [
+        { "value": "letterbox", "label": "Letterbox (whole clip)" },
+        { "value": "auto",      "label": "Smart (fill landscape clips)" },
+        { "value": "fill",      "label": "Fill (crop to the box)" }
+      ] },
     { "id": "textAlign", "label": "Text align", "control": "select", "default": "left",
       "options": [ { "value": "left", "label": "Left" }, { "value": "center", "label": "Center" } ] }
   ],

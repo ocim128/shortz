@@ -27,6 +27,8 @@ export interface ResolvedVideo {
   y: number
   w: number
   h: number
+  /** How the source maps onto the rect: contain letter/pillarboxes, cover crops. */
+  fit: 'contain' | 'cover'
   cornerRadius: number
   borderWidth: number
   borderColor: string
@@ -142,10 +144,6 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
   if (!videoSlot) {
     throw new LayoutError('invalid-template', 'Template has no video slot')
   }
-  if (videoSlot.fit === 'cover') {
-    // T1 uses contain; cover needs crop semantics in the arg builder (not in v1).
-    warnings.push(`Video slot "${videoSlot.id}" uses fit "cover" which renders as contain in v1`)
-  }
 
   // --- Video -----------------------------------------------------------------
   const videoTop = declared('videoTop') ? (knobs.videoTop as number) : videoSlot.y
@@ -162,15 +160,44 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
   const boxX = videoSlot.x + centerOffset(videoSlot.width, boxW)
   const boxY = videoTop + centerOffset(videoSlot.height, boxH)
 
-  const fit = containFit(clip.width, clip.height, boxW, boxH)
-  const video: ResolvedVideo = {
-    x: boxX + centerOffset(boxW, fit.width),
-    y: boxY,
-    w: fit.width,
-    h: fit.height,
-    cornerRadius,
-    borderWidth: videoSlot.borderWidth,
-    borderColor: videoSlot.borderColor
+  // Effective fit: the template's slot.fit is the base; a declared framing
+  // knob overrides. "auto" only fills when the source is wider than the box —
+  // cropping a landscape clip's sides is usually free, cropping a portrait
+  // clip's head/feet is not.
+  let fit: 'contain' | 'cover' = videoSlot.fit
+  if (declared('videoFraming')) {
+    const framing = knobs.videoFraming as 'letterbox' | 'auto' | 'fill'
+    if (framing === 'fill') fit = 'cover'
+    else if (framing === 'letterbox') fit = 'contain'
+    else fit = clip.width / clip.height > boxW / boxH ? 'cover' : 'contain'
+  }
+
+  let video: ResolvedVideo
+  if (fit === 'cover') {
+    // Cover fills the box exactly (the crop happens inside the scaled video),
+    // so the resolved rect IS the box.
+    video = {
+      x: boxX,
+      y: boxY,
+      w: roundPixel(boxW),
+      h: roundPixel(boxH),
+      fit,
+      cornerRadius,
+      borderWidth: videoSlot.borderWidth,
+      borderColor: videoSlot.borderColor
+    }
+  } else {
+    const contained = containFit(clip.width, clip.height, boxW, boxH)
+    video = {
+      x: boxX + centerOffset(boxW, contained.width),
+      y: boxY,
+      w: contained.width,
+      h: contained.height,
+      fit,
+      cornerRadius,
+      borderWidth: videoSlot.borderWidth,
+      borderColor: videoSlot.borderColor
+    }
   }
 
   // --- Text ------------------------------------------------------------------

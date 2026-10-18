@@ -10,6 +10,7 @@ export type KnobId =
   | 'videoTop'
   | 'videoCornerRadius'
   | 'videoScale'
+  | 'videoFraming'
   | 'textAlign'
   | 'textFont'
   | 'textMaxLines'
@@ -59,6 +60,13 @@ export const KNOB_REGISTRY: Record<KnobId, KnobSpec> = {
     min: 0.85,
     max: 1,
     step: 0.01
+  },
+  videoFraming: {
+    id: 'videoFraming',
+    label: 'Framing',
+    valueType: 'string',
+    default: 'letterbox',
+    options: ['letterbox', 'auto', 'fill']
   },
   textAlign: {
     id: 'textAlign',

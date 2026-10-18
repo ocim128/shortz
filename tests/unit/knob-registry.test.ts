@@ -15,7 +15,7 @@ describe('KNOB_REGISTRY', () => {
     expect(KNOB_REGISTRY.textAlign.default).toBe('left')
     expect(KNOB_REGISTRY.textFont.default).toBe('inter')
     expect(KNOB_REGISTRY.textMaxLines.default).toBe(4)
-    expect(KNOB_IDS).toHaveLength(7)
+    expect(KNOB_IDS).toHaveLength(8)
   })
 })
 

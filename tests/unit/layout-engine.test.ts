@@ -248,3 +248,44 @@ describe('resolveLayout — emptyRequired: skip-slot (preview mode)', () => {
     }
   })
 })
+
+describe('resolveLayout — videoFraming (smart sizing)', () => {
+  it('letterbox (default) keeps the normative contain geometry and fit flag', () => {
+    const layout = resolve({ width: 1920, height: 1080 })
+    expect(layout.video).toMatchObject({ x: 0, y: 520, w: 1080, h: 608, fit: 'contain' })
+  })
+
+  it('fill cover-fills the safe box exactly — no letterbox band inside the box', () => {
+    const layout = resolve({ width: 1920, height: 1080 }, { knobs: { videoFraming: 'fill' } })
+    expect(layout.video).toMatchObject({ x: 0, y: 520, w: 1080, h: 980, fit: 'cover' })
+  })
+
+  it('auto fills a landscape clip but keeps a portrait clip contained', () => {
+    const wide = resolve({ width: 1920, height: 1080 }, { knobs: { videoFraming: 'auto' } })
+    expect(wide.video).toMatchObject({ w: 1080, h: 980, fit: 'cover' })
+    const tall = resolve({ width: 1080, height: 1920 }, { knobs: { videoFraming: 'auto' } })
+    expect(tall.video).toMatchObject({ x: 265, y: 520, w: 551, h: 980, fit: 'contain' })
+  })
+
+  it('fill honours the videoTop knob and clips warnings stay silent', () => {
+    const layout = resolve({ width: 1920, height: 1080 }, { knobs: { videoFraming: 'fill', videoTop: 700 } })
+    expect(layout.video).toMatchObject({ y: 700, w: 1080, h: 980 })
+    expect(layout.warnings).toEqual([])
+  })
+
+  it('a template without the knob falls back to its slot fit (cover now honored)', () => {
+    const template = loadHookTemplate()
+    template.knobs = template.knobs.filter((k) => k.id !== 'videoFraming')
+    const slot = template.slots.find((s) => s.type === 'video')
+    if (slot && slot.type === 'video') slot.fit = 'cover'
+    const layout = resolveLayout({
+      template,
+      values: { fields: { hook: 'Hello world' }, knobs: {} },
+      clip: { width: 1920, height: 1080 },
+      loadFont
+    })
+    expect(layout.video).toMatchObject({ w: 1080, h: 980, fit: 'cover' })
+    // The v1 "renders as contain" warning is gone.
+    expect(layout.warnings.join(' ')).not.toContain('cover')
+  })
+})

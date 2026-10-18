@@ -148,3 +148,31 @@ describe('buildFfmpegArgs — background cases', () => {
     expect(portrait).toContain('overlay=265:520:shortest=1')
   })
 })
+
+describe('buildFfmpegArgs — video framing (cover/contain)', () => {
+  it('contain scales straight to the rect (aspect already matches)', () => {
+    const filter = buildFilterComplex(baseInput())
+    expect(filter).toContain('scale=1080:608:flags=lanczos,setsar=1')
+    expect(filter).not.toContain('force_original_aspect_ratio')
+  })
+
+  it('fill cover-scales and center-crops to the safe box', () => {
+    const input = baseInput({ layout: layoutFor({ width: 1920, height: 1080 }, { videoFraming: 'fill' }) })
+    const filter = buildFilterComplex(input)
+    expect(filter).toContain(
+      'scale=1080:980:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:980,setsar=1'
+    )
+  })
+
+  it('fill keeps the cover chain on the blur background path too', () => {
+    const input = baseInput({
+      layout: layoutFor(
+        { width: 1920, height: 1080 },
+        { videoFraming: 'fill', backgroundStyle: 'blurVideo' }
+      )
+    })
+    const filter = buildFilterComplex(input)
+    expect(filter).toContain('crop=1080:980,setsar=1')
+    expect(filter).toContain('[bg]')
+  })
+})
