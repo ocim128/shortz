@@ -242,13 +242,28 @@ await test('opening a clip reaches the Editor (three panes, phone frame)', async
   // Fire-and-poll: awaiting the store promise inside Runtime.evaluate races
   // context churn during the screen switch ("Promise was collected").
   await evaluate(`void window.__shortzDev.openPath(${JSON.stringify(clip.replace(/\\/g, '/'))}); true`)
-  // The shared layout engine refuses an empty required hook (missing-input) and
-  // the phone preview stays dark until something resolves — typing the hook is
-  // the same thing a user does, mock or real engine.
   await waitFor(`(() => {
     const ta = document.querySelector('textarea')
     return ta ? ta.id : null
   })()`, 10_000, 'hook textarea')
+
+  // First-usage fix coverage: with the hook still EMPTY the preview must be
+  // live (phone frame + media:// video + ghost slot, duration loaded) while
+  // export stays disabled — a required input must never blank the preview.
+  const emptyState = await waitFor(`(() => {
+    const phone = !!document.querySelector('.phone-frame')
+    const video = document.querySelector('.video-layer:not(.video-layer--blurbg)')
+    const ghost = !!document.querySelector('.ghost-slot')
+    const ex = document.querySelector('.editor__topbar .btn-primary')
+    if (!phone || !video || video.readyState < 1) return null
+    return { ghost, disabled: ex ? ex.disabled : null, title: ex ? (ex.title ?? '') : '', dur: video.duration }
+  })()`, 15_000, 'live preview with an empty hook')
+  assert(emptyState.disabled === true, `export must stay disabled with an empty hook (title "${emptyState.title}")`)
+  assert(/hook/i.test(emptyState.title), `export tooltip should point at the hook ("${emptyState.title}")`)
+  assert(emptyState.dur > 0, 'video duration did not load with an empty hook')
+  assert(emptyState.ghost, 'ghost slot missing for the empty required hook')
+
+  // Typing the hook brings the full text layer + an enabled export.
   await evaluate(`(() => {
     const ta = document.querySelector('textarea')
     const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
