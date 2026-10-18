@@ -55,16 +55,7 @@ Output videos go to a **user-chosen** directory (default `%USERPROFILE%\Videos\S
   },
 
   "trim": { "start": 3.2, "end": 21.0 },
-  "audio": "keep",                  // 'keep' | 'mute'
-
-  "exportHistory": [
-    {
-      "path": "C:\\Users\\user\\Videos\\ShortZ\\air-17oct2026_20261018_0935.mp4",
-      "createdAt": "2026-10-18T09:35:12Z",
-      "durationSec": 17.8, "sizeBytes": 19847211,
-      "encoder": "libx264", "crf": 18
-    }
-  ]
+  "audio": "keep"                   // 'keep' | 'mute'
 }
 ```
 
@@ -84,12 +75,12 @@ Rules:
     "filenamePattern": "{name}_{yyyyMMdd}_{HHmm}"
   },
   "encoder": {
-    "preferred": "auto",            // 'auto' | 'libx264' | 'h264_nvenc' | 'h264_amf' | 'h264_qsv'
+    "preferred": "auto",            // 'auto' | 'libx264' | 'h264_nvenc'
     "crf": 18,
     "fps": 30                       // 30 | 60 | 'source'
   },
   "ffmpeg": { "source": "auto" },   // 'auto' | 'system' | 'bundled'
-  "ui": { "safeZonesDefault": true, "lastProjectId": "01J8…" }
+  "ui": { "safeZonesDefault": true }
 }
 ```
 
@@ -125,7 +116,7 @@ Rules:
 
 ## Global export log — deferred out of v0.1
 
-An append-only global log (`exports.jsonl`: timestamp, projectId, templateId, output path, size, encoder — one line per render) is **cut from v0.1** (simplicity audit): per-project `exportHistory` already covers everything the UI shows. It returns in M4 together with the local analytics dashboard — see `technical/future-extensions.md` §7. Never sent anywhere.
+Export history (per-project `exportHistory` and an append-only global `exports.jsonl` log) is **cut from v0.1** (simplicity audit): it was write-only data no screen displayed. It returns together with the local analytics dashboard — see `technical/future-extensions.md` §7. Never sent anywhere.
 
 ## Caches & cleanup
 

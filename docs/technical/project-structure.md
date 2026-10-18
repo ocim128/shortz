@@ -100,9 +100,9 @@ Chromium will not load `file://` media from the app origin (`Not allowed to load
 - Drag & drop gives the renderer a path → it asks main for the URL; main validates the path exists and is a media file before minting.
 - Dev mode works identically (the protocol is registered on the app session, independent of the Vite dev server origin).
 
-## IPC contract (v1 — hand-rolled, locked; ~14 methods)
+## IPC contract (v1 — hand-rolled, locked; ~28 methods)
 
-Decision locked per simplicity audit: `contextBridge` + typed `api.d.ts`. No electron-trpc — ~14 methods don't justify the dependency and its major-version churn.
+Decision locked per simplicity audit: `contextBridge` + typed `api.d.ts`. No electron-trpc — a few dozen methods don't justify the dependency and its major-version churn. The authoritative list is `src/preload/api.d.ts` (data shapes come from `src/shared/domain.ts` — the same types the core stores persist); the abridged surface:
 
 ```ts
 interface ShortzApi {
@@ -113,20 +113,30 @@ interface ShortzApi {
   saveProject(p: Project): Promise<void>          // also autosaved
   deleteProject(id: string): Promise<void>
   relinkSource(id: string, newPath: string): Promise<Project>
+  // editor configs (named slots, no file dialogs)
+  saveEditorConfig(c) / listEditorConfigs() / loadEditorConfig(id) / deleteEditorConfig(id)
   // media
   pickFile(): Promise<string | null>              // native dialog
   getMediaUrl(sourcePath: string): Promise<string> // returns media:// URL (Range-capable)
+  getThumbUrl(id: string): Promise<string | null>  // projects/<id>/thumb.jpg via media://
   getFontBuffer(key: FontKey): Promise<Uint8Array> // bundled TTF bytes for renderer-side opentype metrics
   // templates
   listTemplates(): Promise<TemplateMeta[]>        // includes invalid ones w/ errors
-  // render
+  // render (single + batch; one ffmpeg at a time app-wide)
   exportProject(p: Project, opts: ExportOptions): Promise<ExportResult>
-  cancelExport(jobId: string): Promise<void>
+  cancelExport(): Promise<void>
   onRenderProgress(cb: (e: ProgressEvent) => void): Unsubscribe
-  // shell
+  batchRender(req: BatchRunRequest): Promise<BatchRunSummary>
+  cancelBatch(jobId?: string): Promise<void>
+  onBatchProgress(cb: (e: BatchRenderEvent) => void): Unsubscribe
+  // shell / info
   revealInExplorer(path: string): Promise<void>
   openUserTemplatesFolder(): Promise<void>
   getSettings() / saveSettings(s)
+  ffmpegInfo(): Promise<FfmpegInfo>
+  appVersion(): Promise<string>
+  onMenuCommand(cb: (cmd: MenuCommand) => void): Unsubscribe
+  getPathForFile(file: File): string               // sandbox-safe drag&drop paths
 }
 ```
 

@@ -45,7 +45,7 @@ One language across UI, main process, and — critically — the **shared Layout
 - FFmpeg is non-negotiable as the render engine — it is what CapCut-class tools use under the hood anyway, it is deterministic, and **version 8.0 (gyan full build) is already installed on this machine**.
 - **No fluent-ffmpeg**: last publish years ago, API gaps for complex filtergraphs, hides arg construction behind a wrapper. Instead write a small **typed command builder** (~200 lines) that produces `string[]` argv arrays. This is unit-testable by snapshotting argv (see `technical/render-pipeline.md`).
 - Binaries resolution order: 1) system PATH `ffmpeg` (if ≥ 6), 2) bundled `ffmpeg-static`. Rationale: gyan full builds include filters/encoders some static builds trim (e.g., some `drawtext` font backends, `subtitles` filter for phase 2 captions).
-- Hardware encoders detected at startup: `h264_nvenc` (NVIDIA), `h264_amf` (AMD), `h264_qsv` (Intel). Setting defaults to `libx264 CRF 18` (deterministic, best compatibility); user can switch to NVENC with quality preset for 3–5× speed.
+- Hardware encode: `h264_nvenc` (NVIDIA) selectable in settings. Setting defaults to `libx264 CRF 18` (deterministic, best compatibility); NVENC gives ~3–5× speed when present.
 
 ## Text rendering: opentype.js (measure) + `@napi-rs/canvas` (draw) + bundled TTFs
 

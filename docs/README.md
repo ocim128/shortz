@@ -28,7 +28,7 @@ The core idea: **templates, not timelines**. We are not building another CapCut.
 | Render engine | FFmpeg (spawned as child process) | Deterministic, fast, already the industry standard; FFmpeg 8.0 is already installed on this machine |
 | Text rendering | Measured with **opentype.js** (pure TS, shared by preview & render), drawn to transparent PNG via `@napi-rs/canvas`, composited by FFmpeg | Identical line breaks in Node/Chromium/tests; no fontconfig/drawtext pain on Windows |
 | Preview media | Privileged `media://` protocol with HTTP Range (206) support | Chromium blocks `file://` from the app origin; Range support = instant scrubbing |
-| Templates | Declarative JSON files with slots (video / text / image / shape) | New templates = new JSON, no code change |
+| Templates | Declarative JSON files with slots (video / text) | New templates = new JSON, no code change |
 | Storage | Local filesystem only (`%APPDATA%\shortz`, portable mode planned) | No backend, no accounts, nothing to host |
 | Output | H.264 + AAC, 1080×1920, `yuv420p`, `+faststart` | Exactly what TikTok wants; small files, no re-encode artifacts |
 

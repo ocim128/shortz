@@ -60,11 +60,11 @@ ShortZ is a **single local desktop app**. There is no server, no database, no cl
 ### 4. Preview Compositor (renderer)
 - HTML/CSS composition inside a phone-shaped frame (1080×1920 design space scaled down ~0.36 → 390×693 on screen).
 - `<video>` element plays the source through the privileged **`media://` protocol** (registered on the app session with `stream: true`): the handler streams the file from disk and answers HTTP `Range` requests with `206`/`Content-Range`, so seeking/scrubbing is instant. Direct `file://` playback is impossible — Chromium blocks it from the app origin, and naive handlers without Range break scrubbing. URLs are minted only by the main process (IPC `getMediaUrl`); the renderer never builds file paths into sources.
-- Text/shape slots are absolutely-positioned DOM nodes styled from the `ResolvedLayout` (per-line spans; the browser never re-wraps).
+- Text is painted on a canvas from the `ResolvedLayout`'s pre-broken lines (the browser never re-wraps).
 - Safe-zone overlay is a static PNG/SVG of TikTok's UI chrome (search pill, action rail, caption area), toggleable.
 
 ### 5. Overlay Renderer (main)
-- For text/image/shape slots: draw them onto one or more 1080×1920 transparent PNGs with `@napi-rs/canvas` — consuming the **pre-broken lines from the shared opentype metrics** (never re-measuring), with the bundled TTF fonts registered at startup.
+- For text slots: draw them onto a 1080×1920 transparent PNG with `@napi-rs/canvas` — consuming the **pre-broken lines from the shared opentype metrics** through the SAME shared draw loop the preview uses (`src/shared/layout/draw-text.ts`), with the bundled TTF fonts registered at startup.
 - Static elements → single PNG for the whole duration.
 - Timed elements (future: captions, fades) → per-time-range PNGs with FFmpeg `enable='between(t,…)'`.
 - Video slots are NOT drawn here — FFmpeg handles video scaling/padding itself; the overlay PNG only carries graphics and text.
@@ -78,7 +78,7 @@ ShortZ is a **single local desktop app**. There is no server, no database, no cl
 
 ### 7. Project Store
 - CRUD for projects as JSON files in the data folder (`technical/data-storage.md`).
-- Holds: source path, template id + field values, trim, audio setting, output history.
+- Holds: source path, template id + field values, trim, audio setting.
 - Autosave on change (debounced 500ms).
 
 ## Data flow — export
@@ -114,7 +114,7 @@ on exit(0): move temp → final output path, record in project history,
 - **One render job at a time** in v0.1 (queue in v0.2 if batch is added). A second click while busy = disabled button, not a queue.
 - Renders run fully out-of-process; even if ffmpeg hangs, the UI stays responsive and the user can cancel.
 - Probe/thumbnail jobs are also child processes but are fast; they run on demand with caching.
-- Hardware encode: detect NVENC/AMF/QSV once at startup (`ffmpeg -hide_banner -encoders`), expose encoder choice in settings; default `libx264` for determinism.
+- Hardware encode: NVENC is the one hardware path exposed in settings (default stays `libx264` for determinism); AMF/QSV return if ever needed.
 
 ## Preview performance
 

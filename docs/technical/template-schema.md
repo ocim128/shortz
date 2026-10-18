@@ -26,15 +26,13 @@ interface Template {
   inputs: FieldDef[];    // what the editor asks the user for
 }
 
-type Slot = VideoSlot | TextSlot | ImageSlot | ShapeSlot;  // Image/Shape: phase 2
+type Slot = VideoSlot | TextSlot;  // image/shape slots are a possible future addition
 
 interface SlotBase {
   id: string;
   x: number;                     // left edge in design space
   width: number;                 // box width
   visible: boolean;
-  tStart?: number;               // seconds; omit = 0 (timed slots: M4)
-  tEnd?: number;                 // seconds; omit = clip duration
 }
 
 interface VideoSlot extends SlotBase {
@@ -122,7 +120,6 @@ interface ResolvedLayout {
     fontSize: number;              // final (possibly shrunk) size
     lineHeightPx: number;
     color: string; align: string;
-    tStart?: number; tEnd?: number;
   }>;
   warnings: string[];              // safe-zone ink, shrink floor hit, etc. (non-fatal)
 }
