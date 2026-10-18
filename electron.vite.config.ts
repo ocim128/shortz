@@ -1,14 +1,19 @@
+import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
 // Renderer JSX is handled by esbuild directly (no @vitejs/plugin-react — kept
 // out of the dependency budget per docs/03-tech-stack.md).
+//
+// Inputs are resolved against the project root (process.cwd()) — electron-vite
+// resolves the renderer build entry from cwd, not from the renderer root, so
+// relative inputs break `pnpm build` while working in `pnpm dev`.
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     build: {
       outDir: 'out/main',
       rollupOptions: {
-        input: 'src/main/index.ts'
+        input: resolve('src/main/index.ts')
       }
     }
   },
@@ -17,7 +22,7 @@ export default defineConfig({
     build: {
       outDir: 'out/preload',
       rollupOptions: {
-        input: 'src/preload/index.ts'
+        input: resolve('src/preload/index.ts')
       }
     }
   },
@@ -27,7 +32,7 @@ export default defineConfig({
     build: {
       outDir: 'out/renderer',
       rollupOptions: {
-        input: 'index.html'
+        input: resolve('src/renderer/index.html')
       }
     }
   }

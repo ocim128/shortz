@@ -37,6 +37,11 @@ export function EditorScreen(): JSX.Element {
   const [sourceMissing, setSourceMissing] = useState(false)
   const [showSafeZones, setShowSafeZones] = useState<boolean>(settings?.ui.safeZonesDefault ?? true)
 
+  // Settings load async — adopt the persisted default until the user toggles.
+  useEffect(() => {
+    if (settings) setShowSafeZones(settings.ui.safeZonesDefault)
+  }, [settings?.ui.safeZonesDefault])
+
   const template = useMemo(
     () => (project ? (findMockTemplate(project.templateId) ?? mockTemplates[0]!) : mockTemplates[0]!),
     [project?.templateId]

@@ -1,0 +1,23 @@
+# electron-builder — docs/technical/project-structure.md §packaging notes.
+# Native/spawned-process resources must live outside the ASAR archive:
+# Skia GlobalFonts.registerFromPath and ffmpeg-static's spawned binary both
+# go through OS file APIs that cannot see virtual app.asar paths.
+appId: app.shortz.desktop
+productName: ShortZ
+directories:
+  output: dist
+files:
+  - out/**
+  - resources/**
+asarUnpack:
+  - resources/fonts/**
+  - resources/templates/**
+  - node_modules/ffmpeg-static/**
+win:
+  target:
+    - nsis
+    - portable
+  icon: resources/icons/icon.ico # placeholder (solid accent square) — real art pending
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
