@@ -707,6 +707,23 @@
   min-width: 34px;
   text-align: right;
 }
+.config-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.config-row .btn {
+  flex: 1;
+  white-space: nowrap;
+}
+/* The load/delete row and the "Saved configs" label that follows the Save
+   button both need breathing room after the row above them. */
+.config-row {
+  margin-top: 8px;
+}
+.field--config .config-row + .field__label {
+  margin-top: 10px;
+}
 
 /* --- export bar ------------------------------------------------------------- */
 

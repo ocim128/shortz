@@ -94,6 +94,37 @@ export interface TemplateMeta {
 }
 
 // ---------------------------------------------------------------------------
+// Editor configs — named saved editor configurations (docs/technical/data-storage.md
+// §editor-configs). Mirrors the core store's ShortzEditorConfig / ShortzEditorConfigMeta.
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything the user tweaks in the editor that is not tied to the clip:
+ * template + fields + knobs + trim + audio. Named slots — no file dialogs.
+ */
+export interface EditorConfig {
+  schemaVersion: 1
+  /** Display name — unique key: saving with an existing name updates it. */
+  name: string
+  /** ISO timestamp stamped on save. */
+  savedAt: string
+  templateId: string
+  values: {
+    fields: Record<string, string>
+    knobs: Record<string, unknown>
+  }
+  trim: { start: number; end: number }
+  audio: 'keep' | 'mute'
+}
+
+/** Listing entry — the body is fetched on demand via loadEditorConfig(id). */
+export interface EditorConfigMeta {
+  id: string
+  name: string
+  savedAt: string
+}
+
+// ---------------------------------------------------------------------------
 // Render / export
 // ---------------------------------------------------------------------------
 
@@ -190,6 +221,12 @@ export interface ShortzApi {
   saveProject(p: Project): Promise<void>
   deleteProject(id: string): Promise<void>
   relinkSource(id: string, newPath: string): Promise<Project>
+  // editor configs (named slots under <dataDir>/editor-configs/, no file dialogs)
+  /** Saving with an existing name updates that config in place. */
+  saveEditorConfig(c: Omit<EditorConfig, 'savedAt'>): Promise<EditorConfigMeta>
+  listEditorConfigs(): Promise<EditorConfigMeta[]>
+  loadEditorConfig(id: string): Promise<EditorConfig>
+  deleteEditorConfig(id: string): Promise<void>
   // media
   pickFile(): Promise<string | null>
   getMediaUrl(sourcePath: string): Promise<string>

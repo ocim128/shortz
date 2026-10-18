@@ -350,6 +350,54 @@ await test('trim handle drags and snaps to 0.1 s', async () => {
   assert(m, `trim label not snapped to one decimal: "${label}"`)
 })
 
+await test('save named config → edit → load config restores the saved state', async () => {
+  assert(editorUp, 'skipped: editor never rendered')
+  const clickBtn = (label) => evaluate(`(() => {
+    const b = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes(${JSON.stringify(label)}))
+    if (!b) return false
+    b.click()
+    return true
+  })()`)
+  const setNativeValue = (selector, value) => evaluate(`(() => {
+    const el = document.querySelector(${JSON.stringify(selector)})
+    if (!el) return false
+    const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype
+    const set = Object.getOwnPropertyDescriptor(proto, 'value').set
+    set.call(el, ${JSON.stringify(value)})
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    return true
+  })()`)
+
+  // Name + save the current state (hook = the text typed by the editor-open test).
+  assert(await setNativeValue('#config-name', 'e2e reel'), 'config name input missing')
+  assert(await clickBtn('Save config'), 'Save config button missing')
+  assert(
+    await waitFor(`Array.from(document.querySelectorAll('.toast')).some(t => t.textContent.includes('Configuration "e2e reel" saved'))`, 8_000, 'save toast'),
+    'save toast missing'
+  )
+  // The picker lists the just-saved config and auto-selects it.
+  const listed = await waitFor(`(() => {
+    const sel = document.querySelector('#config-pick')
+    if (!sel || sel.options.length === 0) return null
+    return { selected: sel.options[sel.selectedIndex]?.textContent ?? '', value: sel.value }
+  })()`, 8_000, 'config picker to list the saved config')
+  assert(/e2e reel/.test(listed.selected), `picker does not list the saved config ("${listed.selected}")`)
+  assert(listed.value.length > 0, 'picker has no selected value')
+
+  // Dirty the hook, then load back — the named slot must win over the edit.
+  assert(await setNativeValue('textarea', 'temporary text that load must revert'), 'hook textarea missing')
+  assert(await clickBtn('Load config'), 'Load config button missing')
+  assert(
+    await waitFor(`Array.from(document.querySelectorAll('.toast')).some(t => t.textContent.includes('Configuration "e2e reel" loaded'))`, 8_000, 'load toast'),
+    'load toast missing'
+  )
+  const restored = await waitFor(`(() => {
+    const ta = document.querySelector('textarea')
+    return ta && ta.value === 'A wildlife photographer put a microphone beside a baby squirrel' ? true : null
+  })()`, 8_000, 'hook to be restored')
+  assert(restored, 'hook not restored after Load config')
+})
+
 await test('export control reflects engine state (disabled+pending or enabled)', async () => {
   const ex = await evaluate(`(() => {
     const b = document.querySelector('.editor__topbar .btn-primary')

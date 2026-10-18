@@ -1,7 +1,9 @@
-import type { Project } from '../../../preload/api'
+import { useCallback, useEffect, useState } from 'react'
+import type { EditorConfig, EditorConfigMeta, Project } from '../../../preload/api'
 import type { FieldDef, KnobDef, TextSlot } from '../../../shared/template/types'
 import { fontKeyFor, wrapAndShrink, type FontLoader } from '../../../shared/layout/text'
 import { formatTime } from '../lib/format'
+import { toast } from '../stores/toastStore'
 import { S } from '../strings'
 
 /**
@@ -23,6 +25,105 @@ interface FieldPanelProps {
 }
 
 export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, duration, onPatch }: FieldPanelProps): JSX.Element {
+  // Named configurations: fixed folder, no dialogs (docs/technical/data-storage.md
+  // §editor-configs). Save snapshots the editor under a name — saving with an
+  // existing name updates it; Load applies the selected one here, with trim
+  // clamped to the current clip so a longer saved range cannot leak in.
+  const [configs, setConfigs] = useState<EditorConfigMeta[]>([])
+  const [configName, setConfigName] = useState('')
+  const [selectedConfigId, setSelectedConfigId] = useState('')
+
+  const refreshConfigs = useCallback(async (): Promise<EditorConfigMeta[]> => {
+    try {
+      const list = await window.shortz.listEditorConfigs()
+      setConfigs(list)
+      return list
+    } catch (err) {
+      toast.err(`${S.errLoadConfig}: ${err instanceof Error ? err.message : String(err)}`)
+      return []
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshConfigs()
+  }, [refreshConfigs])
+
+  // Keep the selection valid as the list changes (save/delete).
+  useEffect(() => {
+    const first = configs[0]
+    if (!first) {
+      if (selectedConfigId !== '') setSelectedConfigId('')
+    } else if (!configs.some((c) => c.id === selectedConfigId)) {
+      setSelectedConfigId(first.id)
+    }
+  }, [configs, selectedConfigId])
+
+  const saveConfig = async (): Promise<void> => {
+    const name = configName.trim()
+    if (name.length === 0) {
+      toast.err(S.errConfigName)
+      return
+    }
+    try {
+      const meta = await window.shortz.saveEditorConfig({
+        schemaVersion: 1,
+        name,
+        templateId: project.templateId,
+        values: {
+          fields: { ...project.values.fields },
+          knobs: { ...project.values.knobs }
+        },
+        trim: { ...project.trim },
+        audio: project.audio
+      })
+      setConfigName(meta.name)
+      setSelectedConfigId(meta.id)
+      await refreshConfigs()
+      toast.ok(S.configSavedToast(meta.name))
+    } catch (err) {
+      toast.err(`${S.errSaveConfig}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  const loadConfig = async (): Promise<void> => {
+    if (!selectedConfigId) return
+    let saved: EditorConfig
+    try {
+      saved = await window.shortz.loadEditorConfig(selectedConfigId)
+    } catch (err) {
+      toast.err(`${S.errLoadConfig}: ${err instanceof Error ? err.message : String(err)}`)
+      return
+    }
+    onPatch((d) => {
+      d.templateId = saved.templateId
+      d.values = {
+        fields: { ...saved.values.fields },
+        knobs: { ...saved.values.knobs }
+      }
+      const maxT = duration > 0 ? duration : saved.trim.end
+      d.trim = {
+        start: Math.max(0, Math.min(saved.trim.start, Math.max(0, maxT - 0.1))),
+        end: Math.max(0.1, Math.min(saved.trim.end, maxT))
+      }
+      d.audio = saved.audio
+    })
+    toast.ok(S.configLoadedToast(saved.name))
+  }
+
+  const deleteConfig = async (): Promise<void> => {
+    const target = configs.find((c) => c.id === selectedConfigId)
+    if (!target) return
+    if (!window.confirm(S.configDeleteConfirm(target.name))) return
+    try {
+      await window.shortz.deleteEditorConfig(target.id)
+      await refreshConfigs()
+      if (configName.trim() === target.name) setConfigName('')
+      toast.ok(S.configDeletedToast(target.name))
+    } catch (err) {
+      toast.err(`${S.errDeleteConfig}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   return (
     <div className="field-panel">
       <h2 className="pane-title">{S.templateSettingsTitle}</h2>
@@ -220,6 +321,94 @@ export function FieldPanel({ project, knobs, inputs, textSlots, loadFont, durati
           {S.resetTrim}
         </button>
       </div>
+
+      <div className="field-panel__divider" role="presentation" />
+      <h2 className="pane-title">{S.configTitle}</h2>
+
+      <div className="field field--config">
+        <label className="field__label" htmlFor="config-name">
+          {S.configNameLabel}
+        </label>
+        <input
+          id="config-name"
+          className="input"
+          type="text"
+          value={configName}
+          placeholder={S.configNamePlaceholder}
+          maxLength={60}
+          onChange={(e) => setConfigName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void saveConfig()
+            }
+          }}
+        />
+        <div className="config-row">
+          <button
+            type="button"
+            className="btn btn-sm"
+            title={S.saveConfigTitle(configName)}
+            onClick={() => void saveConfig()}
+          >
+            💾 {S.saveConfig}
+          </button>
+        </div>
+
+        {configs.length > 0 && (
+          <>
+            <label className="field__label" htmlFor="config-pick">
+              {S.configPickLabel}
+            </label>
+            <select
+              id="config-pick"
+              className="input"
+              value={selectedConfigId}
+              onChange={(e) => {
+                setSelectedConfigId(e.target.value)
+                // Picking a config seeds the name field, so Save updates it.
+                const picked = configs.find((c) => c.id === e.target.value)
+                if (picked) setConfigName(picked.name)
+              }}
+            >
+              {configs.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {configOptionLabel(c)}
+                </option>
+              ))}
+            </select>
+            <div className="config-row">
+              <button
+                type="button"
+                className="btn btn-sm"
+                title={S.loadConfigTitle}
+                onClick={() => void loadConfig()}
+              >
+                📂 {S.loadConfig}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                title={S.deleteConfigTitle}
+                onClick={() => void deleteConfig()}
+              >
+                🗑 {S.deleteConfig}
+              </button>
+            </div>
+          </>
+        )}
+        <div className="field__hint">{S.configHint}</div>
+      </div>
     </div>
   )
+}
+
+function configOptionLabel(c: EditorConfigMeta): string {
+  const when = new Date(c.savedAt).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+  return `${c.name} — ${when}`
 }

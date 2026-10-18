@@ -3,6 +3,8 @@ import fss from 'node:fs'
 import path from 'node:path'
 import { app, dialog, ipcMain, shell, BrowserWindow } from 'electron'
 import type {
+  EditorConfig,
+  EditorConfigMeta,
   ExportOptions,
   ExportResult,
   FontKey,
@@ -50,6 +52,12 @@ import { generateThumbnail } from '../core/media/thumbnail'
 import { renderProject, defaultTmpRoot } from '../core/render/orchestrator'
 import type { OrchestratorProgress } from '../core/render/orchestrator'
 import { saveSettings as saveSettingsDoc, loadSettings } from '../core/store/settings'
+import {
+  deleteEditorConfig,
+  listEditorConfigs,
+  loadEditorConfig,
+  saveEditorConfig
+} from '../core/store/editor-configs'
 import { rmWithRetry } from '../core/store/fs-utils'
 import { logWarn } from '../core/log'
 
@@ -406,6 +414,30 @@ export function registerIpcHandlers(): void {
     }
     const saved = await saveProjectDocumentTo(projectsRoot(), validateForSave(doc))
     return toWireProject(saved, false)
+  })
+
+  // --- editor configs (named slots — save/list/load/delete, no file dialogs) ---
+
+  handle('shortz:saveEditorConfig', async (c: Omit<EditorConfig, 'savedAt'>): Promise<EditorConfigMeta> => {
+    // sanitizeEditorConfig (inside the store) rejects bad shapes with a
+    // readable message that the renderer toasts.
+    return (await saveEditorConfig(
+      c as Parameters<typeof saveEditorConfig>[0],
+      dataDir()
+    )) as unknown as EditorConfigMeta
+  })
+
+  handle('shortz:listEditorConfigs', async (): Promise<EditorConfigMeta[]> => {
+    return (await listEditorConfigs(dataDir())) as unknown as EditorConfigMeta[]
+  })
+
+  handle('shortz:loadEditorConfig', async (id: string): Promise<EditorConfig> => {
+    // The store's configFilePath asserts the ULID shape before joining paths.
+    return (await loadEditorConfig(id, dataDir())) as unknown as EditorConfig
+  })
+
+  handle('shortz:deleteEditorConfig', async (id: string): Promise<void> => {
+    await deleteEditorConfig(id, dataDir())
   })
 
   // --- media ------------------------------------------------------------------

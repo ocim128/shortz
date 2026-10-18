@@ -14,6 +14,8 @@ Everything below is relative to the data dir.
 ```
 <data>/
   settings.json               # app settings (below)
+  editor-configs/             # named editor configurations (below)
+    <configId>.json           # configId = ULID
   projects/
     <projectId>\              # projectId = ULID
       project.json            # the project document (below)
@@ -92,6 +94,34 @@ Rules:
 ```
 
 Unknown keys preserved on write (forward compatibility). Missing file = defaults.
+
+## `editor-configs/`
+
+The editor's **Save config / Load config** controls — named slots under a fixed folder, no file dialogs. Each config snapshots everything the user tweaks in the editor that is not tied to the clip, so a saved setup can be re-applied to any project (the everyday repost flow: same template, same knobs, new video).
+
+```jsonc
+// editor-configs/<configId>.json — the id lives in the filename only
+{
+  "id": "01J…",                              // matches the filename (written for readability)
+  "schemaVersion": 1,
+  "name": "squirrel reel",                   // display name, unique key (case-insensitive)
+  "savedAt": "2026-10-18T15:42:01.000Z",     // stamped on save
+  "templateId": "hook-letterbox",
+  "values": {                                // same shape as project.json's values
+    "fields": { "hook": "…" },
+    "knobs": { "backgroundStyle": "black", "videoTop": 520 }
+  },
+  "trim": { "start": 3.2, "end": 21.0 },     // clamped to the target clip on load
+  "audio": "keep"
+}
+```
+
+Rules:
+
+- Deliberately excludes everything clip/project-specific: source path, name, id, probe, export history.
+- **Names are the unique key** (max 60 chars, compared case-insensitively): saving with an existing name updates that config in place; otherwise a new ULID file is minted. The list is newest-first.
+- Load applies a config to the active project via the normal patch path, so autosave/dirty tracking just work.
+- A corrupt file is skipped by the listing (the healthy configs stay usable) but fails its own load with a readable error — re-saving the same name replaces it. Missing folder = empty list.
 
 ## Global export log — deferred out of v0.1
 

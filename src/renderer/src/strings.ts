@@ -63,6 +63,31 @@ export const S = {
   trimEnd: 'Trim end (s)',
   resetTrim: 'Reset trim',
 
+  // Editor — named configurations (fixed folder, no dialogs)
+  configTitle: 'CONFIGURATION',
+  configNameLabel: 'Name',
+  configNamePlaceholder: 'Name this setup (e.g. squirrel reel)',
+  saveConfig: 'Save config',
+  saveConfigTitle: (name: string) =>
+    name.trim().length === 0
+      ? 'Type a name first'
+      : `Save template, texts, knobs, trim and audio as "${name.trim()}" (same name updates it)`,
+  configPickLabel: 'Saved configs',
+  configEmptyOption: 'No saved configs yet',
+  loadConfig: 'Load config',
+  loadConfigTitle: 'Apply the selected configuration to this project',
+  deleteConfig: 'Delete',
+  deleteConfigTitle: 'Delete the selected configuration',
+  configDeleteConfirm: (name: string) => `Delete saved config "${name}"?`,
+  configHint: 'Template, texts, knobs, trim and audio — named setups, loadable into any project.',
+  configSavedToast: (name: string) => `Configuration "${name}" saved`,
+  configLoadedToast: (name: string) => `Configuration "${name}" loaded`,
+  configDeletedToast: (name: string) => `Configuration "${name}" deleted`,
+  errSaveConfig: 'Could not save the configuration',
+  errLoadConfig: 'Could not load the configuration',
+  errDeleteConfig: 'Could not delete the configuration',
+  errConfigName: 'Type a name for the configuration first',
+
   // Render bar
   rendering: 'Rendering…',
   progressStage: (stage: string) => `Rendering… ${stage}`,

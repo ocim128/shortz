@@ -14,6 +14,10 @@ const CHANNEL = {
   saveProject: 'shortz:saveProject',
   deleteProject: 'shortz:deleteProject',
   relinkSource: 'shortz:relinkSource',
+  saveEditorConfig: 'shortz:saveEditorConfig',
+  listEditorConfigs: 'shortz:listEditorConfigs',
+  loadEditorConfig: 'shortz:loadEditorConfig',
+  deleteEditorConfig: 'shortz:deleteEditorConfig',
   pickFile: 'shortz:pickFile',
   getMediaUrl: 'shortz:getMediaUrl',
   getThumbUrl: 'shortz:getThumbUrl',
@@ -50,6 +54,11 @@ const api: ShortzApi = {
   saveProject: (p) => ipcRenderer.invoke(CHANNEL.saveProject, p),
   deleteProject: (id) => ipcRenderer.invoke(CHANNEL.deleteProject, id),
   relinkSource: (id, newPath) => ipcRenderer.invoke(CHANNEL.relinkSource, id, newPath),
+  // editor configs
+  saveEditorConfig: (c) => ipcRenderer.invoke(CHANNEL.saveEditorConfig, c),
+  listEditorConfigs: () => ipcRenderer.invoke(CHANNEL.listEditorConfigs),
+  loadEditorConfig: (id) => ipcRenderer.invoke(CHANNEL.loadEditorConfig, id),
+  deleteEditorConfig: (id) => ipcRenderer.invoke(CHANNEL.deleteEditorConfig, id),
   // media
   pickFile: () => ipcRenderer.invoke(CHANNEL.pickFile),
   getMediaUrl: (sourcePath) => ipcRenderer.invoke(CHANNEL.getMediaUrl, sourcePath),
