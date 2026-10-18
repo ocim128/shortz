@@ -141,7 +141,8 @@ export function parseFfprobeJson(rawJson: string, source: string): ClipMeta {
   const fpsRational = video.r_frame_rate ?? ''
   const fps = parseFpsRational(fpsRational)
   const bitrateRaw = parsed.format?.bit_rate
-  const bitrate = bitrateRaw !== undefined && Number.isFinite(Number(bitrateRaw)) ? Number(bitrateRaw) : null
+  const bitrate =
+    bitrateRaw !== undefined && Number.isFinite(Number(bitrateRaw)) ? Number(bitrateRaw) : null
 
   return {
     path: path.resolve(source),
@@ -172,7 +173,10 @@ export interface ProbeCacheOptions {
   cacheDir?: string
 }
 
-export async function probeWithCache(source: string, options: ProbeCacheOptions): Promise<ClipMeta> {
+export async function probeWithCache(
+  source: string,
+  options: ProbeCacheOptions
+): Promise<ClipMeta> {
   const absolute = path.resolve(source)
   const { cacheDir } = options
   let cacheKey: string | null = null
@@ -181,9 +185,7 @@ export async function probeWithCache(source: string, options: ProbeCacheOptions)
   if (cacheDir) {
     try {
       const stat = await fs.stat(absolute)
-      cacheKey = createHash('sha1')
-        .update(`${absolute}|${stat.size}|${stat.mtimeMs}`)
-        .digest('hex')
+      cacheKey = createHash('sha1').update(`${absolute}|${stat.size}|${stat.mtimeMs}`).digest('hex')
       cacheFile = path.join(cacheDir, `${cacheKey}.json`)
       const cached = await fs.readFile(cacheFile, 'utf8')
       const meta = JSON.parse(cached) as ClipMeta

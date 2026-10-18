@@ -76,9 +76,7 @@ export function buildFilterComplex(input: BuildArgsInput): string {
     // Case A — solid background; rounded corners are drawn as corner covers on the overlay PNG.
     const color = ffmpegBackgroundColor(canvas.background)
     parts.push(`[0:v]fps=${fps},scale=${video.w}:${video.h}:flags=lanczos,setsar=1[vid]`)
-    parts.push(
-      `color=c=${color}:s=${canvas.width}x${canvas.height}:r=${fps}:d=${duration}[bg]`
-    )
+    parts.push(`color=c=${color}:s=${canvas.width}x${canvas.height}:r=${fps}:d=${duration}[bg]`)
     parts.push(`[bg][vid]overlay=${video.x}:${video.y}:shortest=1[base]`)
   }
 

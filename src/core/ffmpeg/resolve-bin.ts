@@ -26,7 +26,10 @@ function runVersion(binary: string): Promise<string | null> {
       }
     }
     try {
-      const child = spawn(binary, ['-version'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
+      const child = spawn(binary, ['-version'], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true
+      })
       let out = ''
       child.stdout.on('data', (chunk: Buffer) => {
         out += chunk.toString('utf8')
@@ -56,8 +59,7 @@ async function tryBundled(): Promise<{ ffmpegPath: string; ffprobePath: string }
   try {
     const ffmpegModule = await import('ffmpeg-static')
     const ffprobeModule = await import('ffprobe-static')
-    const ffmpegPath =
-      typeof ffmpegModule.default === 'string' ? ffmpegModule.default : null
+    const ffmpegPath = typeof ffmpegModule.default === 'string' ? ffmpegModule.default : null
     const ffprobePath =
       typeof ffprobeModule.default?.path === 'string' ? ffprobeModule.default.path : null
     if (ffmpegPath && ffprobePath) return { ffmpegPath, ffprobePath }
@@ -97,7 +99,12 @@ export async function resolveFfmpegBinaries(
       runVersion('ffprobe')
     ])
     if (ffmpegVersion && ffprobeVersion) {
-      return { ffmpegPath: 'ffmpeg', ffprobePath: 'ffprobe', source: 'system', version: ffmpegVersion }
+      return {
+        ffmpegPath: 'ffmpeg',
+        ffprobePath: 'ffprobe',
+        source: 'system',
+        version: ffmpegVersion
+      }
     }
     if (preference === 'system') {
       throw new Error('ffmpeg/ffprobe not found on PATH (settings: ffmpeg.source = "system")')

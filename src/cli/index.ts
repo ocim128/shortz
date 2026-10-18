@@ -70,7 +70,8 @@ function parseArgs(argv: string[]): CliOptions {
       }
       case '--crf': {
         const crf = Number(next())
-        if (!Number.isFinite(crf) || crf < 0 || crf > 51) throw new CliError('--crf must be in [0, 51]')
+        if (!Number.isFinite(crf) || crf < 0 || crf > 51)
+          throw new CliError('--crf must be in [0, 51]')
         options.crf = crf
         break
       }
@@ -193,7 +194,9 @@ async function runRender(options: CliOptions): Promise<number> {
     source: { ...project.source, path: sourcePath }
   }
 
-  const baseName = sanitizeFileName(project.name || path.basename(sourcePath, path.extname(sourcePath)))
+  const baseName = sanitizeFileName(
+    project.name || path.basename(sourcePath, path.extname(sourcePath))
+  )
   const outputPath = options.output
     ? path.resolve(options.output)
     : path.join(process.cwd(), `${baseName}_${timestampSuffix()}.mp4`)
@@ -270,7 +273,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       return 1
     }
     if (error instanceof TemplateValidationError) {
-      process.stderr.write(`[error] template invalid:\n  ${error.issues.map((i) => `${i.path || '(root)'}: ${i.message}`).join('\n  ')}\n`)
+      process.stderr.write(
+        `[error] template invalid:\n  ${error.issues.map((i) => `${i.path || '(root)'}: ${i.message}`).join('\n  ')}\n`
+      )
       return 1
     }
     if (error instanceof ProjectFileError || error instanceof CliError) {

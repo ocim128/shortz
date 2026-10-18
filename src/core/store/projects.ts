@@ -93,10 +93,18 @@ export function validateProjectDocument(raw: unknown, filePath: string): Project
   if (typeof doc.templateId !== 'string' || doc.templateId.length === 0) {
     throw new ProjectFileError(filePath, 'templateId is required')
   }
-  if (doc.values === undefined || typeof doc.values.fields !== 'object' || doc.values.fields === null) {
+  if (
+    doc.values === undefined ||
+    typeof doc.values.fields !== 'object' ||
+    doc.values.fields === null
+  ) {
     throw new ProjectFileError(filePath, 'values.fields is required')
   }
-  if (doc.values.knobs === undefined || typeof doc.values.knobs !== 'object' || doc.values.knobs === null) {
+  if (
+    doc.values.knobs === undefined ||
+    typeof doc.values.knobs !== 'object' ||
+    doc.values.knobs === null
+  ) {
     throw new ProjectFileError(filePath, 'values.knobs is required')
   }
   if (doc.audio !== undefined && doc.audio !== 'keep' && doc.audio !== 'mute') {

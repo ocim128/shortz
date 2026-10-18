@@ -62,7 +62,8 @@ export interface ResolvedLayout {
   warnings: string[]
 }
 
-export type LayoutErrorCode = 'text-too-long' | 'missing-input' | 'invalid-template' | 'unsupported-fit'
+export type LayoutErrorCode =
+  'text-too-long' | 'missing-input' | 'invalid-template' | 'unsupported-fit'
 
 export class LayoutError extends Error {
   readonly code: LayoutErrorCode
@@ -169,9 +170,15 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
     const text = raw.trim()
     if (text.length === 0) continue
 
-    const textAlign = declared('textAlign') ? (knobs.textAlign as ResolvedText['align']) : textSlot.align
-    const textFont = declared('textFont') ? (knobs.textFont as 'inter' | 'poppins') : textSlot.fontFamily
-    const textMaxLines = declared('textMaxLines') ? (knobs.textMaxLines as number) : textSlot.maxLines
+    const textAlign = declared('textAlign')
+      ? (knobs.textAlign as ResolvedText['align'])
+      : textSlot.align
+    const textFont = declared('textFont')
+      ? (knobs.textFont as 'inter' | 'poppins')
+      : textSlot.fontFamily
+    const textMaxLines = declared('textMaxLines')
+      ? (knobs.textMaxLines as number)
+      : textSlot.maxLines
 
     const fontKey = fontKeyFor(textFont, textSlot.fontWeight)
     const result = wrapAndShrink({
@@ -223,7 +230,9 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
 
     // Safe-zone ink checks (non-fatal).
     if (y < template.safeZones.top) {
-      warnings.push(`Text slot "${textSlot.id}" ink enters the top safe zone (y ${y} < ${template.safeZones.top})`)
+      warnings.push(
+        `Text slot "${textSlot.id}" ink enters the top safe zone (y ${y} < ${template.safeZones.top})`
+      )
     }
     if (y + blockHeight > canvasHeight - template.safeZones.bottom) {
       warnings.push(`Text slot "${textSlot.id}" ink enters the bottom caption zone`)
@@ -239,7 +248,9 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
       }
     }
     if (result.shrunkToFloor) {
-      warnings.push(`Text slot "${textSlot.id}" was shrunk to the minimum size (${result.fontSize}px)`)
+      warnings.push(
+        `Text slot "${textSlot.id}" was shrunk to the minimum size (${result.fontSize}px)`
+      )
     }
 
     texts.push({

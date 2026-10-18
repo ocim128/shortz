@@ -150,10 +150,17 @@ export async function renderProject(request: RenderRequest): Promise<RenderResul
       fail('probe', error)
     }
 
-    const trim = normalizeTrim(request.trim !== undefined ? request.trim : (request.project.trim ?? null), clip.durationSec)
+    const trim = normalizeTrim(
+      request.trim !== undefined ? request.trim : (request.project.trim ?? null),
+      clip.durationSec
+    )
     const durationSec = trim ? trim.end - trim.start : clip.durationSec
     if (durationSec > 600) {
-      throw new RenderError(jobId, 'probe', `Clip duration ${durationSec.toFixed(1)}s exceeds the 10 minute limit`)
+      throw new RenderError(
+        jobId,
+        'probe',
+        `Clip duration ${durationSec.toFixed(1)}s exceeds the 10 minute limit`
+      )
     }
     const audio: AudioMode = request.audio ?? request.project.audio ?? 'keep'
     const fps = request.fps ?? DEFAULT_FPS
@@ -237,12 +244,7 @@ export async function renderProject(request: RenderRequest): Promise<RenderResul
     }
     if (run.code !== 0) {
       const tail = run.stderrTail.slice(-30)
-      throw new RenderError(
-        jobId,
-        'render',
-        `FFmpeg exited with code ${String(run.code)}`,
-        tail
-      )
+      throw new RenderError(jobId, 'render', `FFmpeg exited with code ${String(run.code)}`, tail)
     }
 
     // Stage 6 — FINALIZE

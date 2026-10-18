@@ -92,7 +92,11 @@ function drawTexts(ctx: SKRSContext2D, layout: ResolvedLayout): void {
     ctx.textAlign = text.align === 'center' ? 'center' : text.align === 'right' ? 'right' : 'left'
 
     const anchorX =
-      text.align === 'center' ? text.x + text.width / 2 : text.align === 'right' ? text.x + text.width : text.x
+      text.align === 'center'
+        ? text.x + text.width / 2
+        : text.align === 'right'
+          ? text.x + text.width
+          : text.x
 
     for (let i = 0; i < text.lines.length; i += 1) {
       const baseline = text.y + i * text.lineHeightPx + text.ascentPx

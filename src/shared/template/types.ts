@@ -66,8 +66,7 @@ export interface VideoSlot extends SlotBase {
 }
 
 export type TextAnchor =
-  | { kind: 'fixed'; y: number; height: number }
-  | { kind: 'aboveVideo'; gap: number; minY: number }
+  { kind: 'fixed'; y: number; height: number } | { kind: 'aboveVideo'; gap: number; minY: number }
 
 export interface TextSlot extends SlotBase {
   type: 'text'

@@ -141,8 +141,7 @@ export async function runFfmpeg(options: RunFfmpegOptions): Promise<RunFfmpegRes
         case 'out_time': {
           const match = value.match(/^(\d+):(\d+):(\d+(?:\.\d+)?)$/)
           if (match) {
-            const seconds =
-              Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
+            const seconds = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
             lastOutTimeSec = Math.max(lastOutTimeSec, seconds)
           }
           break

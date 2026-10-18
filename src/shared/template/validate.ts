@@ -15,8 +15,7 @@ export interface ValidationIssue {
 }
 
 export type TemplateValidationResult =
-  | { ok: true; template: Template }
-  | { ok: false; issues: ValidationIssue[] }
+  { ok: true; template: Template } | { ok: false; issues: ValidationIssue[] }
 
 export class TemplateValidationError extends Error {
   readonly issues: ValidationIssue[]
@@ -73,17 +72,26 @@ export function validateTemplate(raw: unknown): TemplateValidationResult {
   if (!isRecord(canvas)) {
     add('canvas', 'expected an object')
   } else {
-    if (!isFiniteNumber(canvas.width) || canvas.width <= 0) add('canvas.width', 'expected a positive number')
+    if (!isFiniteNumber(canvas.width) || canvas.width <= 0)
+      add('canvas.width', 'expected a positive number')
     else canvasWidth = canvas.width
-    if (!isFiniteNumber(canvas.height) || canvas.height <= 0) add('canvas.height', 'expected a positive number')
+    if (!isFiniteNumber(canvas.height) || canvas.height <= 0)
+      add('canvas.height', 'expected a positive number')
     else canvasHeight = canvas.height
-    if (typeof canvas.backgroundStyle !== 'string' || !BACKGROUND_STYLES.includes(canvas.backgroundStyle as BackgroundStyle)) {
+    if (
+      typeof canvas.backgroundStyle !== 'string' ||
+      !BACKGROUND_STYLES.includes(canvas.backgroundStyle as BackgroundStyle)
+    ) {
       add('canvas.backgroundStyle', `expected one of ${BACKGROUND_STYLES.join(', ')}`)
     } else {
       backgroundStyle = canvas.backgroundStyle as BackgroundStyle
     }
     if (canvas.blur !== undefined) {
-      if (!isRecord(canvas.blur) || !isFiniteNumber(canvas.blur.sigma) || !isFiniteNumber(canvas.blur.darken)) {
+      if (
+        !isRecord(canvas.blur) ||
+        !isFiniteNumber(canvas.blur.sigma) ||
+        !isFiniteNumber(canvas.blur.darken)
+      ) {
         add('canvas.blur', 'expected { sigma: number, darken: number }')
       } else {
         blur = { sigma: canvas.blur.sigma, darken: canvas.blur.darken }
@@ -138,7 +146,8 @@ export function validateTemplate(raw: unknown): TemplateValidationResult {
     const x = isFiniteNumber(entry.x) ? entry.x : NaN
     const width = isFiniteNumber(entry.width) ? entry.width : NaN
     if (!isFiniteNumber(entry.x) || entry.x < 0) add(`${path}.x`, 'expected a number >= 0')
-    if (!isFiniteNumber(entry.width) || entry.width <= 0) add(`${path}.width`, 'expected a number > 0')
+    if (!isFiniteNumber(entry.width) || entry.width <= 0)
+      add(`${path}.width`, 'expected a number > 0')
     if (isFiniteNumber(x) && isFiniteNumber(width) && x + width > canvasWidth) {
       add(`${path}.width`, `slot exceeds canvas width (${x + width} > ${canvasWidth})`)
     }
@@ -148,11 +157,20 @@ export function validateTemplate(raw: unknown): TemplateValidationResult {
         videoSlots += 1
         const slot = entry as unknown as VideoSlot
         if (!isFiniteNumber(slot.y) || slot.y < 0) add(`${path}.y`, 'expected a number >= 0')
-        if (!isFiniteNumber(slot.height) || slot.height <= 0) add(`${path}.height`, 'expected a number > 0')
-        if (isFiniteNumber(slot.y) && isFiniteNumber(slot.height) && slot.y + slot.height > canvasHeight) {
-          add(`${path}.height`, `slot exceeds canvas height (${slot.y + slot.height} > ${canvasHeight})`)
+        if (!isFiniteNumber(slot.height) || slot.height <= 0)
+          add(`${path}.height`, 'expected a number > 0')
+        if (
+          isFiniteNumber(slot.y) &&
+          isFiniteNumber(slot.height) &&
+          slot.y + slot.height > canvasHeight
+        ) {
+          add(
+            `${path}.height`,
+            `slot exceeds canvas height (${slot.y + slot.height} > ${canvasHeight})`
+          )
         }
-        if (slot.fit !== 'contain' && slot.fit !== 'cover') add(`${path}.fit`, "expected 'contain' or 'cover'")
+        if (slot.fit !== 'contain' && slot.fit !== 'cover')
+          add(`${path}.fit`, "expected 'contain' or 'cover'")
         if (!isFiniteNumber(slot.scale) || slot.scale <= 0 || slot.scale > 1) {
           add(`${path}.scale`, 'expected a number in (0, 1]')
         }
@@ -181,17 +199,21 @@ export function validateTemplate(raw: unknown): TemplateValidationResult {
         if (!isFiniteNumber(slot.fontSizeMin)) add(`${path}.fontSizeMin`, 'expected a number')
         if (isFiniteNumber(slot.fontSize) && isFiniteNumber(slot.fontSizeMin)) {
           if (slot.fontSizeMin < 12) add(`${path}.fontSizeMin`, 'expected >= 12')
-          if (slot.fontSize < slot.fontSizeMin) add(`${path}.fontSize`, 'expected fontSize >= fontSizeMin')
+          if (slot.fontSize < slot.fontSizeMin)
+            add(`${path}.fontSize`, 'expected fontSize >= fontSizeMin')
         }
         if (!isFiniteNumber(slot.lineHeight) || slot.lineHeight < 1 || slot.lineHeight > 2) {
           add(`${path}.lineHeight`, 'expected a number in [1.0, 2.0]')
         }
-        if (!isFiniteNumber(slot.maxLines) || slot.maxLines < 1) add(`${path}.maxLines`, 'expected >= 1')
+        if (!isFiniteNumber(slot.maxLines) || slot.maxLines < 1)
+          add(`${path}.maxLines`, 'expected >= 1')
         if (typeof slot.color !== 'string' || !HEX_COLOR.test(slot.color)) {
           add(`${path}.color`, 'expected #RRGGBB or #RRGGBBAA')
         }
-        if (!['left', 'center', 'right'].includes(slot.align)) add(`${path}.align`, 'expected left/center/right')
-        if (!['top', 'middle', 'bottom'].includes(slot.vAlign)) add(`${path}.vAlign`, 'expected top/middle/bottom')
+        if (!['left', 'center', 'right'].includes(slot.align))
+          add(`${path}.align`, 'expected left/center/right')
+        if (!['top', 'middle', 'bottom'].includes(slot.vAlign))
+          add(`${path}.vAlign`, 'expected top/middle/bottom')
         if (slot.wordBreak !== 'normal' && slot.wordBreak !== 'break-word') {
           add(`${path}.wordBreak`, "expected 'normal' or 'break-word'")
         }
@@ -199,7 +221,8 @@ export function validateTemplate(raw: unknown): TemplateValidationResult {
         if (!isRecord(anchor)) {
           add(`${path}.anchor`, 'expected an object')
         } else if (anchor.kind === 'fixed') {
-          if (!isFiniteNumber(anchor.y) || anchor.y < 0) add(`${path}.anchor.y`, 'expected a number >= 0')
+          if (!isFiniteNumber(anchor.y) || anchor.y < 0)
+            add(`${path}.anchor.y`, 'expected a number >= 0')
           if (!isFiniteNumber(anchor.height) || anchor.height <= 0) {
             add(`${path}.anchor.height`, 'expected a number > 0')
           }
@@ -208,11 +231,16 @@ export function validateTemplate(raw: unknown): TemplateValidationResult {
             isFiniteNumber(anchor.height) &&
             anchor.y + anchor.height > canvasHeight
           ) {
-            add(`${path}.anchor.height`, `text box exceeds canvas height (${anchor.y + anchor.height} > ${canvasHeight})`)
+            add(
+              `${path}.anchor.height`,
+              `text box exceeds canvas height (${anchor.y + anchor.height} > ${canvasHeight})`
+            )
           }
         } else if (anchor.kind === 'aboveVideo') {
-          if (!isFiniteNumber(anchor.gap) || anchor.gap < 0) add(`${path}.anchor.gap`, 'expected a number >= 0')
-          if (!isFiniteNumber(anchor.minY) || anchor.minY < 0) add(`${path}.anchor.minY`, 'expected a number >= 0')
+          if (!isFiniteNumber(anchor.gap) || anchor.gap < 0)
+            add(`${path}.anchor.gap`, 'expected a number >= 0')
+          if (!isFiniteNumber(anchor.minY) || anchor.minY < 0)
+            add(`${path}.anchor.minY`, 'expected a number >= 0')
         } else {
           add(`${path}.anchor.kind`, "expected 'fixed' or 'aboveVideo'")
         }
@@ -255,7 +283,10 @@ export function validateTemplate(raw: unknown): TemplateValidationResult {
       if (entry.placeholder !== undefined && typeof entry.placeholder !== 'string') {
         add(`${path}.placeholder`, 'expected a string')
       }
-      if (entry.maxLength !== undefined && (!isFiniteNumber(entry.maxLength) || entry.maxLength <= 0)) {
+      if (
+        entry.maxLength !== undefined &&
+        (!isFiniteNumber(entry.maxLength) || entry.maxLength <= 0)
+      ) {
         add(`${path}.maxLength`, 'expected a positive number')
       }
       if (entry.required !== undefined && typeof entry.required !== 'boolean') {
@@ -354,7 +385,12 @@ export function validateTemplate(raw: unknown): TemplateValidationResult {
     ok: true,
     template: {
       ...(raw as unknown as Template),
-      canvas: { width: canvasWidth, height: canvasHeight, backgroundStyle, ...(blur ? { blur } : {}) },
+      canvas: {
+        width: canvasWidth,
+        height: canvasHeight,
+        backgroundStyle,
+        ...(blur ? { blur } : {})
+      },
       safeZones,
       slots,
       knobs,

@@ -30,7 +30,10 @@ export function fontFilePath(fontsDir: string, key: FontKey): string {
 }
 
 function toArrayBuffer(buffer: Buffer): ArrayBuffer {
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
+  return buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength
+  ) as ArrayBuffer
 }
 
 /**

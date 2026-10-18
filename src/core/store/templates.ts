@@ -1,6 +1,10 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { describeTemplateIssues, validateTemplate, type ValidationIssue } from '../../shared/template/validate'
+import {
+  describeTemplateIssues,
+  validateTemplate,
+  type ValidationIssue
+} from '../../shared/template/validate'
 import type { Template } from '../../shared/template/types'
 import { stripBom } from './fs-utils'
 
@@ -39,7 +43,10 @@ export async function loadTemplateFile(filePath: string): Promise<LoadedTemplate
   return { template: result.template, sourcePath: filePath, issues: [] }
 }
 
-export async function loadTemplateById(resourcesDir: string, templateId: string): Promise<Template> {
+export async function loadTemplateById(
+  resourcesDir: string,
+  templateId: string
+): Promise<Template> {
   const filePath = path.join(resourcesDir, 'templates', `${templateId}.json`)
   const loaded = await loadTemplateFile(filePath)
   if (!loaded.template) {
