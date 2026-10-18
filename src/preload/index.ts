@@ -26,6 +26,9 @@ const CHANNEL = {
   exportProject: 'shortz:exportProject',
   cancelExport: 'shortz:cancelExport',
   renderProgress: 'shortz:render:progress',
+  batchRender: 'shortz:batchRender',
+  cancelBatch: 'shortz:cancelBatch',
+  batchProgress: 'shortz:batch:progress',
   revealInExplorer: 'shortz:revealInExplorer',
   openUserTemplatesFolder: 'shortz:openUserTemplatesFolder',
   getSettings: 'shortz:getSettings',
@@ -70,6 +73,10 @@ const api: ShortzApi = {
   exportProject: (p, opts) => ipcRenderer.invoke(CHANNEL.exportProject, p, opts),
   cancelExport: (jobId) => ipcRenderer.invoke(CHANNEL.cancelExport, jobId),
   onRenderProgress: (cb) => subscribe(CHANNEL.renderProgress, cb),
+  // batch
+  batchRender: (req) => ipcRenderer.invoke(CHANNEL.batchRender, req),
+  cancelBatch: (jobId) => ipcRenderer.invoke(CHANNEL.cancelBatch, jobId),
+  onBatchProgress: (cb) => subscribe(CHANNEL.batchProgress, cb),
   // shell
   revealInExplorer: (p) => ipcRenderer.invoke(CHANNEL.revealInExplorer, p),
   openUserTemplatesFolder: () => ipcRenderer.invoke(CHANNEL.openUserTemplatesFolder),

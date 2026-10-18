@@ -3,6 +3,9 @@ import fss from 'node:fs'
 import path from 'node:path'
 import { app, dialog, ipcMain, shell, BrowserWindow } from 'electron'
 import type {
+  BatchRenderEvent,
+  BatchRunRequest,
+  BatchRunSummary,
   EditorConfig,
   EditorConfigMeta,
   ExportOptions,
@@ -14,6 +17,8 @@ import type {
   Settings,
   TemplateMeta
 } from '../preload/api'
+import { buildOutputPath } from './output-path'
+import { cancelBatchRun, runBatch, setBatchEmitter } from './batch'
 import { getMediaUrlForFile, mintMediaUrl } from './protocol/media'
 import {
   currentSettings,
@@ -107,38 +112,8 @@ let exportInFlight = false
 
 // --- output filename (docs/technical/export-spec.md §filename convention) ----
 
-function sanitizeNamePart(value: string): string {
-  return value.replace(/[\\/:*?"<>|]/g, '_').trim()
-}
-
-function pad2(n: number): string {
-  return n.toString().padStart(2, '0')
-}
-
 function outputPathFor(project: Project, templateId: string, dir: string, pattern: string): string {
-  const now = new Date()
-  const tokens: Record<string, string> = {
-    name: sanitizeNamePart(project.name),
-    template: sanitizeNamePart(templateId),
-    date: `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}`,
-    time: `${pad2(now.getHours())}${pad2(now.getMinutes())}`,
-    seq: '1',
-    yyyyMMdd: `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}`,
-    HHmm: `${pad2(now.getHours())}${pad2(now.getMinutes())}`
-  }
-  let base = ''
-  const tokensRe = /\{(\w+)\}/g
-  let last = 0
-  for (const m of pattern.matchAll(tokensRe)) {
-    const key = m[1] as string
-    base += pattern.slice(last, m.index ?? 0)
-    base += sanitizeNamePart(tokens[key] ?? `{${key}}`)
-    last = (m.index ?? 0) + m[0].length
-  }
-  base += pattern.slice(last)
-  base = sanitizeNamePart(base).replace(/^_+|_+$/g, '').slice(0, 80)
-  if (base.length === 0) base = 'export'
-  return path.join(dir, `${base}.mp4`)
+  return buildOutputPath({ dir, pattern, name: project.name, templateId })
 }
 
 // --- progress mapping --------------------------------------------------------
@@ -503,6 +478,26 @@ export function registerIpcHandlers(): void {
 
   handle('shortz:cancelExport', async (jobId: string): Promise<void> => {
     activeAborts.get(jobId)?.abort()
+  })
+
+  // --- batch (one line = one clip; nothing is persisted as a project) ---------
+
+  setBatchEmitter((e: BatchRenderEvent) => sendToRenderer('shortz:batch:progress', e))
+
+  handle('shortz:batchRender', async (req: BatchRunRequest): Promise<BatchRunSummary> => {
+    // The batch queue owns the ffmpeg concurrency, so it must not race a single
+    // export (and vice versa) — same single-flight rule, separate slots.
+    if (exportInFlight) throw new Error('An export is already running — finish it first')
+    exportInFlight = true
+    try {
+      return await runBatch(req)
+    } finally {
+      exportInFlight = false
+    }
+  })
+
+  handle('shortz:cancelBatch', async (jobId?: string): Promise<void> => {
+    cancelBatchRun(jobId)
   })
 
   // --- shell ------------------------------------------------------------------

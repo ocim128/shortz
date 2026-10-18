@@ -7,9 +7,10 @@ import { S } from '../../strings'
 
 interface HomeScreenProps {
   onOpenSettings: () => void
+  onOpenBatch: () => void
 }
 
-export function HomeScreen({ onOpenSettings }: HomeScreenProps): JSX.Element {
+export function HomeScreen({ onOpenSettings, onOpenBatch }: HomeScreenProps): JSX.Element {
   const list = useProjectStore((s) => s.list)
   const [dragOver, setDragOver] = useState(false)
   const dragDepth = useRef(0)
@@ -114,9 +115,14 @@ export function HomeScreen({ onOpenSettings }: HomeScreenProps): JSX.Element {
     >
       <header className="home__header">
         <div className="home__logo">{S.appName}</div>
-        <button type="button" className="btn btn-ghost" onClick={onOpenSettings}>
-          {S.homeSettings}
-        </button>
+        <div className="home__header-actions">
+          <button type="button" className="btn btn-ghost" onClick={onOpenBatch}>
+            ⚡ {S.homeBatch}
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={onOpenSettings}>
+            {S.homeSettings}
+          </button>
+        </div>
       </header>
 
       <main className="home__main">

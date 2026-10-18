@@ -159,6 +159,77 @@ export interface RenderProgressEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Batch — one textarea line (`path•hook`) = one rendered clip.
+// Parsing lives in src/shared/batch/parse.ts so the renderer previews exactly
+// what main will render.
+// ---------------------------------------------------------------------------
+
+/** One rendered line, as sent from the renderer. */
+export interface BatchRenderItem {
+  /** Stable per-line key from the parser (index-based). */
+  id: string
+  /** Absolute video path. */
+  path: string
+  /** Hook text for the template's hook input. */
+  hook: string
+}
+
+export interface BatchRunRequest {
+  items: BatchRenderItem[]
+  /** Named editor config to take template + knobs (+ trim/audio) from. */
+  configId?: string
+  /** Template used when configId is absent. */
+  templateId?: string
+  /** Apply the config's trim range to every item (off = full clip). */
+  configTrim?: boolean
+  /** Output folder; falls back to settings.output.dir. */
+  outputDir?: string
+  fps?: number
+  crf?: number
+  audio?: 'keep' | 'mute'
+}
+
+export type BatchRenderItemStatus =
+  | 'starting'
+  | 'probing'
+  | 'rendering'
+  | 'done'
+  | 'error'
+  | 'skipped'
+  | 'finished'
+  | 'cancelled'
+
+/** Emitted over webContents.send('shortz:batch:progress'). */
+export interface BatchRenderEvent {
+  jobId: string
+  /** 0-based item index; equals total on the terminal event. */
+  index: number
+  total: number
+  status: BatchRenderItemStatus
+  /** Absent on the terminal event. */
+  item?: BatchRenderItem
+  /** 0–100 for the running item. */
+  percent?: number
+  /** Orchestrator stage when known. */
+  stage?: string
+  outputPath?: string
+  durationSec?: number
+  sizeBytes?: number
+  error?: string
+  /** Only on the terminal event. */
+  completed?: number
+  failed?: number
+}
+
+export interface BatchRunSummary {
+  jobId: string
+  total: number
+  completed: number
+  failed: number
+  cancelled: boolean
+}
+
+// ---------------------------------------------------------------------------
 // Settings — shape per docs/technical/data-storage.md §settings.json
 // ---------------------------------------------------------------------------
 
@@ -239,6 +310,10 @@ export interface ShortzApi {
   exportProject(p: Project, opts: ExportOptions): Promise<ExportResult>
   cancelExport(jobId: string): Promise<void>
   onRenderProgress(cb: (e: RenderProgressEvent) => void): Unsubscribe
+  // batch (one line = one clip; no project is persisted)
+  batchRender(req: BatchRunRequest): Promise<BatchRunSummary>
+  cancelBatch(jobId?: string): Promise<void>
+  onBatchProgress(cb: (e: BatchRenderEvent) => void): Unsubscribe
   // shell
   revealInExplorer(path: string): Promise<void>
   openUserTemplatesFolder(): Promise<void>

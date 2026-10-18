@@ -66,7 +66,8 @@ Milestones are strictly stacked: each one ends with something usable. Effort est
 - [ ] Auto-captions: faster-whisper/whisper.cpp transcription → timed text slots → ASS burn or timed PNGs (`technical/future-extensions.md`).
 - [ ] Timed text engine: `tStart/tEnd` on slots with FFmpeg `enable=between(t,…)` + simple fade in/out.
 - [ ] User-template hot reload + template validation panel.
-- [ ] Batch: multi-select projects → queue renders overnight (job queue in main process).
+- [x] Batch: shipped as the Batch screen — `path•hook` lines + a saved editor config, sequential queue in main (one ffmpeg at a time).
+- [ ] Batch: multi-select projects in Home → queue renders overnight.
 
 **Done when:** captioned story video produced start-to-finish in-app.
 
