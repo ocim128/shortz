@@ -9,6 +9,7 @@
     "build": "electron-vite build",
     "dist": "electron-vite build && electron-builder",
     "typecheck": "tsc -p tsconfig.electron.json && tsc -p tsconfig.web.json",
+    "typecheck:core": "tsc -p tsconfig.json",
     "cli": "tsx src/cli/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -17,7 +18,7 @@
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.11",
-    "opentype.js": "^2.0.0",
+    "opentype.js": "^1.3.4",
     "ulid": "^3.0.2",
     "write-file-atomic": "^8.0.0",
     "zustand": "^5.0.2"
