@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "01J8GZ5X7Y0000000000000000",
+  "name": "sample-squirrel",
+  "createdAt": "2026-10-18T09:12:00Z",
+  "updatedAt": "2026-10-18T09:12:00Z",
+  "source": {
+    "path": "landscape_1080p_10s.mp4",
+    "probe": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "duration": 10,
+      "hasAudio": true,
+      "videoCodec": "h264"
+    }
+  },
+  "templateId": "hook-letterbox",
+  "values": {
+    "fields": {
+      "hook": "A wildlife photographer put a microphone beside a baby squirrel. These are its actual eating sounds."
+    },
+    "knobs": {
+      "backgroundStyle": "black",
+      "videoTop": 520,
+      "videoCornerRadius": 24,
+      "textAlign": "left"
+    }
+  },
+  "trim": { "start": 1.0, "end": 8.0 },
+  "audio": "keep",
+  "exportHistory": []
+}
