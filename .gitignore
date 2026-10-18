@@ -17,3 +17,6 @@ out/
 .idea/
 Thumbs.db
 .DS_Store
+
+# temporary agent prompts / scratch notes (not part of the plan)
+tmp/
