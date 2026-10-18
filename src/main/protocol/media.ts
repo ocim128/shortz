@@ -3,6 +3,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { protocol } from 'electron'
+import { isVideoExtension } from '../../shared/video-extensions'
 
 /**
  * media:// privileged scheme — docs/technical/project-structure.md §"Local media
@@ -19,9 +20,6 @@ import { protocol } from 'electron'
  */
 
 const SCHEME = 'media'
-
-/** Extensions getMediaUrl will mint a media:// URL for. */
-const MEDIA_EXTENSIONS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi', '.mpg', '.mpeg', '.ts'])
 
 const MIME_BY_EXT: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -58,7 +56,7 @@ export function registerMediaProtocol(): void {
  * Form: `media://local/C%3A%2FUsers%2F...` — the scheme is registered
  * `standard`, and standard URLs REJECT an empty host (`media:///…` fails
  * URL parsing), so we mint with the fixed host "local". The handler reads
- * only the pathname. (Recorded in tmp/NOTES-B.md.)
+ * only the pathname.
  */
 export function mintMediaUrl(absPath: string): string {
   const fwd = process.platform === 'win32' ? absPath.replace(/\\/g, '/') : absPath
@@ -70,7 +68,7 @@ export async function getMediaUrlForFile(sourcePath: string): Promise<string> {
   const abs = path.resolve(sourcePath)
   if (!path.isAbsolute(abs)) throw new Error(`Not an absolute path: ${sourcePath}`)
   const ext = path.extname(abs).toLowerCase()
-  if (!MEDIA_EXTENSIONS.has(ext)) throw new Error(`Unsupported media type "${ext || '(none)'}": ${abs}`)
+  if (!isVideoExtension(ext.slice(1))) throw new Error(`Unsupported media type "${ext || '(none)'}": ${abs}`)
   const stat = await fsp.stat(abs).catch(() => null)
   if (!stat || !stat.isFile()) throw new Error(`File not found: ${abs}`)
   return mintMediaUrl(abs)

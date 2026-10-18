@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { ulid } from 'ulid'
 import { resolveLayout, type ResolvedLayout } from '../../shared/layout/engine'
+import type { Project } from '../../shared/domain'
 import type { Template } from '../../shared/template/types'
 import {
   buildFfmpegArgs,
@@ -17,7 +18,6 @@ import { runFfmpeg, type RunFfmpegResult } from '../ffmpeg/runner'
 import { activateSystemEmojiFont, createFontBufferLoader, registerFonts } from '../render/fonts'
 import { needsMask, renderOverlayAssets } from '../render/overlay'
 import { moveWithRetry, rmWithRetry, uniqueOutputPath } from '../store/fs-utils'
-import type { ProjectDocument } from '../store/projects'
 
 export type RenderStage = 'probe' | 'resolve' | 'overlay' | 'render' | 'finalize' | 'done'
 
@@ -32,7 +32,7 @@ export interface OrchestratorProgress {
 }
 
 export interface RenderRequest {
-  project: ProjectDocument
+  project: Project
   template: Template
   outputPath: string
   /** Directory containing `fonts/` and `templates/`. */
@@ -45,6 +45,7 @@ export interface RenderRequest {
   audio?: AudioMode
   /** Overrides project.trim when present; null forces no trim. */
   trim?: { start: number; end: number } | null
+  /** Injected binaries skip resolution (Electron main/CLI already resolved them). */
   ffmpegPath?: string
   ffprobePath?: string
   probeCacheDir?: string
@@ -56,16 +57,11 @@ export interface RenderRequest {
 export interface RenderResult {
   jobId: string
   outputPath: string
-  width: number
-  height: number
-  fps: number
-  videoCodec: string
-  audioCodec: string | null
-  audioChannels: number | null
   durationSec: number
   sizeBytes: number
+  /** The encoder that was requested (also what the argv used). */
+  videoCodec: string
   elapsedMs: number
-  layout: ResolvedLayout
   warnings: string[]
 }
 
@@ -131,14 +127,13 @@ export async function renderProject(request: RenderRequest): Promise<RenderResul
     // Stage 1 — PROBE
     report('probe', STAGE_BASE_PCT.probe)
     const sourcePath = path.resolve(request.project.source.path)
-    let binaries = { ffmpegPath: '', ffprobePath: '' }
-    try {
-      binaries = await resolveFfmpegBinariesCached({
-        ...(request.ffmpegPath ? { ffmpegPath: request.ffmpegPath } : {}),
-        ...(request.ffprobePath ? { ffprobePath: request.ffprobePath } : {})
-      })
-    } catch (error) {
-      fail('probe', error)
+    let binaries = { ffmpegPath: request.ffmpegPath ?? '', ffprobePath: request.ffprobePath ?? '' }
+    if (!binaries.ffmpegPath || !binaries.ffprobePath) {
+      try {
+        binaries = await resolveFfmpegBinariesCached()
+      } catch (error) {
+        fail('probe', error)
+      }
     }
     let clip: ClipMeta
     try {
@@ -277,16 +272,10 @@ export async function renderProject(request: RenderRequest): Promise<RenderResul
     return {
       jobId,
       outputPath: finalPath,
-      width: layout.canvas.width,
-      height: layout.canvas.height,
-      fps,
-      videoCodec: encoder === 'h264_nvenc' ? 'h264_nvenc' : 'libx264',
-      audioCodec: audio === 'keep' && clip.hasAudio ? 'aac' : null,
-      audioChannels: audio === 'keep' && clip.hasAudio ? 2 : null,
       durationSec,
       sizeBytes: stat.size,
+      videoCodec: encoder,
       elapsedMs: Date.now() - startedAt,
-      layout,
       warnings: layout.warnings
     }
   } finally {
@@ -298,7 +287,8 @@ function normalizeTrim(
   trim: { start: number; end: number } | null,
   clipDuration: number
 ): { start: number; end: number } | null {
-  if (!trim) return null
+  // {0,0} (or any unordered range) is the documented "no trim" value.
+  if (!trim || trim.end <= trim.start) return null
   const start = Math.min(Math.max(0, trim.start), Math.max(0, clipDuration - 0.1))
   const end = Math.min(Math.max(start + 0.1, trim.end), clipDuration)
   if (end - start <= 0) return null

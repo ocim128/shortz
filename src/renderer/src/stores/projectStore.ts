@@ -4,8 +4,7 @@ import type { Project, ProjectMeta } from '../../../preload/api'
 /**
  * projectStore — the open project doc + dirty flag (docs/technical/ui-spec.md
  * §store slices). Autosave is debounced 500 ms after any change
- * (docs/technical/data-storage.md). Persistence is the mocked IPC handler
- * until Agent A's src/core/store/projects.ts lands.
+ * (docs/technical/data-storage.md).
  */
 
 interface ProjectStoreState {

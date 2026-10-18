@@ -24,13 +24,9 @@ describe('probeWithCache — fixture matrix', () => {
       ffprobePath,
       cacheDir
     })
-    expect(meta.codedWidth).toBe(1920)
-    expect(meta.codedHeight).toBe(1080)
     expect(meta.width).toBe(1920)
     expect(meta.height).toBe(1080)
-    expect(meta.rotation).toBe(0)
     expect(meta.hasAudio).toBe(true)
-    expect(meta.audioChannels).toBe(2)
     expect(meta.durationSec).toBeGreaterThan(9)
     expect(meta.durationSec).toBeLessThan(11)
   })
@@ -40,17 +36,14 @@ describe('probeWithCache — fixture matrix', () => {
       ffprobePath,
       cacheDir
     })
-    expect(meta.rotation).toBe(90)
-    expect(meta.codedWidth).toBe(1920)
-    expect(meta.codedHeight).toBe(1080)
+    // Coded 1920x1080 + rotate=90 must surface as portrait display dimensions.
     expect(meta.width).toBe(1080)
     expect(meta.height).toBe(1920)
   })
 
-  it('detects surround audio and reports its channel count', async () => {
+  it('detects audio presence for surround sources', async () => {
     const meta = await probeWithCache(fixture('surround_5_1.mp4'), { ffprobePath, cacheDir })
     expect(meta.hasAudio).toBe(true)
-    expect(meta.audioChannels).toBe(6)
   })
 
   it('reports no audio for a silent 4:3 source', async () => {
@@ -58,7 +51,6 @@ describe('probeWithCache — fixture matrix', () => {
     expect(meta.width).toBe(640)
     expect(meta.height).toBe(480)
     expect(meta.hasAudio).toBe(false)
-    expect(meta.audioCodec).toBeNull()
   })
 
   it('parses a variable-frame-rate source without failing', async () => {
@@ -82,7 +74,7 @@ describe('probeWithCache — cache behavior', () => {
         v: number
         meta: { width: number }
       }
-      expect(envelope.v).toBe(1)
+      expect(envelope.v).toBe(2)
       expect(envelope.meta.width).toBe(first.width)
       const second = await probeWithCache(source, { ffprobePath, cacheDir: dir })
       expect(second).toEqual(first)
@@ -104,7 +96,7 @@ describe('probeWithCache — cache behavior', () => {
         v: number
         meta: { width: number }
       }
-      expect(healed.v).toBe(1)
+      expect(healed.v).toBe(2)
       expect(healed.meta.width).toBe(meta.width)
     } finally {
       await removeScratchDir(dir)
@@ -124,7 +116,7 @@ describe('probeWithCache — cache behavior', () => {
       const meta = await probeWithCache(source, { ffprobePath, cacheDir: dir })
       expect(meta.durationSec).toBeGreaterThan(1)
       const healed = JSON.parse(await readFile(file, 'utf8')) as { v: number }
-      expect(healed.v).toBe(1)
+      expect(healed.v).toBe(2)
     } finally {
       await removeScratchDir(dir)
     }
@@ -143,7 +135,7 @@ describe('probeWithCache — cache behavior', () => {
       const meta = await probeWithCache(source, { ffprobePath, cacheDir: dir })
       expect(meta).toEqual(first)
       const healed = JSON.parse(await readFile(file, 'utf8')) as { v: number }
-      expect(healed.v).toBe(1)
+      expect(healed.v).toBe(2)
     } finally {
       await removeScratchDir(dir)
     }

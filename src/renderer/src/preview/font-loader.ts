@@ -1,24 +1,23 @@
 /**
  * Renderer-side font loading via the documented IPC path: bytes arrive from
- * `window.shortz.getFontBuffer` — no fetch/asset URLs in the sandbox
- * (docs/technical/project-structure.md §renderer layout tree).
+ * `window.shortz.getFontBuffer` — no fetch/asset URLs in the sandbox.
  *
  * The SAME cached ArrayBuffers feed both CSS FontFace registration (preview
  * rendering) and the shared opentype.js metrics engine (src/shared/layout) —
- * exactly the pairing tmp/NOTES-A.md §"Renderer preview" prescribes.
+ * exactly the pairing the preview/export parity rule prescribes.
  */
 
-import { setEmojiFont, type FontLoader, type FontKey as SharedFontKey } from '../../../shared/layout/text'
-import type { FontKey } from '../../../preload/api'
+import { setEmojiFont, type FontLoader, type FontKey } from '../../../shared/layout/text'
 
-const FACES: Array<{ key: FontKey; family: string; weight: number; shared: SharedFontKey }> = [
-  { key: 'inter-regular', family: 'ShortZ Inter', weight: 400, shared: 'inter-400' },
-  { key: 'inter-semibold', family: 'ShortZ Inter', weight: 600, shared: 'inter-600' },
-  { key: 'inter-extrabold', family: 'ShortZ Inter', weight: 800, shared: 'inter-800' },
-  { key: 'poppins-semibold', family: 'ShortZ Poppins', weight: 600, shared: 'poppins-600' }
+/** CSS registration metadata per bundled font (keys match the shared FontKey). */
+const FACES: Array<{ key: FontKey; family: string; weight: number }> = [
+  { key: 'inter-400', family: 'ShortZ Inter', weight: 400 },
+  { key: 'inter-600', family: 'ShortZ Inter', weight: 600 },
+  { key: 'inter-800', family: 'ShortZ Inter', weight: 800 },
+  { key: 'poppins-600', family: 'ShortZ Poppins', weight: 600 }
 ]
 
-const cache = new Map<SharedFontKey, ArrayBuffer>()
+const cache = new Map<FontKey, ArrayBuffer>()
 let readyPromise: Promise<void> | null = null
 
 export function loadBundledFonts(): Promise<void> {
@@ -28,22 +27,20 @@ export function loadBundledFonts(): Promise<void> {
       FACES.map(async (face) => {
         const bytes = await window.shortz.getFontBuffer(face.key)
         if (bytes.byteLength === 0) throw new Error(`Font ${face.key} returned empty bytes`)
-        cache.set(face.shared, bytes.buffer.slice(
+        const buffer = bytes.buffer.slice(
           bytes.byteOffset,
           bytes.byteOffset + bytes.byteLength
-        ) as ArrayBuffer)
-        const fontFace = new FontFace(face.family, bytes.buffer.slice(
-          bytes.byteOffset,
-          bytes.byteOffset + bytes.byteLength
-        ) as ArrayBuffer, { weight: String(face.weight), style: 'normal' })
+        ) as ArrayBuffer
+        cache.set(face.key, buffer)
+        const fontFace = new FontFace(face.family, buffer, { weight: String(face.weight), style: 'normal' })
         await fontFace.load()
         document.fonts.add(fontFace)
       })
     )
     // Emoji metrics (best-effort): the preview's canvas draws emoji through the
     // browser's own fallback, but the shared wrapping engine needs the same
-    // advances the renderer's Skia canvas will use — fetch the system emoji
-    // font when the platform has one. Failure keeps bundled-only metrics.
+    // advances the renderer's canvas will use — fetch the system emoji font
+    // when the platform has one. Failure keeps bundled-only metrics.
     try {
       const bytes = await window.shortz.getFontBuffer('emoji')
       if (bytes.byteLength > 0) {
@@ -77,7 +74,7 @@ let cachedLoader: FontLoader | null = null
 
 export function getFontLoader(): FontLoader {
   if (cachedLoader) return cachedLoader
-  cachedLoader = (key: SharedFontKey): ArrayBuffer => {
+  cachedLoader = (key: FontKey): ArrayBuffer => {
     const buf = cache.get(key)
     if (!buf) throw new Error(`Font "${key}" is not loaded yet (fonts must be awaited first)`)
     return buf

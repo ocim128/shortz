@@ -34,9 +34,6 @@ const CHANNEL = {
   getSettings: 'shortz:getSettings',
   saveSettings: 'shortz:saveSettings',
   ffmpegInfo: 'shortz:ffmpegInfo',
-  ffmpegTest: 'shortz:ffmpegTest',
-  probeCacheInfo: 'shortz:probeCacheInfo',
-  probeCacheClear: 'shortz:probeCacheClear',
   appVersion: 'shortz:appVersion',
   menuCommand: 'shortz:menu:command'
 } as const
@@ -71,7 +68,7 @@ const api: ShortzApi = {
   listTemplates: () => ipcRenderer.invoke(CHANNEL.listTemplates),
   // render
   exportProject: (p, opts) => ipcRenderer.invoke(CHANNEL.exportProject, p, opts),
-  cancelExport: (jobId) => ipcRenderer.invoke(CHANNEL.cancelExport, jobId),
+  cancelExport: () => ipcRenderer.invoke(CHANNEL.cancelExport),
   onRenderProgress: (cb) => subscribe(CHANNEL.renderProgress, cb),
   // batch
   batchRender: (req) => ipcRenderer.invoke(CHANNEL.batchRender, req),
@@ -83,9 +80,6 @@ const api: ShortzApi = {
   getSettings: () => ipcRenderer.invoke(CHANNEL.getSettings),
   saveSettings: (s) => ipcRenderer.invoke(CHANNEL.saveSettings, s),
   ffmpegInfo: () => ipcRenderer.invoke(CHANNEL.ffmpegInfo),
-  ffmpegTest: () => ipcRenderer.invoke(CHANNEL.ffmpegTest),
-  probeCacheInfo: () => ipcRenderer.invoke(CHANNEL.probeCacheInfo),
-  probeCacheClear: () => ipcRenderer.invoke(CHANNEL.probeCacheClear),
   appVersion: () => ipcRenderer.invoke(CHANNEL.appVersion),
   // UI shell
   onMenuCommand: (cb) => subscribe(CHANNEL.menuCommand, cb),

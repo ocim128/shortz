@@ -8,6 +8,7 @@ import type {
   TextSlot,
   VideoSlot
 } from './types'
+import { isPlainObject as isRecord } from '../domain'
 
 export interface ValidationIssue {
   path: string
@@ -31,10 +32,6 @@ export class TemplateValidationError extends Error {
 
 const BACKGROUND_STYLES: readonly BackgroundStyle[] = ['black', 'white', 'darkGray', 'blurVideo']
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
@@ -133,14 +130,6 @@ export function validateTemplate(raw: unknown): TemplateValidationResult {
 
     if (entry.visible !== undefined && typeof entry.visible !== 'boolean') {
       add(`${path}.visible`, 'expected a boolean')
-    }
-    for (const tKey of ['tStart', 'tEnd'] as const) {
-      if (entry[tKey] !== undefined && !isFiniteNumber(entry[tKey])) {
-        add(`${path}.${tKey}`, 'expected a number')
-      }
-    }
-    if (isFiniteNumber(entry.tStart) && isFiniteNumber(entry.tEnd) && entry.tEnd <= entry.tStart) {
-      add(`${path}.tEnd`, 'expected tEnd > tStart')
     }
 
     const x = isFiniteNumber(entry.x) ? entry.x : NaN
@@ -247,12 +236,8 @@ export function validateTemplate(raw: unknown): TemplateValidationResult {
         slots.push(slot)
         break
       }
-      case 'image':
-      case 'shape':
-        slots.push(entry as unknown as Slot)
-        break
       default:
-        add(`${path}.type`, "expected 'video' | 'text' | 'image' | 'shape'")
+        add(`${path}.type`, "expected 'video' or 'text'")
     }
   })
 

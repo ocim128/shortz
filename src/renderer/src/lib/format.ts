@@ -26,11 +26,6 @@ export function formatBytes(bytes: number): string {
   return `${bytes} B`
 }
 
-/** Round to even (H.264 yuv420p requirement; matches the shared engine's even rounding). */
-export function roundEven(n: number): number {
-  return Math.round(n / 2) * 2
-}
-
 export function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
 }

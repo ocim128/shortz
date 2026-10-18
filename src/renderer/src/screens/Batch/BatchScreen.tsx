@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BatchRenderItem, EditorConfigMeta, Settings } from '../../../../preload/api'
 import {
   BATCH_SEPARATOR,
-  BATCH_VIDEO_EXTENSIONS,
   basenameOf,
   parseBatchText,
   stemOf,
   type BatchLine
 } from '../../../../shared/batch/parse'
+import { VIDEO_EXTENSIONS } from '../../../../shared/video-extensions'
 import { useBatchStore } from '../../stores/batchStore'
 import { toast } from '../../stores/toastStore'
 import { S } from '../../strings'
@@ -233,7 +233,7 @@ export function BatchScreen({ onBack }: BatchScreenProps): JSX.Element {
 
           <p className="field__hint">
             Separator: {BATCH_SEPARATOR} · extensions:{' '}
-            {BATCH_VIDEO_EXTENSIONS.slice(0, 6).join(', ')}…
+            {VIDEO_EXTENSIONS.slice(0, 6).join(', ')}…
           </p>
 
           <div className="field-panel__divider" role="presentation" />

@@ -3,8 +3,6 @@ import type { Settings } from '../../../preload/api'
 
 /**
  * settingsStore — mirrors settings.json (docs/technical/data-storage.md).
- * Backed by the (mocked) getSettings/saveSettings IPC until Agent A's
- * src/core/store/settings.ts lands.
  */
 
 interface SettingsStoreState {

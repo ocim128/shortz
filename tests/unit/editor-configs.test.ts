@@ -9,9 +9,9 @@ import {
   listEditorConfigs,
   loadEditorConfig,
   sanitizeEditorConfig,
-  saveEditorConfig,
-  type ShortzEditorConfig
+  saveEditorConfig
 } from '../../src/core/store/editor-configs'
+import type { EditorConfig } from '../../src/shared/domain'
 import { makeScratchDir, readJson, removeScratchDir } from '../helpers/env'
 
 type SaveInput = Parameters<typeof saveEditorConfig>[0]
@@ -58,7 +58,7 @@ describe('editor configs — named slots', () => {
 
       const onDisk = readJson(
         path.join(editorConfigsDir(dir), `${meta.id}.json`)
-      ) as ShortzEditorConfig
+      ) as EditorConfig
       expect(onDisk.name).toBe('squirrel reel')
       expect(onDisk.savedAt).toBe(meta.savedAt)
     } finally {
@@ -143,7 +143,7 @@ describe('editor configs — named slots', () => {
 })
 
 describe('sanitizeEditorConfig', () => {
-  const valid: ShortzEditorConfig = {
+  const valid: EditorConfig = {
     schemaVersion: 1,
     name: 'squirrel reel',
     savedAt: '2026-10-18T09:00:00.000Z',

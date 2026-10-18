@@ -2,29 +2,10 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promises as fs } from 'node:fs'
+import { isPlainObject, type Settings } from '../../shared/domain'
 import { atomicWriteFile, stripBom } from './fs-utils'
 
-export interface ShortzSettings {
-  schemaVersion: 1
-  output: {
-    dir: string
-    filenamePattern: string
-  }
-  encoder: {
-    preferred: 'auto' | 'libx264' | 'h264_nvenc' | 'h264_amf' | 'h264_qsv'
-    crf: number
-    fps: 30 | 60 | 'source'
-  }
-  ffmpeg: {
-    source: 'auto' | 'system' | 'bundled'
-  }
-  ui: {
-    safeZonesDefault: boolean
-    lastProjectId?: string
-  }
-}
-
-export function defaultSettings(): ShortzSettings {
+export function defaultSettings(): Settings {
   return {
     schemaVersion: 1,
     output: {
@@ -65,7 +46,7 @@ export function probeCacheDir(dataDir: string): string {
  * Load settings, deep-merging over defaults. Unknown keys are preserved
  * (forward compatibility) — they survive the next save.
  */
-export async function loadSettings(dataDir: string): Promise<ShortzSettings> {
+export async function loadSettings(dataDir: string): Promise<Settings> {
   const file = settingsFilePath(dataDir)
   if (!existsSync(file)) return defaultSettings()
   try {
@@ -77,11 +58,11 @@ export async function loadSettings(dataDir: string): Promise<ShortzSettings> {
   }
 }
 
-export async function saveSettings(settings: ShortzSettings, dataDir: string): Promise<void> {
+export async function saveSettings(settings: Settings, dataDir: string): Promise<void> {
   await atomicWriteFile(settingsFilePath(dataDir), `${JSON.stringify(settings, null, 2)}\n`)
 }
 
-function mergeSettings(defaults: ShortzSettings, raw: Record<string, unknown>): ShortzSettings {
+function mergeSettings(defaults: Settings, raw: Record<string, unknown>): Settings {
   const merged = { ...defaults } as unknown as Record<string, unknown>
   for (const [key, value] of Object.entries(raw)) {
     const base = merged[key]
@@ -91,9 +72,5 @@ function mergeSettings(defaults: ShortzSettings, raw: Record<string, unknown>): 
       merged[key] = value
     }
   }
-  return merged as unknown as ShortzSettings
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+  return merged as unknown as Settings
 }

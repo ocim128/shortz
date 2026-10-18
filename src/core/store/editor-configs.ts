@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { ulid } from 'ulid'
+import { isPlainObject, type EditorConfig, type EditorConfigMeta } from '../../shared/domain'
 import { assertProjectId } from './projects'
 import { atomicWriteFile, rmWithRetry, stripBom } from './fs-utils'
 
@@ -9,29 +10,8 @@ import { atomicWriteFile, rmWithRetry, stripBom } from './fs-utils'
  * is NOT tied to the specific clip: template choice, text fields, knob values,
  * trim and audio. Stored as one JSON per config under
  * <dataDir>/editor-configs/<id>.json (id = ULID), so in-app Save/Load/Delete
- * need no file dialogs (docs/technical/data-storage.md §editor-configs).
+ * need no file dialogs.
  */
-
-export interface ShortzEditorConfig {
-  schemaVersion: 1
-  /** Display name — unique key: saving with an existing name updates it. */
-  name: string
-  /** ISO timestamp stamped by saveEditorConfig. */
-  savedAt: string
-  templateId: string
-  values: {
-    fields: Record<string, string>
-    knobs: Record<string, unknown>
-  }
-  trim: { start: number; end: number }
-  audio: 'keep' | 'mute'
-}
-
-export interface ShortzEditorConfigMeta {
-  id: string
-  name: string
-  savedAt: string
-}
 
 export const EDITOR_CONFIG_NAME_MAX = 60
 
@@ -50,9 +30,9 @@ function configFilePath(dataDir: string, id: string): string {
  * bad part — the renderer surfaces it in a toast so a corrupt file is never
  * mistaken for a missing config.
  */
-export function sanitizeEditorConfig(raw: unknown): ShortzEditorConfig {
+export function sanitizeEditorConfig(raw: unknown): EditorConfig {
   if (!isPlainObject(raw)) throw new Error('editor config: not a JSON object')
-  const { name, templateId, values, trim, audio } = raw as Record<string, unknown>
+  const { name, templateId, values, trim, audio } = raw
 
   if (typeof name !== 'string') throw new Error('editor config: name must be a string')
   const trimmedName = name.trim()
@@ -76,7 +56,7 @@ export function sanitizeEditorConfig(raw: unknown): ShortzEditorConfig {
   if (!isPlainObject(knobs)) throw new Error('editor config: values.knobs must be an object')
 
   if (!isPlainObject(trim)) throw new Error('editor config: trim must be an object')
-  const { start, end } = trim as Record<string, unknown>
+  const { start, end } = trim
   if (typeof start !== 'number' || !Number.isFinite(start) || start < 0) {
     throw new Error('editor config: trim.start must be a non-negative number')
   }
@@ -104,14 +84,14 @@ export function sanitizeEditorConfig(raw: unknown): ShortzEditorConfig {
 }
 
 /** List saved configs, newest first. Corrupt files are skipped, not fatal. */
-export async function listEditorConfigs(dataDir: string): Promise<ShortzEditorConfigMeta[]> {
+export async function listEditorConfigs(dataDir: string): Promise<EditorConfigMeta[]> {
   let entries: string[]
   try {
     entries = await fs.readdir(editorConfigsDir(dataDir))
   } catch {
     return []
   }
-  const metas: ShortzEditorConfigMeta[] = []
+  const metas: EditorConfigMeta[] = []
   for (const entry of entries) {
     if (!entry.endsWith('.json')) continue
     const id = entry.slice(0, -'.json'.length)
@@ -136,9 +116,9 @@ export async function listEditorConfigs(dataDir: string): Promise<ShortzEditorCo
  * Returns the stored meta (id + fresh savedAt).
  */
 export async function saveEditorConfig(
-  config: Omit<ShortzEditorConfig, 'savedAt'> & { savedAt?: string },
+  config: Omit<EditorConfig, 'savedAt'> & { savedAt?: string },
   dataDir: string
-): Promise<ShortzEditorConfigMeta> {
+): Promise<EditorConfigMeta> {
   const name = typeof config.name === 'string' ? config.name.trim() : ''
   const existing = await listEditorConfigs(dataDir)
   const match = existing.find((m) => m.name.toLowerCase() === name.toLowerCase())
@@ -149,7 +129,7 @@ export async function saveEditorConfig(
 }
 
 /** Load one config by id. Throws a readable error when missing or corrupt. */
-export async function loadEditorConfig(id: string, dataDir: string): Promise<ShortzEditorConfig> {
+export async function loadEditorConfig(id: string, dataDir: string): Promise<EditorConfig> {
   const file = configFilePath(dataDir, id)
   let text: string
   try {
@@ -174,8 +154,4 @@ export async function loadEditorConfig(id: string, dataDir: string): Promise<Sho
 
 export async function deleteEditorConfig(id: string, dataDir: string): Promise<void> {
   await rmWithRetry(configFilePath(dataDir, id))
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

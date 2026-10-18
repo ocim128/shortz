@@ -8,7 +8,7 @@ import { S } from '../strings'
  * renderStore — active export job, progress, result (docs/technical/ui-spec.md
  * §store slices). Progress events arrive on the 'shortz:render:progress'
  * channel (main → renderer); the job itself runs through the real orchestrator
- * over shortz:exportProject with an AbortController-backed cancel.
+ * over shortz:exportProject, cancellable via main's abort controller.
  */
 
 export type RenderStatus = 'idle' | 'running' | 'error'
@@ -43,19 +43,11 @@ export const useRenderStore = create<RenderStoreState>((set, get) => ({
       const result = await window.shortz.exportProject(project, {})
       set({ status: 'idle', progress: null, result })
       toast.ok(S.exportDoneToast(result.path))
-      // Pick up the fresh exportHistory written by main (and reset the dirty chip).
-      try {
-        const fresh = await window.shortz.openProject(project.id)
-        useProjectStore.setState({ active: fresh, dirty: false })
-        await useProjectStore.getState().loadList()
-      } catch {
-        /* reload is best-effort */
-      }
       return result
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       if (/cancel/i.test(message)) {
-        // Cancelled render: not an error; the done flow already restored idle.
+        // Cancelled render: not an error.
         set({ status: 'idle', progress: null })
         toast.info(S.exportCancelled)
         return null
@@ -67,9 +59,8 @@ export const useRenderStore = create<RenderStoreState>((set, get) => ({
   },
 
   cancel: async () => {
-    const { progress, status } = get()
-    if (status !== 'running' || !progress) return
-    await window.shortz.cancelExport(progress.jobId).catch(() => undefined)
+    if (get().status !== 'running') return
+    await window.shortz.cancelExport().catch(() => undefined)
   },
 
   dismiss: () => set({ status: 'idle', progress: null, error: null }),

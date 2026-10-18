@@ -50,8 +50,6 @@ export interface SlotBase {
   x: number
   width: number
   visible: boolean
-  tStart?: number
-  tEnd?: number
 }
 
 export interface VideoSlot extends SlotBase {
@@ -84,18 +82,7 @@ export interface TextSlot extends SlotBase {
   wordBreak: 'normal' | 'break-word'
 }
 
-/** Phase 2 slot types — parsed but not rendered in v1. */
-export interface ImageSlot extends SlotBase {
-  type: 'image'
-  src: string
-}
-
-export interface ShapeSlot extends SlotBase {
-  type: 'shape'
-  shape: string
-}
-
-export type Slot = VideoSlot | TextSlot | ImageSlot | ShapeSlot
+export type Slot = VideoSlot | TextSlot
 
 export type KnobControl = 'slider' | 'select' | 'toggle' | 'color'
 
@@ -112,8 +99,4 @@ export interface KnobDef {
 
 export function isVideoSlot(slot: Slot): slot is VideoSlot {
   return slot.type === 'video'
-}
-
-export function isTextSlot(slot: Slot): slot is TextSlot {
-  return slot.type === 'text'
 }

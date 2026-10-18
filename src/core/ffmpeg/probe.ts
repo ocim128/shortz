@@ -11,22 +11,15 @@ import { atomicWriteFile } from '../store/fs-utils'
  */
 export interface ClipMeta {
   path: string
-  codedWidth: number
-  codedHeight: number
   /** Display dimensions after applying rotation metadata. */
   width: number
   height: number
-  /** 0 | 90 | 180 | 270 */
-  rotation: number
   durationSec: number
   fps: number
-  fpsRational: string
   videoCodec: string
   hasAudio: boolean
   audioCodec: string | null
   audioChannels: number | null
-  audioChannelLayout: string | null
-  bitrate: number | null
 }
 
 export class ProbeError extends Error {
@@ -64,7 +57,7 @@ interface FfprobeOutput {
   format?: FormatInfo
 }
 
-export function runFfprobeJson(ffprobePath: string, source: string): Promise<string> {
+function runFfprobeJson(ffprobePath: string, source: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const args = ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', source]
     const child = spawn(ffprobePath, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
@@ -89,7 +82,7 @@ export function runFfprobeJson(ffprobePath: string, source: string): Promise<str
   })
 }
 
-export function parseFpsRational(rational: string | undefined): number {
+function parseFpsRational(rational: string | undefined): number {
   if (!rational) return 0
   const [numRaw, denRaw] = rational.split('/')
   const num = Number(numRaw)
@@ -98,7 +91,7 @@ export function parseFpsRational(rational: string | undefined): number {
   return num / den
 }
 
-export function normalizeRotation(raw: number | string | undefined): number {
+function normalizeRotation(raw: number | string | undefined): number {
   if (raw === undefined) return 0
   const value = typeof raw === 'string' ? Number(raw) : raw
   if (!Number.isFinite(value)) return 0
@@ -106,7 +99,7 @@ export function normalizeRotation(raw: number | string | undefined): number {
   return mod === 90 || mod === 180 || mod === 270 ? mod : 0
 }
 
-export function parseFfprobeJson(rawJson: string, source: string): ClipMeta {
+function parseFfprobeJson(rawJson: string, source: string): ClipMeta {
   let parsed: FfprobeOutput
   try {
     parsed = JSON.parse(rawJson) as FfprobeOutput
@@ -139,28 +132,18 @@ export function parseFfprobeJson(rawJson: string, source: string): ClipMeta {
     throw new ProbeError(`Could not determine duration of "${source}"`)
   }
 
-  const fpsRational = video.r_frame_rate ?? ''
-  const fps = parseFpsRational(fpsRational)
-  const bitrateRaw = parsed.format?.bit_rate
-  const bitrate =
-    bitrateRaw !== undefined && Number.isFinite(Number(bitrateRaw)) ? Number(bitrateRaw) : null
+  const fps = parseFpsRational(video.r_frame_rate ?? '')
 
   return {
     path: path.resolve(source),
-    codedWidth,
-    codedHeight,
     width: swap ? codedHeight : codedWidth,
     height: swap ? codedWidth : codedHeight,
-    rotation,
     durationSec,
     fps: fps > 0 ? fps : 30,
-    fpsRational,
     videoCodec: video.codec_name ?? 'unknown',
     hasAudio: audio !== undefined,
     audioCodec: audio?.codec_name ?? null,
-    audioChannels: typeof audio?.channels === 'number' ? audio.channels : null,
-    audioChannelLayout: audio?.channel_layout ?? null,
-    bitrate
+    audioChannels: typeof audio?.channels === 'number' ? audio.channels : null
   }
 }
 
@@ -176,32 +159,33 @@ export interface ProbeCacheOptions {
 
 /**
  * On-disk envelope. `v` makes invalidation explicit: bump it whenever ClipMeta
- * gains a field, and old entries fall through to a fresh probe instead of
- * silently serving stale shapes.
+ * gains (or loses) a field, and old entries fall through to a fresh probe
+ * instead of silently serving stale shapes.
  */
 interface ProbeCacheEnvelope {
   v: number
   meta: ClipMeta
 }
 
-const PROBE_CACHE_VERSION = 1
-const PROBE_CACHE_MAX_ENTRIES = 2000
-const PROBE_CACHE_MAX_BYTES = 50 * 1024 * 1024
-const PROBE_CACHE_MAX_AGE_MS = 30 * 24 * 3600_000
+const PROBE_CACHE_VERSION = 2
 
+/**
+ * Probe with a small on-disk cache keyed by path+size+mtime (stale entries are
+ * impossible — the key changes with the file). Entries are ~1 KB JSON, so no
+ * eviction machinery: the directory stays trivially small for any real usage.
+ */
 export async function probeWithCache(
   source: string,
   options: ProbeCacheOptions
 ): Promise<ClipMeta> {
   const absolute = path.resolve(source)
   const { cacheDir } = options
-  let cacheKey: string | null = null
   let cacheFile: string | null = null
 
   if (cacheDir) {
     try {
       const stat = await fs.stat(absolute)
-      cacheKey = createHash('sha1').update(`${absolute}|${stat.size}|${stat.mtimeMs}`).digest('hex')
+      const cacheKey = createHash('sha1').update(`${absolute}|${stat.size}|${stat.mtimeMs}`).digest('hex')
       cacheFile = path.join(cacheDir, `${cacheKey}.json`)
       const cached = await fs.readFile(cacheFile, 'utf8')
       const envelope = JSON.parse(cached) as Partial<ProbeCacheEnvelope> | null
@@ -226,48 +210,8 @@ export async function probeWithCache(
     } catch {
       // caching is best-effort
     }
-    // Bounded growth, once per process per dir — never on the probe path.
-    sweepProbeCache(cacheDir).catch(() => undefined)
   }
   return meta
-}
-
-const sweptCacheDirs = new Set<string>()
-
-/**
- * Opportunistic cache eviction, once per process per dir: drop entries older
- * than the age floor, then trim oldest-first until the entry/byte caps hold.
- */
-async function sweepProbeCache(cacheDir: string): Promise<void> {
-  if (sweptCacheDirs.has(cacheDir)) return
-  let names: string[]
-  try {
-    names = (await fs.readdir(cacheDir)).filter((n) => n.endsWith('.json'))
-  } catch {
-    return
-  }
-  sweptCacheDirs.add(cacheDir)
-  try {
-    const now = Date.now()
-    const entries: Array<{ name: string; mtimeMs: number; size: number }> = []
-    for (const name of names) {
-      const stat = await fs.stat(path.join(cacheDir, name)).catch(() => null)
-      if (stat?.isFile()) entries.push({ name, mtimeMs: stat.mtimeMs, size: stat.size })
-    }
-    entries.sort((a, b) => a.mtimeMs - b.mtimeMs)
-    let remaining = entries.length
-    let totalBytes = entries.reduce((sum, e) => sum + e.size, 0)
-    for (const entry of entries) {
-      const overAge = now - entry.mtimeMs > PROBE_CACHE_MAX_AGE_MS
-      const overCaps = remaining > PROBE_CACHE_MAX_ENTRIES || totalBytes > PROBE_CACHE_MAX_BYTES
-      if (!overAge && !overCaps) continue
-      await fs.rm(path.join(cacheDir, entry.name), { force: true }).catch(() => undefined)
-      remaining -= 1
-      totalBytes -= entry.size
-    }
-  } catch {
-    // best effort — the next process retries
-  }
 }
 
 function isValidCachedMeta(meta: unknown): meta is ClipMeta {

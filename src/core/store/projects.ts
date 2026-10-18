@@ -1,49 +1,7 @@
 import { promises as fs } from 'node:fs'
 import { ulid } from 'ulid'
-import type { KnobId } from '../../shared/template/knob-registry'
+import type { Project } from '../../shared/domain'
 import { atomicWriteFile, stripBom } from './fs-utils'
-
-export interface ProjectProbeSnapshot {
-  width: number
-  height: number
-  fps: number
-  duration: number
-  hasAudio: boolean
-  videoCodec: string
-}
-
-export interface ProjectSource {
-  path: string
-  probe?: ProjectProbeSnapshot
-}
-
-export interface ProjectValues {
-  fields: Record<string, string>
-  knobs: Partial<Record<KnobId, unknown>>
-}
-
-export interface ExportHistoryEntry {
-  path: string
-  createdAt: string
-  durationSec: number
-  sizeBytes: number
-  encoder: string
-  crf?: number
-}
-
-export interface ProjectDocument {
-  schemaVersion: 1
-  id: string
-  name: string
-  createdAt: string
-  updatedAt: string
-  source: ProjectSource
-  templateId: string
-  values: ProjectValues
-  trim?: { start: number; end: number }
-  audio: 'keep' | 'mute'
-  exportHistory?: ExportHistoryEntry[]
-}
 
 export class ProjectFileError extends Error {
   readonly filePath: string
@@ -77,10 +35,10 @@ export function createProjectDocument(input: {
   name: string
   sourcePath: string
   templateId: string
-  values?: ProjectValues
+  values?: Project['values']
   audio?: 'keep' | 'mute'
   trim?: { start: number; end: number }
-}): ProjectDocument {
+}): Project {
   const now = new Date().toISOString()
   return {
     schemaVersion: 1,
@@ -88,20 +46,19 @@ export function createProjectDocument(input: {
     name: input.name,
     createdAt: now,
     updatedAt: now,
-    source: { path: input.sourcePath },
+    source: { path: input.sourcePath, probe: null },
     templateId: input.templateId,
     values: input.values ?? { fields: {}, knobs: {} },
-    ...(input.trim ? { trim: input.trim } : {}),
-    audio: input.audio ?? 'keep',
-    exportHistory: []
+    trim: input.trim ?? { start: 0, end: 0 },
+    audio: input.audio ?? 'keep'
   }
 }
 
-export function validateProjectDocument(raw: unknown, filePath: string): ProjectDocument {
+export function validateProjectDocument(raw: unknown, filePath: string): Project {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     throw new ProjectFileError(filePath, 'project.json must be a JSON object')
   }
-  const doc = raw as Partial<ProjectDocument>
+  const doc = raw as Partial<Project>
   if (doc.schemaVersion !== 1) {
     throw new ProjectFileError(filePath, `unsupported schemaVersion ${String(doc.schemaVersion)}`)
   }
@@ -134,15 +91,20 @@ export function validateProjectDocument(raw: unknown, filePath: string): Project
       typeof doc.trim.end !== 'number' ||
       !Number.isFinite(doc.trim.start) ||
       !Number.isFinite(doc.trim.end) ||
-      doc.trim.end <= doc.trim.start
+      doc.trim.start < 0
     ) {
+      throw new ProjectFileError(filePath, 'trim must satisfy start >= 0')
+    }
+    // {0,0} is the documented "no trim" value; anything else must be ordered.
+    const unset = doc.trim.start === 0 && doc.trim.end === 0
+    if (!unset && doc.trim.end <= doc.trim.start) {
       throw new ProjectFileError(filePath, 'trim must satisfy end > start')
     }
   }
-  return raw as ProjectDocument
+  return raw as Project
 }
 
-export async function loadProjectDocument(filePath: string): Promise<ProjectDocument> {
+export async function loadProjectDocument(filePath: string): Promise<Project> {
   let text: string
   try {
     text = await fs.readFile(filePath, 'utf8')
@@ -155,14 +117,22 @@ export async function loadProjectDocument(filePath: string): Promise<ProjectDocu
   } catch (error) {
     throw new ProjectFileError(filePath, `invalid JSON: ${(error as Error).message}`)
   }
-  return validateProjectDocument(parsed, filePath)
+  const doc = validateProjectDocument(parsed, filePath)
+  // Normalize legacy documents so the in-memory shape is total: missing trim
+  // means the full clip, probe null means "unknown", and a persisted
+  // `missing` hint (never written by this version) is dropped — open/list
+  // recompute it fresh anyway.
+  doc.trim ??= { start: 0, end: 0 }
+  if (doc.source.probe == null) doc.source.probe = null
+  delete doc.source.missing
+  return doc
 }
 
-export async function saveProjectDocument(
-  project: ProjectDocument,
-  filePath: string
-): Promise<ProjectDocument> {
-  const updated: ProjectDocument = { ...project, updatedAt: new Date().toISOString() }
+export async function saveProjectDocument(project: Project, filePath: string): Promise<Project> {
+  validateProjectDocument(project, filePath)
+  // The computed `missing` flag never persists.
+  const { missing: _missing, ...source } = project.source
+  const updated: Project = { ...project, source, updatedAt: new Date().toISOString() }
   await atomicWriteFile(filePath, `${JSON.stringify(updated, null, 2)}\n`)
   return updated
 }

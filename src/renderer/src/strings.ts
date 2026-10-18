@@ -182,10 +182,6 @@ export const S = {
   ffmpegSourceName: (s: string) => (s === 'system' ? 'System PATH' : s === 'bundled' ? 'Bundled' : `Custom (${s})`),
   storageTemplates: 'User templates folder',
   storageOpen: 'Open',
-  storageProbeCache: 'Probe cache',
-  storageClear: 'Clear',
-  storageCacheValue: (entries: number, size: string) => `${entries} entries · ${size}`,
-  storageCacheCleared: 'Probe cache cleared',
   aboutVersion: (v: string) => `Version ${v}`,
   aboutLicenses: 'Licenses: Electron · FFmpeg (GPL) · Inter & Poppins (SIL OFL)',
 

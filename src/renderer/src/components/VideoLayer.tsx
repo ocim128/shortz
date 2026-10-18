@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { usePlayerStore } from '../stores/playerStore'
 import { useProjectStore } from '../stores/projectStore'
-import type { SharedResolvedLayout } from '../preview/canvas-spec'
+import type { ResolvedLayout } from '../../../shared/layout/engine'
 
 /**
  * VideoLayer — the <video> element playing the original file directly through
@@ -12,7 +12,7 @@ import type { SharedResolvedLayout } from '../preview/canvas-spec'
 
 interface VideoLayerProps {
   mediaUrl: string | null
-  layout: SharedResolvedLayout
+  layout: ResolvedLayout
   muted: boolean
 }
 

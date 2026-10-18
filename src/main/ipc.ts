@@ -42,21 +42,22 @@ import {
   repairTrim,
   saveProjectDocumentTo,
   sourceMissing,
-  toDocument,
-  toMeta,
-  toWireProject,
-  validateForSave
+  toMeta
 } from './wire'
-import { listTemplates as listTemplateFiles, loadTemplateById } from '../core/store/templates'
+import {
+  listTemplates as listTemplateFiles,
+  loadTemplateById,
+  type TemplateMeta as CoreTemplateMeta
+} from '../core/store/templates'
 import { assertProjectId } from '../core/store/projects'
-import { describeTemplateIssues, type ValidationIssue } from '../shared/template/validate'
-import type { Template } from '../shared/template/types'
+import { describeTemplateIssues } from '../shared/template/validate'
+import { VIDEO_EXTENSIONS } from '../shared/video-extensions'
 import { resolveFfmpegBinariesCached, type FfmpegSourcePreference } from '../core/ffmpeg/resolve-bin'
 import { probeWithCache } from '../core/ffmpeg/probe'
 import { generateThumbnail } from '../core/media/thumbnail'
 import { renderProject, defaultTmpRoot } from '../core/render/orchestrator'
 import type { OrchestratorProgress } from '../core/render/orchestrator'
-import { emojiFontBytes } from '../core/render/fonts'
+import { emojiFontBytes, FONT_FILES } from '../core/render/fonts'
 import { saveSettings as saveSettingsDoc, loadSettings } from '../core/store/settings'
 import {
   deleteEditorConfig,
@@ -64,22 +65,13 @@ import {
   loadEditorConfig,
   saveEditorConfig
 } from '../core/store/editor-configs'
-import { rmWithRetry } from '../core/store/fs-utils'
 import { logWarn } from '../core/log'
 
 /**
  * Typed IPC handlers — the real product wiring (docs/technical/project-structure.md
- * §"IPC contract" + tmp/NOTES-B.md integration checklist).
- * Shell/media methods stay as B built them; everything engine-shaped now goes
- * through src/core (the render engine + stores).
+ * §"IPC contract"). Shell/media methods stay as B built them; everything
+ * engine-shaped now goes through src/core (the render engine + stores).
  */
-
-const FONT_FILES: Record<Exclude<FontKey, 'emoji'>, string> = {
-  'inter-regular': 'Inter-Regular.ttf',
-  'inter-semibold': 'Inter-SemiBold.ttf',
-  'inter-extrabold': 'Inter-ExtraBold.ttf',
-  'poppins-semibold': 'Poppins-SemiBold.ttf'
-}
 
 function sendToRenderer(channel: string, payload: unknown): void {
   const wins = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed())
@@ -108,7 +100,7 @@ async function resolveBinariesWithSettings(): Promise<
 }
 
 // One render at a time (the renderer's store models a single job).
-const activeAborts = new Map<string, AbortController>()
+let activeAbort: AbortController | null = null
 let exportInFlight = false
 
 // --- output filename (docs/technical/export-spec.md §filename convention) ----
@@ -146,19 +138,7 @@ function toProgressEvent(p: OrchestratorProgress, durationSec: number): RenderPr
   }
 }
 
-type WireTemplateMeta = TemplateMeta
-type CoreTemplateMeta = {
-  id: string
-  name: string
-  description: string
-  thumbnail: string
-  sourcePath: string
-  valid: boolean
-  issues: ValidationIssue[]
-  template?: Template
-}
-
-function wireTemplateMeta(m: CoreTemplateMeta, badge: 'built-in' | 'user'): WireTemplateMeta {
+function wireTemplateMeta(m: CoreTemplateMeta, badge: 'built-in' | 'user'): TemplateMeta {
   if (m.valid) {
     return {
       id: m.id,
@@ -198,51 +178,42 @@ async function runExport(p: Project, opts: ExportOptions): Promise<ExportResult>
     fpsOverride = Math.max(1, Math.round(clip.fps))
   }
 
+  // 'auto' stays on software x264 for determinism; NVENC is the one hardware
+  // path the v1 arg-builder supports.
   const preferred = opts.encoder ?? settings.encoder.preferred
-  // amf/qsv variants are settings-visible but outside the v1 arg-builder union —
-  // fall back to software with a logged note rather than failing the export.
   const encoder = preferred === 'h264_nvenc' ? 'h264_nvenc' : 'libx264'
-  if (encoder !== preferred) {
-    logWarn(`[shortz] encoder "${preferred}" unsupported in v1 — using ${encoder}`)
-  }
   const crf = opts.crf ?? settings.encoder.crf
 
   const outDir = opts.outputDir ?? settings.output.dir
   const outputTarget = outputPathFor(p, template.id, outDir, settings.output.filenamePattern)
 
-  const doc = toDocument(p)
-  const trim = doc.trim && doc.trim.end > doc.trim.start && doc.trim.start >= 0 ? doc.trim : undefined
-  const jobDoc: Project = trim ? p : { ...p, trim: { start: 0, end: 0 } }
-
+  // {0,0} (or unordered) trim = full clip; null forces no trim in the render.
+  const trim = p.trim.end > p.trim.start && p.trim.start >= 0 ? p.trim : null
   // Eta math needs the trimmed duration: probe snapshot when present, else 0 (no eta).
-  const durationForEta = doc.source.probe?.duration ?? 0
+  const durationForEta = p.source.probe?.duration ?? 0
 
   const controller = new AbortController()
+  activeAbort = controller
   try {
     const result = await renderProject({
-      project: {
-        ...toDocument(jobDoc),
-        trim: trim ? trim : undefined,
-        source: { path: jobDoc.source.path, probe: doc.source.probe ? { ...doc.source.probe } : undefined }
-      },
+      project: p,
       template,
       outputPath: outputTarget,
       resourcesDir: resources,
       tmpRoot: defaultTmpRoot(),
       encoder,
       crf,
+      trim,
       ...(fpsOverride !== undefined ? { fps: fpsOverride } : {}),
       ffmpegPath: binaries.ffmpegPath,
       ffprobePath: binaries.ffprobePath,
       probeCacheDir: probeCachesDir(),
       signal: controller.signal,
       onProgress: (progress) => {
-        activeAborts.set(progress.jobId, controller)
         sendToRenderer('shortz:render:progress', toProgressEvent(progress, durationForEta))
       }
     })
 
-    activeAborts.delete(result.jobId)
     sendToRenderer('shortz:render:progress', {
       jobId: result.jobId,
       percent: 100,
@@ -253,24 +224,6 @@ async function runExport(p: Project, opts: ExportOptions): Promise<ExportResult>
       stage: 'done'
     })
 
-    // exportHistory — load-modify-save the FRESH document so concurrent renderer
-    // autosaves don't clobber the entry.
-    const fresh = await loadProjectSafe(projectsRoot(), doc.id)
-    if (fresh) {
-      fresh.exportHistory = [
-        ...(fresh.exportHistory ?? []),
-        {
-          path: result.outputPath,
-          createdAt: new Date().toISOString(),
-          durationSec: Math.round(result.durationSec * 1000) / 1000,
-          sizeBytes: result.sizeBytes,
-          encoder: result.videoCodec,
-          crf
-        }
-      ]
-      await saveProjectDocumentTo(projectsRoot(), validateForSave(fresh))
-    }
-
     return {
       jobId: result.jobId,
       path: result.outputPath,
@@ -280,7 +233,7 @@ async function runExport(p: Project, opts: ExportOptions): Promise<ExportResult>
       crf
     }
   } finally {
-    activeAborts.clear()
+    activeAbort = null
   }
 }
 
@@ -298,14 +251,13 @@ export function registerIpcHandlers(): void {
       ffprobePath: binaries.ffprobePath,
       cacheDir: probeCachesDir()
     })
-    const probe = probeSnapshot(clip)
 
     const doc = newProjectDocument({
       name: path.basename(abs, path.extname(abs)),
       sourcePath: abs,
-      probe
+      probe: probeSnapshot(clip)
     })
-    await saveProjectDocumentTo(projectsRoot(), validateForSave(doc))
+    await saveProjectDocumentTo(projectsRoot(), doc)
 
     // Home thumbnail: frame at 10% duration, 360px wide → projects/<id>/thumb.jpg.
     // Best-effort: a failed thumbnail never blocks the import itself.
@@ -321,7 +273,7 @@ export function registerIpcHandlers(): void {
       logWarn(`[shortz] thumbnail unavailable for ${doc.id}: ${(error as Error).message}`)
     }
 
-    return toWireProject(doc, false)
+    return doc
   })
 
   handle('shortz:listProjects', async (): Promise<ProjectMeta[]> => {
@@ -349,7 +301,8 @@ export function registerIpcHandlers(): void {
     assertProjectId(id)
     const doc = await loadProjectSafe(projectsRoot(), id)
     if (!doc) throw new Error(`No such project: ${id}`)
-    return toWireProject(doc, await sourceMissing(doc.source.path))
+    const missing = await sourceMissing(doc.source.path)
+    return missing ? { ...doc, source: { ...doc.source, missing: true } } : doc
   })
 
   handle('shortz:saveProject', async (p: Project): Promise<void> => {
@@ -359,7 +312,7 @@ export function registerIpcHandlers(): void {
     if (!fss.existsSync(projectFilePath(p.id))) {
       await fsp.mkdir(projectDir(p.id), { recursive: true })
     }
-    await saveProjectDocumentTo(projectsRoot(), validateForSave(toDocument(p)))
+    await saveProjectDocumentTo(projectsRoot(), p)
   })
 
   handle('shortz:deleteProject', async (id: string): Promise<void> => {
@@ -388,8 +341,7 @@ export function registerIpcHandlers(): void {
     } catch (error) {
       logWarn(`[shortz] relink probe failed for ${id}: ${(error as Error).message}`)
     }
-    const saved = await saveProjectDocumentTo(projectsRoot(), validateForSave(doc))
-    return toWireProject(saved, false)
+    return saveProjectDocumentTo(projectsRoot(), doc)
   })
 
   // --- editor configs (named slots — save/list/load/delete, no file dialogs) ---
@@ -397,19 +349,16 @@ export function registerIpcHandlers(): void {
   handle('shortz:saveEditorConfig', async (c: Omit<EditorConfig, 'savedAt'>): Promise<EditorConfigMeta> => {
     // sanitizeEditorConfig (inside the store) rejects bad shapes with a
     // readable message that the renderer toasts.
-    return (await saveEditorConfig(
-      c as Parameters<typeof saveEditorConfig>[0],
-      dataDir()
-    )) as unknown as EditorConfigMeta
+    return saveEditorConfig(c, dataDir())
   })
 
   handle('shortz:listEditorConfigs', async (): Promise<EditorConfigMeta[]> => {
-    return (await listEditorConfigs(dataDir())) as unknown as EditorConfigMeta[]
+    return listEditorConfigs(dataDir())
   })
 
   handle('shortz:loadEditorConfig', async (id: string): Promise<EditorConfig> => {
     // The store's configFilePath asserts the ULID shape before joining paths.
-    return (await loadEditorConfig(id, dataDir())) as unknown as EditorConfig
+    return loadEditorConfig(id, dataDir())
   })
 
   handle('shortz:deleteEditorConfig', async (id: string): Promise<void> => {
@@ -422,9 +371,7 @@ export function registerIpcHandlers(): void {
     const result = await dialog.showOpenDialog(firstWindow()!, {
       title: 'Choose a video',
       properties: ['openFile'],
-      filters: [
-        { name: 'Videos', extensions: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'mpg', 'mpeg', 'ts'] }
-      ]
+      filters: [{ name: 'Videos', extensions: [...VIDEO_EXTENSIONS] }]
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
@@ -479,8 +426,8 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  handle('shortz:cancelExport', async (jobId: string): Promise<void> => {
-    activeAborts.get(jobId)?.abort()
+  handle('shortz:cancelExport', async (): Promise<void> => {
+    activeAbort?.abort()
   })
 
   // --- batch (one line = one clip; nothing is persisted as a project) ---------
@@ -525,44 +472,18 @@ export function registerIpcHandlers(): void {
 
   // --- settings ---------------------------------------------------------------
 
-  handle('shortz:getSettings', async (): Promise<Settings> => (await loadSettings(dataDir())) as unknown as Settings)
+  handle('shortz:getSettings', async (): Promise<Settings> => loadSettings(dataDir()))
 
   handle('shortz:saveSettings', async (s: Settings): Promise<Settings> => {
-    await saveSettingsDoc(s as Parameters<typeof saveSettingsDoc>[0], dataDir())
-    return (await loadSettings(dataDir())) as unknown as Settings
+    await saveSettingsDoc(s, dataDir())
+    return loadSettings(dataDir())
   })
 
-  // --- engine info (settings modal — formerly engine-pending rows) -------------
+  // --- engine info (settings modal) -------------------------------------------
 
   handle('shortz:ffmpegInfo', async () => {
     const binaries = await resolveBinariesWithSettings()
     return { source: binaries.source, version: binaries.version }
-  })
-
-  handle('shortz:ffmpegTest', async () => {
-    const binaries = await resolveBinariesWithSettings()
-    return { ok: binaries.version !== null, version: binaries.version, source: binaries.source }
-  })
-
-  handle('shortz:probeCacheInfo', async (): Promise<{ entries: number; bytes: number }> => {
-    const dir = probeCachesDir()
-    let entries: string[]
-    try {
-      entries = await fsp.readdir(dir)
-    } catch {
-      return { entries: 0, bytes: 0 }
-    }
-    let bytes = 0
-    for (const f of entries.filter((e) => e.endsWith('.json'))) {
-      const st = await fsp.stat(path.join(dir, f)).catch(() => null)
-      if (st) bytes += st.size
-    }
-    return { entries: entries.filter((e) => e.endsWith('.json')).length, bytes }
-  })
-
-  handle('shortz:probeCacheClear', async () => {
-    await rmWithRetry(probeCachesDir())
-    return { entries: 0, bytes: 0 }
   })
 
   handle('shortz:appVersion', async () => app.getVersion())

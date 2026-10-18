@@ -1,7 +1,8 @@
 import path from 'node:path'
 import fsp from 'node:fs/promises'
 import { app } from 'electron'
-import { loadSettings, probeCacheDir, type ShortzSettings } from '../core/store/settings'
+import { loadSettings, probeCacheDir } from '../core/store/settings'
+import type { Settings } from '../shared/domain'
 
 /**
  * Data-dir + resource paths for the main process (docs/technical/data-storage.md
@@ -62,7 +63,7 @@ export function probeCachesDir(): string {
   return probeCacheDir(dataDir())
 }
 
-export async function currentSettings(): Promise<ShortzSettings> {
+export async function currentSettings(): Promise<Settings> {
   return loadSettings(dataDir())
 }
 

@@ -9,13 +9,12 @@ import type {
   BatchRunSummary
 } from '../preload/api'
 import { buildOutputPath } from './output-path'
-import { currentSettings, probeCachesDir, resourcesDir } from './data'
+import { currentSettings, probeCachesDir, resourcesDir, dataDir } from './data'
 import { resolveFfmpegBinariesCached, type FfmpegSourcePreference } from '../core/ffmpeg/resolve-bin'
 import { probeWithCache } from '../core/ffmpeg/probe'
 import { loadTemplateById } from '../core/store/templates'
 import { loadEditorConfig } from '../core/store/editor-configs'
-import { dataDir } from './data'
-import type { ProjectValues } from '../core/store/projects'
+import type { KnobId } from '../shared/template/knob-registry'
 import { renderProject, type OrchestratorProgress } from '../core/render/orchestrator'
 import { hookFieldKeyOf } from '../shared/batch/parse'
 import { logWarn } from '../core/log'
@@ -92,7 +91,7 @@ export async function runBatch(request: BatchRunRequest): Promise<BatchRunSummar
     // Template + saved values are resolved ONCE for the whole queue: every line
     // shares the loaded configuration, only path and hook differ.
     let templateId = request.templateId ?? 'hook-letterbox'
-    let knobs: ProjectValues['knobs'] = {}
+    let knobs: Partial<Record<KnobId, unknown>> = {}
     let fields: Record<string, string> = {}
     let audio: 'keep' | 'mute' = request.audio ?? 'keep'
     let trim: { start: number; end: number } | null = null
@@ -102,7 +101,7 @@ export async function runBatch(request: BatchRunRequest): Promise<BatchRunSummar
         const saved = await loadEditorConfig(request.configId, dataDir())
         templateId = saved.templateId
         fields = { ...saved.values.fields }
-        knobs = saved.values.knobs as ProjectValues['knobs']
+        knobs = saved.values.knobs
         audio = request.audio ?? saved.audio
         if (request.configTrim && saved.trim.end > saved.trim.start) {
           trim = { ...saved.trim }
@@ -119,12 +118,10 @@ export async function runBatch(request: BatchRunRequest): Promise<BatchRunSummar
     const template = await loadTemplateById(resourcesDir(), templateId)
     const hookKey = hookFieldKeyOf(template.inputs)
     const outputDir = request.outputDir ?? settings.output.dir
+    // 'auto' stays on software x264 for determinism; NVENC is the one hardware
+    // path the v1 arg-builder supports.
     const preferred = settings.encoder.preferred
-    // amf/qsv stay settings-visible but outside the v1 arg-builder union.
     const encoder = preferred === 'h264_nvenc' ? ('h264_nvenc' as const) : ('libx264' as const)
-    if (encoder !== preferred) {
-      logWarn(`[shortz] batch encoder "${preferred}" unsupported in v1 — using ${encoder}`)
-    }
     const crf = request.crf ?? settings.encoder.crf
 
     emit(event(jobId, null, 0, total, 'starting'))
@@ -180,12 +177,11 @@ export async function runBatch(request: BatchRunRequest): Promise<BatchRunSummar
             name: clipName,
             createdAt: now,
             updatedAt: now,
-            source: { path: abs },
+            source: { path: abs, probe: null },
             templateId: template.id,
             values: { fields: itemFields, knobs },
-            ...(trim ? { trim } : {}),
-            audio,
-            exportHistory: []
+            trim: trim ?? { start: 0, end: 0 },
+            audio
           },
           template,
           outputPath: outputTarget,
@@ -193,8 +189,8 @@ export async function runBatch(request: BatchRunRequest): Promise<BatchRunSummar
           encoder,
           crf,
           audio,
+          trim,
           ...(fps !== undefined ? { fps } : {}),
-          ...(trim ? { trim } : {}),
           ffmpegPath: binaries.ffmpegPath,
           ffprobePath: binaries.ffprobePath,
           probeCacheDir: probeCachesDir(),

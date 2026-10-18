@@ -3,71 +3,30 @@
  * Hand-rolled typed bridge — no electron-trpc (decision locked, docs/03-tech-stack.md).
  *
  * The bridge stays node-free (the web tier typechecks the renderer against it);
- * only shapes from src/shared/template/types (pure TS) are imported. Probe and
- * export-history entries mirror the core store's interfaces — keep in sync when
- * those change. TemplateMeta.body carries the real shared Template so the
- * renderer runs the same layout engine as the render pipeline (tmp/NOTES-B.md
- * recorded the contract addition).
+ * data shapes come from src/shared/domain.ts (the same types the core stores
+ * persist), and TemplateMeta.body carries the real shared Template so the
+ * renderer runs the same layout engine as the render pipeline.
  */
 
 import type { Template } from '../shared/template/types'
+import type {
+  EditorConfig,
+  EditorConfigMeta,
+  Project,
+  ProjectMeta,
+  ProjectProbeSnapshot,
+  Settings
+} from '../shared/domain'
+import type { FontKey as BundledFontKey } from '../shared/layout/text'
 
-export type { Template }
-
-// ---------------------------------------------------------------------------
-// Projects — shape per docs/technical/data-storage.md §project.json
-// ---------------------------------------------------------------------------
-
-/** Probe snapshot (mirrors the core store's ProjectProbeSnapshot). */
-export interface ProbeSnapshot {
-  width: number
-  height: number
-  fps: number
-  duration: number
-  hasAudio: boolean
-  videoCodec: string
- }
-
-/** Export-history entry (mirrors the core store's ExportHistoryEntry). */
-export interface ExportHistoryEntry {
-  path: string
-  createdAt: string
-  durationSec: number
-  sizeBytes: number
-  encoder: string
-  crf?: number
-}
-
-export interface Project {
-  schemaVersion: 1
-  id: string
-  name: string
-  createdAt: string
-  updatedAt: string
-  source: {
-    path: string
-    probe: ProbeSnapshot | null
-    /** Set fresh by open/list when the source file is missing (re-link keeps values). */
-    missing?: boolean
-  }
-  templateId: string
-  values: {
-    fields: Record<string, string>
-    knobs: Partial<Record<string, unknown>>
-  }
-  trim: { start: number; end: number }
-  audio: 'keep' | 'mute'
-  exportHistory: ExportHistoryEntry[]
-}
-
-export interface ProjectMeta {
-  id: string
-  name: string
-  templateId: string
-  updatedAt: string
-  sourceMissing: boolean
-  /** true when projects/<id>/thumb.jpg exists (generated at import). */
-  thumbAvailable: boolean
+export type {
+  Template,
+  EditorConfig,
+  EditorConfigMeta,
+  Project,
+  ProjectMeta,
+  ProjectProbeSnapshot,
+  Settings
 }
 
 // ---------------------------------------------------------------------------
@@ -75,11 +34,9 @@ export interface ProjectMeta {
 // ---------------------------------------------------------------------------
 
 /**
- * The documented contract only names `TemplateMeta`; the renderer additionally
- * needs the full body (slots/knobs/inputs) to run the shared Layout Engine for
- * preview (docs/02-architecture.md — Layout Engine runs in the renderer too).
- * Rather than add a second `getTemplate` channel, TemplateMeta carries the body.
- * Recorded in tmp/NOTES-B.md.
+ * The renderer needs the full body (slots/knobs/inputs) to run the shared
+ * Layout Engine for preview, so TemplateMeta carries the body rather than a
+ * second `getTemplate` channel.
  */
 export interface TemplateMeta {
   id: string
@@ -91,37 +48,6 @@ export interface TemplateMeta {
   error?: string
   /** Absent on invalid templates. */
   body?: Template
-}
-
-// ---------------------------------------------------------------------------
-// Editor configs — named saved editor configurations (docs/technical/data-storage.md
-// §editor-configs). Mirrors the core store's ShortzEditorConfig / ShortzEditorConfigMeta.
-// ---------------------------------------------------------------------------
-
-/**
- * Everything the user tweaks in the editor that is not tied to the clip:
- * template + fields + knobs + trim + audio. Named slots — no file dialogs.
- */
-export interface EditorConfig {
-  schemaVersion: 1
-  /** Display name — unique key: saving with an existing name updates it. */
-  name: string
-  /** ISO timestamp stamped on save. */
-  savedAt: string
-  templateId: string
-  values: {
-    fields: Record<string, string>
-    knobs: Record<string, unknown>
-  }
-  trim: { start: number; end: number }
-  audio: 'keep' | 'mute'
-}
-
-/** Listing entry — the body is fetched on demand via loadEditorConfig(id). */
-export interface EditorConfigMeta {
-  id: string
-  name: string
-  savedAt: string
 }
 
 // ---------------------------------------------------------------------------
@@ -229,64 +155,22 @@ export interface BatchRunSummary {
   cancelled: boolean
 }
 
-// ---------------------------------------------------------------------------
-// Settings — shape per docs/technical/data-storage.md §settings.json
-// ---------------------------------------------------------------------------
-
-export interface Settings {
-  schemaVersion: 1
-  output: {
-    dir: string
-    filenamePattern: string
-  }
-  encoder: {
-    preferred: 'auto' | 'libx264' | 'h264_nvenc' | 'h264_amf' | 'h264_qsv'
-    crf: 17 | 18 | 20 | 23
-    fps: 30 | 60 | 'source'
-  }
-  ffmpeg: {
-    source: 'auto' | 'system' | 'bundled'
-  }
-  ui: {
-    safeZonesDefault: boolean
-    lastProjectId: string | null
-  }
-}
-
 /**
- * Bundled font faces, plus 'emoji' — the host platform's emoji font, served
- * best-effort (empty bytes when the platform has none; never throws).
+ * The bundled TTF keys (see src/shared/layout/text.ts), plus 'emoji' — the
+ * host platform's emoji font, served best-effort (empty bytes when the
+ * platform has none; never throws).
  */
-export type FontKey =
-  | 'inter-regular'
-  | 'inter-semibold'
-  | 'inter-extrabold'
-  | 'poppins-semibold'
-  | 'emoji'
+export type FontKey = BundledFontKey | 'emoji'
 
 export type Unsubscribe = () => void
 
 /** Menu-driven UI commands (main → renderer). */
-export type MenuCommand = 'new-project' | 'open-settings' | 'about'
+export type MenuCommand = 'new-project' | 'open-settings'
 
-// ---------------------------------------------------------------------------
-// Engine info (settings modal — formerly engine-pending rows)
-// ---------------------------------------------------------------------------
-
+/** FFmpeg binary provenance + version for the Settings modal. */
 export interface FfmpegInfo {
   source: 'system' | 'bundled' | 'custom'
   version: string | null
-}
-
-export interface FfmpegTestResult {
-  ok: boolean
-  version: string | null
-  source: 'system' | 'bundled' | 'custom'
-}
-
-export interface ProbeCacheInfo {
-  entries: number
-  bytes: number
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +201,7 @@ export interface ShortzApi {
   listTemplates(): Promise<TemplateMeta[]>
   // render
   exportProject(p: Project, opts: ExportOptions): Promise<ExportResult>
-  cancelExport(jobId: string): Promise<void>
+  cancelExport(): Promise<void>
   onRenderProgress(cb: (e: RenderProgressEvent) => void): Unsubscribe
   // batch (one line = one clip; no project is persisted)
   batchRender(req: BatchRunRequest): Promise<BatchRunSummary>
@@ -330,12 +214,8 @@ export interface ShortzApi {
   saveSettings(s: Settings): Promise<Settings>
   /** FFmpeg binary provenance + version for the Settings modal. */
   ffmpegInfo(): Promise<FfmpegInfo>
-  ffmpegTest(): Promise<FfmpegTestResult>
-  probeCacheInfo(): Promise<ProbeCacheInfo>
-  probeCacheClear(): Promise<ProbeCacheInfo>
   /** app.getVersion() for the About section. */
   appVersion(): Promise<string>
-  // UI shell (not in the documented ~14 — see tmp/NOTES-B.md)
   onMenuCommand(cb: (cmd: MenuCommand) => void): Unsubscribe
   /** Electron ≥32 removed File.path; webUtils.getPathForFile is the sandbox-safe replacement. */
   getPathForFile(file: File): string

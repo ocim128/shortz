@@ -3,10 +3,6 @@ export interface Size {
   height: number
 }
 
-export function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value))
-}
-
 /**
  * Pixel rounding for all resolved boxes. The docs' examples route 607.5 -> 608
  * and 980 * 9/16 = 551.25 -> 551; odd intermediate video dimensions are safe
@@ -15,11 +11,6 @@ export function clamp(value: number, min: number, max: number): number {
  */
 export function roundPixel(value: number): number {
   return Math.round(value)
-}
-
-/** Minimal even rounding, kept for callers that must emit even dimensions. */
-export function roundEven(value: number): number {
-  return Math.round(value / 2) * 2
 }
 
 /**

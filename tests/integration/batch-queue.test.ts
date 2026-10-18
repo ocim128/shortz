@@ -64,7 +64,7 @@ beforeAll(async () => {
   settings.output.dir = OUT_DIR
   settings.output.filenamePattern = '{name}_{seq}'
   settings.encoder.preferred = 'libx264'
-  settings.encoder.crf = 30
+  settings.encoder.crf = 23
   settings.encoder.fps = 30
   settings.ffmpeg.source = 'auto'
   await saveSettings(settings, SCRATCH)
@@ -233,7 +233,7 @@ describe('runBatch — real render queue', () => {
     const settings = defaultSettings()
     settings.output.dir = OUT_DIR
     settings.output.filenamePattern = 'batch_{seq}_{name}'
-    settings.encoder.crf = 30
+    settings.encoder.crf = 23
     settings.encoder.fps = 30
     await saveSettings(settings, SCRATCH)
 

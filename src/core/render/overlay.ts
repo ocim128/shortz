@@ -1,5 +1,6 @@
 import { createCanvas, type SKRSContext2D } from '@napi-rs/canvas'
 import { backgroundColorHex, type ResolvedLayout } from '../../shared/layout/engine'
+import { drawLayoutTexts, type LayoutTextCtx } from '../../shared/layout/draw-text'
 import { canvasFontSpec } from './fonts'
 
 export interface OverlayAssets {
@@ -84,42 +85,11 @@ function roundedRectPath(
   ctx.closePath()
 }
 
-function drawTexts(ctx: SKRSContext2D, layout: ResolvedLayout): void {
-  for (const text of layout.texts) {
-    ctx.font = canvasFontSpec(text.fontKey, text.fontSize)
-    ctx.fillStyle = text.color
-    ctx.textBaseline = 'alphabetic'
-    ctx.textAlign = text.align === 'center' ? 'center' : text.align === 'right' ? 'right' : 'left'
-    if (text.shadow === true) {
-      // Hook overlays the video (smart full-bleed) — soft shadow for contrast.
-      // Mirrored exactly in the preview's TextLayer.
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
-      ctx.shadowBlur = Math.max(4, text.fontSize / 7)
-      ctx.shadowOffsetY = Math.max(1, Math.round(text.fontSize / 34))
-    } else {
-      ctx.shadowColor = 'transparent'
-      ctx.shadowBlur = 0
-      ctx.shadowOffsetY = 0
-    }
-
-    const anchorX =
-      text.align === 'center'
-        ? text.x + text.width / 2
-        : text.align === 'right'
-          ? text.x + text.width
-          : text.x
-
-    for (let i = 0; i < text.lines.length; i += 1) {
-      const baseline = text.y + i * text.lineHeightPx + text.ascentPx
-      ctx.fillText(text.lines[i] as string, anchorX, baseline)
-    }
-  }
-}
-
 /**
- * Draw all non-video slots into a transparent full-canvas PNG.
- * Text uses only the pre-broken lines from the shared opentype.js metrics —
- * the rasterizer never re-wraps.
+ * Draw all non-video slots into a transparent full-canvas PNG. Text goes
+ * through the SHARED draw loop (src/shared/layout/draw-text.ts) — the same
+ * one the renderer's preview canvas uses — consuming only the pre-broken
+ * lines from the shared opentype.js metrics.
  */
 export function renderOverlayAssets(layout: ResolvedLayout): OverlayAssets {
   const { width, height } = layout.canvas
@@ -156,7 +126,11 @@ export function renderOverlayAssets(layout: ResolvedLayout): OverlayAssets {
     ctx.stroke()
   }
 
-  drawTexts(ctx, layout)
+  drawLayoutTexts(
+    ctx as unknown as LayoutTextCtx,
+    layout,
+    (text) => canvasFontSpec(text.fontKey, text.fontSize)
+  )
 
   const assets: OverlayAssets = { overlayPng: canvas.toBuffer('image/png') }
   if (needsMask(layout)) {

@@ -14,24 +14,10 @@
  * - Blank lines are ignored; every other line becomes one item.
  */
 
+import { VIDEO_EXTENSIONS } from '../video-extensions'
+
 /** The separator between the file location and the hook text. */
 export const BATCH_SEPARATOR = '•'
-
-/** Extensions the import path accepts (mirrors the pickFile filter in main). */
-export const BATCH_VIDEO_EXTENSIONS = [
-  'mp4',
-  'm4v',
-  'mov',
-  'webm',
-  'mkv',
-  'avi',
-  'mpg',
-  'mpeg',
-  'ts',
-  'flv',
-  'wmv',
-  '3gp'
-] as const
 
 export type BatchLineProblemCode =
   /** Nothing before the separator (or the whole line was empty). */
@@ -100,7 +86,7 @@ export function stemOf(filePath: string): string {
 
 export function isVideoPath(filePath: string): boolean {
   const ext = extensionOf(filePath)
-  return ext.length > 0 && (BATCH_VIDEO_EXTENSIONS as readonly string[]).includes(ext)
+  return ext.length > 0 && (VIDEO_EXTENSIONS as readonly string[]).includes(ext)
 }
 
 /** All indices of a (single-char) needle in a string. */

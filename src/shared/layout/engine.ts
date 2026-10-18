@@ -50,8 +50,6 @@ export interface ResolvedText {
   align: 'left' | 'center' | 'right'
   /** Soft drop shadow — set when the block sits on top of the video. */
   shadow?: boolean
-  tStart?: number
-  tEnd?: number
 }
 
 export interface ResolvedLayout {
@@ -149,7 +147,7 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
     ? (knobs.backgroundStyle as BackgroundStyle)
     : template.canvas.backgroundStyle
 
-  const videoSlot = template.slots.find((s): s is VideoSlot => s.type === 'video')
+  const videoSlot = template.slots.find(isVideoSlot)
   if (!videoSlot) {
     throw new LayoutError('invalid-template', 'Template has no video slot')
   }
@@ -387,9 +385,7 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
       ascentPx: ascentPx(loadFont, fontKey, result.fontSize),
       color: textSlot.color,
       align: textAlign,
-      ...(onVideo ? { shadow: true } : {}),
-      ...(textSlot.tStart !== undefined ? { tStart: textSlot.tStart } : {}),
-      ...(textSlot.tEnd !== undefined ? { tEnd: textSlot.tEnd } : {})
+      ...(onVideo ? { shadow: true } : {})
     })
   }
 
@@ -406,6 +402,10 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
     texts,
     warnings: dedupe(warnings)
   }
+}
+
+function isVideoSlot(slot: Template['slots'][number]): slot is VideoSlot {
+  return slot.type === 'video'
 }
 
 function dedupe(items: string[]): string[] {

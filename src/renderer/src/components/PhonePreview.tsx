@@ -1,8 +1,11 @@
 import type { BackgroundStyle } from '../../../shared/template/types'
-import { PREVIEW_SCALE, type SharedResolvedLayout } from '../preview/canvas-spec'
+import type { ResolvedLayout } from '../../../shared/layout/engine'
 import { SafeZoneOverlay } from './SafeZoneOverlay'
 import { TextLayer } from './TextLayer'
 import { VideoLayer } from './VideoLayer'
+
+/** Phone frame on screen ≈ 390×693 (ui-spec §preview). */
+const PREVIEW_SCALE = 390 / 1080
 
 /**
  * PhonePreview — HTML/CSS composition inside a phone-shaped frame
@@ -31,7 +34,7 @@ export interface GhostSlot {
 }
 
 interface PhonePreviewProps {
-  layout: SharedResolvedLayout
+  layout: ResolvedLayout
   mediaUrl: string | null
   muted: boolean
   showSafeZones: boolean

@@ -106,8 +106,6 @@ let ws
 let msgId = 0
 const pending = new Map()
 const consoleErrors = []
-// Set by the export test, consumed by the exportHistory test.
-let exportArtifact = null
 
 function send(method, params = {}) {
   return new Promise((res, rej) => {
@@ -468,26 +466,6 @@ await test('export runs the real engine and produces a TikTok-ready MP4', async 
   const moov = buf.indexOf(Buffer.from('moov'))
   const mdat = buf.indexOf(Buffer.from('mdat'))
   assert(moov > 0 && mdat > 0 && moov < mdat, `not faststart (moov=${moov}, mdat=${mdat})`)
-
-  exportArtifact = artifact
-})
-
-await test('export is recorded in the project exportHistory', async () => {
-  assert(exportArtifact, 'skipped: no export artifact this run')
-  // The renderer reloads the project after a successful export; the persisted
-  // document is the source of truth for the history entry.
-  const recorded = await evaluate(`(async () => {
-    const list = await window.shortz.listProjects()
-    const newest = list[0]
-    if (!newest) return null
-    const p = await window.shortz.openProject(newest.id)
-    return { history: p.exportHistory ?? [], sourcePath: p.source.path }
-  })()`)
-  assert(recorded, 'no project found after export')
-  const entry = recorded.history.find((h) => resolve(h.path) === resolve(exportArtifact))
-  assert(entry, `artifact ${exportArtifact} not in exportHistory (${recorded.history.length} entries)`)
-  assert(entry.sizeBytes > 0, 'exportHistory entry has no size')
-  assert(entry.durationSec > 0, 'exportHistory entry has no duration')
 })
 
 await test('renderer console is clean', async () => {

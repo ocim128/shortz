@@ -55,8 +55,7 @@ const fixture = JSON.parse(readFileSync(SAMPLE, 'utf8'))
 const parityProject = {
   ...fixture,
   source: { ...fixture.source, path: CLIP },
-  trim: { start: 0, end: 10 },
-  exportHistory: []
+  trim: { start: 0, end: 10 }
 }
 const parityProjectPath = join(TMP, 'parity-project.json')
 writeFileSync(parityProjectPath, JSON.stringify(parityProject, null, 2))

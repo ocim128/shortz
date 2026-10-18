@@ -5,7 +5,7 @@ import path from 'node:path'
  * convention) — shared by the single-project export and the batch queue so a
  * batch run produces exactly the names a manual export would.
  *
- * Pattern tokens: {name} {template} {date} {time} {seq} {yyyyMMdd} {HHmm}.
+ * Pattern tokens: {name} {template} {seq} {yyyyMMdd} {HHmm}.
  * Unknown tokens are kept verbatim, and the result is stripped of characters
  * Windows rejects so a title with `:` or `?` cannot fail the move at the end of
  * a long render.
@@ -36,11 +36,9 @@ export function buildOutputPath(input: OutputPathInput): string {
   const tokens: Record<string, string> = {
     name: sanitizeNamePart(input.name),
     template: sanitizeNamePart(input.templateId),
-    date: `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}`,
-    time: `${pad2(now.getHours())}${pad2(now.getMinutes())}`,
     seq: String(input.seq ?? 1),
     yyyyMMdd: `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}`,
-    HHmm: `${pad2(now.getHours())}${pad2(now.getMinutes())}`
+    HHmm: `${pad2(now.getHours())}${pad2(now.getMinutes())}`,
   }
 
   let base = ''
