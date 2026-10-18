@@ -178,8 +178,15 @@ export function registerIpcHandlers(): void {
   // --- shell ------------------------------------------------------------------
 
   handle('shortz:revealInExplorer', async (p: string) => {
-    if (fss.existsSync(p)) shell.showItemInFolder(p)
-    else shell.openPath(path.dirname(p))
+    if (fss.existsSync(p)) {
+      shell.showItemInFolder(p)
+      return
+    }
+    // Fall back to the containing folder; surface a readable error when even
+    // that is gone (missing-source mock projects) instead of failing silently.
+    const dir = path.dirname(p)
+    const err = await shell.openPath(dir)
+    if (err) throw new Error(`Cannot open "${dir}": ${err}`)
   })
 
   handle('shortz:openUserTemplatesFolder', async () => {

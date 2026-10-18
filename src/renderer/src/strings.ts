@@ -18,6 +18,9 @@ export const S = {
   homeDuplicate: 'Duplicate',
   homeOpenLocation: 'Open file location',
   homeDelete: 'Delete',
+  homeDuplicated: 'Duplicated as a new project',
+  homeDuplicateMock: 'Mock project — source not on disk, cannot duplicate yet',
+  homeRevealMissing: 'Source missing — re-link the project first',
 
   // Editor — top bar
   back: 'Back',

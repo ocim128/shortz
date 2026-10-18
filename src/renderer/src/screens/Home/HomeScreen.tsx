@@ -60,14 +60,19 @@ export function HomeScreen({ onOpenSettings }: HomeScreenProps): JSX.Element {
     }
   }, [])
 
-  const duplicate = useCallback(
-    async (id: string) => {
-      // Mocked: real duplication lands with the project store core.
-      void id
-      toast.info(S.mockOnlyToast)
-    },
-    []
-  )
+  // Duplicate goes through the real contract (openProject → createProject on
+  // the same source). Mock projects whose sources aren't on disk get a clear
+  // "mock" toast instead of a raw IPC error.
+  const duplicate = useCallback(async (id: string) => {
+    try {
+      const source = await window.shortz.openProject(id)
+      await window.shortz.createProject(source.source.path)
+      await useProjectStore.getState().loadList()
+      toast.ok(S.homeDuplicated)
+    } catch {
+      toast.info(S.homeDuplicateMock)
+    }
+  }, [])
 
   const remove = useCallback(async (id: string) => {
     if (!window.confirm(S.homeDeleteConfirm)) return
@@ -75,15 +80,14 @@ export function HomeScreen({ onOpenSettings }: HomeScreenProps): JSX.Element {
     await useProjectStore.getState().loadList()
   }, [])
 
-  const reveal = useCallback(
-    async (meta: ProjectMeta) => {
-      // The mocked store keeps no on-disk project file; reveal the source folder
-      // shape is unknown for missing sources — surface as mocked for now.
-      void meta
-      toast.info(S.mockOnlyToast)
-    },
-    []
-  )
+  const reveal = useCallback(async (meta: ProjectMeta) => {
+    try {
+      const source = await window.shortz.openProject(meta.id)
+      await window.shortz.revealInExplorer(source.source.path)
+    } catch {
+      toast.info(S.homeRevealMissing)
+    }
+  }, [])
 
   return (
     <div

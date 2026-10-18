@@ -135,7 +135,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
               <option value="system">System PATH</option>
               <option value="bundled">Bundled</option>
             </select>
-            <div className="settings-row">
+            <div className="settings-row" title={S.ffmpegPending}>
               <span className="field__label">
                 {S.ffmpegVersion}: <em>— ({S.ffmpegPending})</em>
               </span>
@@ -153,7 +153,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                 {S.storageOpen}
               </button>
             </div>
-            <div className="settings-row">
+            <div className="settings-row" title={S.ffmpegPending}>
               <span className="field__label">
                 {S.storageProbeCache}: <em>— ({S.ffmpegPending})</em>
               </span>
