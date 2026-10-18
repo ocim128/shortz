@@ -38,8 +38,8 @@ export const S = {
   templatesTitle: 'TEMPLATES',
   badgeBuiltin: 'built-in',
   badgeUser: 'user',
-  addUserTemplate: 'user',
-  addUserTemplateTitle: 'Open the user-templates folder',
+  addUserTemplate: 'New template',
+  addUserTemplateTitle: 'Open the user-templates folder and drop a template.json in it',
   invalidTemplate: 'Invalid template',
 
   // Editor — preview
@@ -58,10 +58,11 @@ export const S = {
     `Too long for ${maxLines} lines even at ${minPx}px — shorten`,
   textShrunk: (minPx: number) => `Shrunk to the ${minPx}px minimum to fit`,
   inputRequired: 'Required',
-  audioKeep: 'keep',
-  audioMute: 'mute',
-  trimStart: 'Trim start (s)',
-  trimEnd: 'Trim end (s)',
+  audioLabel: 'Audio',
+  audioKeep: 'Keep',
+  audioMute: 'Mute',
+  trimStart: 'Start (s)',
+  trimEnd: 'End (s)',
   trimOff: 'off',
   resetTrim: 'Reset trim',
 
@@ -93,7 +94,7 @@ export const S = {
   // Batch — screen 4 (one line = one clip)
   batch: 'Batch',
   batchTitle: 'BATCH EDIT',
-  batchBack: '← Back',
+  batchBack: 'Back',
   batchIntro:
     'One line per video: the file location, then • then the hook text. Paste as many lines as you want — they render one after another.',
   batchFormatExample: 'C:\\Users\\user\\Videos\\ShortZ\\tupai.mp4•TUPAI YG LUCU',
@@ -188,6 +189,7 @@ export const S = {
 
   // Toasts
   savedToast: 'Project saved',
+  toastDismiss: 'Dismiss notification',
 
   // Errors
   errCreateProject: 'Could not create the project',

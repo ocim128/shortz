@@ -1,16 +1,22 @@
+import { useEffect, useRef, useState } from 'react'
 import type { BackgroundStyle } from '../../../shared/template/types'
 import type { ResolvedLayout } from '../../../shared/layout/engine'
 import { SafeZoneOverlay } from './SafeZoneOverlay'
 import { TextLayer } from './TextLayer'
 import { VideoLayer } from './VideoLayer'
 
-/** Phone frame on screen ≈ 390×693 (ui-spec §preview). */
-const PREVIEW_SCALE = 390 / 1080
+/**
+ * Phone frame on screen ≈ 390×693 at full size (ui-spec §preview); the CSS
+ * size (--phone-h/--phone-w tokens) shrinks it on short windows so the
+ * playback + trim rows always stay visible.
+ */
+const FULL_SCALE = 390 / 1080
 
 /**
  * PhonePreview — HTML/CSS composition inside a phone-shaped frame
  * (docs/02-architecture.md §Preview Compositor). The inner .design-root is the
- * full 1080×1920 design space scaled by 0.36 → 390×693 on screen; children
+ * full 1080×1920 design space scaled to the frame's actual on-screen width
+ * (measured via ResizeObserver, matching the CSS-driven frame size); children
  * position in design px. Text is painted on a canvas with the shared engine's
  * exact metrics; the video keeps native scaling.
  */
@@ -50,14 +56,29 @@ export function PhonePreview({
   safeZones,
   ghostSlots
 }: PhonePreviewProps): JSX.Element {
+  const frameRef = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState<number>(FULL_SCALE)
+
+  // The frame's CSS size is responsive (viewport-driven tokens) — the design
+  // space must follow the actual rendered width, not a constant.
+  useEffect(() => {
+    const el = frameRef.current
+    if (!el) return
+    const measure = (): void => setScale(el.clientWidth / layout.canvas.width)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [layout.canvas.width])
+
   return (
-    <div className="phone-frame">
+    <div className="phone-frame" ref={frameRef}>
       <div
         className="design-root"
         style={{
           width: layout.canvas.width,
           height: layout.canvas.height,
-          transform: `scale(${PREVIEW_SCALE})`,
+          transform: `scale(${scale})`,
           backgroundColor:
             layout.canvas.background === 'blurVideo'
               ? '#000000' // the blurred video layer covers it

@@ -1,5 +1,6 @@
 import { usePlayerStore } from '../stores/playerStore'
 import { formatTime } from '../lib/format'
+import { Icon } from './Icon'
 import { S } from '../strings'
 
 /** Playback bar: play/pause (Space), current time, scrub (ui-spec §preview). */
@@ -10,6 +11,8 @@ export function PlaybackBar(): JSX.Element {
   const toggle = usePlayerStore((s) => s.toggle)
   const seek = usePlayerStore((s) => s.seek)
 
+  const fill = duration > 0 ? Math.min(100, (current / duration) * 100) : 0
+
   return (
     <div className="playback-bar">
       <button
@@ -19,7 +22,7 @@ export function PlaybackBar(): JSX.Element {
         aria-label={playing ? S.pause : S.play}
         title={playing ? `${S.pause} (Space)` : `${S.play} (Space)`}
       >
-        {playing ? '⏸' : '▶'}
+        <Icon name={playing ? 'pause' : 'play'} size={15} />
       </button>
       <span className="playback-bar__time">
         {formatTime(current)} / {formatTime(duration)}
@@ -34,6 +37,7 @@ export function PlaybackBar(): JSX.Element {
         disabled={duration <= 0}
         onChange={(e) => seek(Number(e.target.value))}
         aria-label="Seek"
+        style={{ '--fill': `${fill}%` } as React.CSSProperties}
       />
     </div>
   )

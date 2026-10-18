@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ProjectMeta } from '../../../../preload/api'
+import { Icon } from '../../components/Icon'
 import { formatRelativeAgo } from '../../lib/format'
 import { S } from '../../strings'
 
@@ -37,11 +38,16 @@ export function ProjectCard({ meta, onOpen, onRelink, onDuplicate, onDelete, onR
   useEffect(() => {
     if (!menu) return
     const close = (): void => setMenu(null)
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') close()
+    }
     window.addEventListener('click', close)
     window.addEventListener('blur', close)
+    window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('click', close)
       window.removeEventListener('blur', close)
+      window.removeEventListener('keydown', onKey)
     }
   }, [menu])
 
@@ -51,17 +57,23 @@ export function ProjectCard({ meta, onOpen, onRelink, onDuplicate, onDelete, onR
     setMenu({ x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) })
   }
 
+  const activate = (): void => {
+    if (meta.sourceMissing) onRelink(meta.id)
+    else onOpen(meta.id)
+  }
+
   return (
     <div
       ref={rootRef}
       className={`card project-card${meta.sourceMissing ? ' is-missing' : ''}`}
       role="button"
       tabIndex={0}
-      onClick={() => (meta.sourceMissing ? onRelink(meta.id) : onOpen(meta.id))}
+      onClick={activate}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          if (meta.sourceMissing) onRelink(meta.id)
-          else onOpen(meta.id)
+        // role=button promises both Enter and Space activation.
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          activate()
         }
       }}
       onContextMenu={openMenu}
@@ -70,13 +82,14 @@ export function ProjectCard({ meta, onOpen, onRelink, onDuplicate, onDelete, onR
         {thumbUrl ? (
           <img className="project-card__thumb-img" src={thumbUrl} alt="" draggable={false} />
         ) : (
-          <span className="project-card__play" aria-hidden>
-            ▶
+          <span className="project-card__play" aria-hidden="true">
+            <Icon name="play" size={18} />
           </span>
         )}
         {meta.sourceMissing && (
           <span className="project-card__missing-badge" title={S.homeRelinkPrompt}>
-            ⚠ {S.homeRelink}
+            <Icon name="alert" size={11} />
+            {S.homeRelink}
           </span>
         )}
       </div>
@@ -98,6 +111,7 @@ export function ProjectCard({ meta, onOpen, onRelink, onDuplicate, onDelete, onR
               onDuplicate(meta.id)
             }}
           >
+            <Icon name="copy" size={14} />
             {S.homeDuplicate}
           </button>
           <button
@@ -108,6 +122,7 @@ export function ProjectCard({ meta, onOpen, onRelink, onDuplicate, onDelete, onR
               onReveal(meta)
             }}
           >
+            <Icon name="folderOpen" size={14} />
             {S.homeOpenLocation}
           </button>
           <button
@@ -119,6 +134,7 @@ export function ProjectCard({ meta, onOpen, onRelink, onDuplicate, onDelete, onR
               onDelete(meta.id)
             }}
           >
+            <Icon name="trash" size={14} />
             {S.homeDelete}
           </button>
         </div>

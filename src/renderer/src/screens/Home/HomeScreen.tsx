@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { ProjectMeta } from '../../../../preload/api'
 import { ProjectCard } from './ProjectCard'
+import { Icon } from '../../components/Icon'
 import { useProjectStore } from '../../stores/projectStore'
 import { toast } from '../../stores/toastStore'
 import { S } from '../../strings'
@@ -114,27 +115,49 @@ export function HomeScreen({ onOpenSettings, onOpenBatch }: HomeScreenProps): JS
       }}
     >
       <header className="home__header">
-        <div className="home__logo">{S.appName}</div>
-        <div className="home__header-actions">
-          <button type="button" className="btn btn-ghost" onClick={onOpenBatch}>
-            ⚡ {S.homeBatch}
-          </button>
-          <button type="button" className="btn btn-ghost" onClick={onOpenSettings}>
-            {S.homeSettings}
-          </button>
+        <div className="home__header-inner">
+          <div className="home__logo">
+            <span className="home__logo-mark" aria-hidden="true">
+              <Icon name="play" size={12} />
+            </span>
+            {S.appName}
+          </div>
+          <div className="home__header-actions">
+            <button type="button" className="btn btn-ghost" onClick={onOpenBatch}>
+              <Icon name="zap" size={15} />
+              {S.homeBatch}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={onOpenSettings}>
+              <Icon name="settings" size={15} />
+              {S.homeSettings}
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="home__main">
         <button type="button" className="dropzone" onClick={() => void browse()}>
-          <div className="dropzone__title">{S.homeDropTitle}</div>
-          <div className="dropzone__hint">{S.homeDropHint}</div>
+          <span className="dropzone__icon" aria-hidden="true">
+            <Icon name="film" size={26} />
+          </span>
+          <span className="dropzone__title">{S.homeDropTitle}</span>
+          <span className="dropzone__hint">{S.homeDropHint}</span>
         </button>
 
         <section className="home__recent">
-          <h2 className="home__recent-title">{S.homeRecent}</h2>
+          <h2 className="home__recent-title">
+            {S.homeRecent}
+            {list.length > 0 && (
+              <span className="home__recent-count" aria-hidden="true">
+                {list.length}
+              </span>
+            )}
+          </h2>
           {list.length === 0 ? (
-            <p className="home__empty">{S.homeNoProjects}</p>
+            <div className="home__empty">
+              <Icon name="film" size={22} aria-hidden="true" />
+              <span>{S.homeNoProjects}</span>
+            </div>
           ) : (
             <div className="home__grid">
               {list.map((meta) => (

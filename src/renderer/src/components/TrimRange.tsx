@@ -67,6 +67,21 @@ export function TrimRange({ duration, trim, onChange }: TrimRangeProps): JSX.Ele
     setDragging(null)
   }
 
+  // Keyboard parity for the slider role: arrows nudge by 0.1 s (Shift = 1 s),
+  // Home/End jump to the clip bounds. All values snap like a drag.
+  const onHandleKeyDown = (handle: Handle) => (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    const step = e.shiftKey ? 1 : 0.1
+    const current = handle === 'start' ? eff.start : eff.end
+    let next: number | null = null
+    if (e.key === 'ArrowLeft') next = current - step
+    else if (e.key === 'ArrowRight') next = current + step
+    else if (e.key === 'Home') next = handle === 'start' ? 0 : eff.start + 0.1
+    else if (e.key === 'End') next = handle === 'end' ? duration : eff.end - 0.1
+    if (next === null) return
+    e.preventDefault()
+    applyHandle(handle, snapTenths(next))
+  }
+
   const label = (t: number): string => `${t.toFixed(1)}s`
 
   // Value bubbles anchor flush near the track ends — centered bubbles on the
@@ -96,6 +111,7 @@ export function TrimRange({ duration, trim, onChange }: TrimRangeProps): JSX.Ele
           className={`trim-range__handle${dragging === 'start' ? ' is-active' : ''}`}
           style={{ left: `${pct(eff.start)}%` }}
           onPointerDown={onPointerDown('start')}
+          onKeyDown={onHandleKeyDown('start')}
           role="slider"
           tabIndex={0}
           aria-label="Trim start"
@@ -109,6 +125,7 @@ export function TrimRange({ duration, trim, onChange }: TrimRangeProps): JSX.Ele
           className={`trim-range__handle${dragging === 'end' ? ' is-active' : ''}`}
           style={{ left: `${pct(eff.end)}%` }}
           onPointerDown={onPointerDown('end')}
+          onKeyDown={onHandleKeyDown('end')}
           role="slider"
           tabIndex={0}
           aria-label="Trim end"
