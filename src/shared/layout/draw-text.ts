@@ -14,12 +14,16 @@ import type { ResolvedLayout, ResolvedText } from './engine'
 export interface LayoutTextCtx {
   font: string
   fillStyle: string
+  strokeStyle: string
+  lineWidth: number
+  lineJoin: string
   textBaseline: string
   textAlign: 'left' | 'center' | 'right'
   shadowColor: string
   shadowBlur: number
   shadowOffsetY: number
   fillText(text: string, x: number, y: number): void
+  strokeText(text: string, x: number, y: number): void
 }
 
 export function drawLayoutTexts(
@@ -33,10 +37,14 @@ export function drawLayoutTexts(
     ctx.textBaseline = 'alphabetic'
     ctx.textAlign = text.align
     if (text.shadow === true) {
-      // Hook overlays the video (smart full-bleed) — soft shadow for contrast.
+      // Hook overlays the video (smart full-bleed) — dark stroked ink keeps
+      // contrast on any background, bright or dark; the soft shadow adds depth.
       ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
       ctx.shadowBlur = Math.max(4, text.fontSize / 7)
       ctx.shadowOffsetY = Math.max(1, Math.round(text.fontSize / 34))
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)'
+      ctx.lineWidth = Math.max(3, text.fontSize / 12)
+      ctx.lineJoin = 'round'
     } else {
       ctx.shadowColor = 'transparent'
       ctx.shadowBlur = 0
@@ -50,8 +58,21 @@ export function drawLayoutTexts(
           ? text.x + text.width
           : text.x
 
+    const lineY = (i: number): number => text.y + i * text.lineHeightPx + text.ascentPx
+
+    if (text.shadow === true) {
+      // Stroke silhouette first, carrying the drop shadow; then kill the
+      // shadow so the fill pass lands crisp on top of the stroke.
+      for (let i = 0; i < text.lines.length; i += 1) {
+        ctx.strokeText(text.lines[i] as string, anchorX, lineY(i))
+      }
+      ctx.shadowColor = 'transparent'
+      ctx.shadowBlur = 0
+      ctx.shadowOffsetY = 0
+    }
+
     for (let i = 0; i < text.lines.length; i += 1) {
-      ctx.fillText(text.lines[i] as string, anchorX, text.y + i * text.lineHeightPx + text.ascentPx)
+      ctx.fillText(text.lines[i] as string, anchorX, lineY(i))
     }
   }
 }
