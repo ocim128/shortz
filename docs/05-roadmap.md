@@ -75,7 +75,7 @@ Milestones are strictly stacked: each one ends with something usable. Effort est
 
 - Direct TikTok upload (Content Posting API — needs approved developer app; unreliable for personal accounts).
 - Template 5 before/after split (multi-video engine work).
-- AI hook suggestions (local LLM or user-provided API key — must stay opt-in to preserve zero-network default).
+- AI hook suggestions (local LLM or user-provided API key — must stay opt-in to preserve the zero-unprompted-network default; the Downloader feature is the one built-in exception, see `twitter-downloader/01-goals.md` §G6′).
 - macOS/Linux builds (electron-builder targets exist; demand first).
 
 ## Risk register

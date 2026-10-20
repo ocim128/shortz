@@ -102,7 +102,7 @@ interface Resolver {
 - **A — `syndication.ts`** (always on): `GET https://cdn.syndication.twimg.com/tweet-result` with query params `id`, `lang=en`, the **computed token** (see `technical/resolver-chain.md` §2) and the pinned `features` list; maps `mediaDetails` → `MediaAsset[]`, `video_info.variants` → `Variant[]`. A 404, a tombstone, or a payload without `mediaDetails` is **`NOT_EMBEDDABLE`, never `NOT_FOUND`** — it only means "this endpoint won't tell us".
 - **B — `fxtwitter.ts`** (off by default, toggle in Settings): `GET https://api.fxtwitter.com/status/<id>`; one progressive MP4 per video. Enabling it sends the URL list to a third-party operator — the toggle's description says exactly that.
 - **D — `ytdlp.ts`** (D5, optional sidecar): `yt-dlp -J --no-warnings <canonical_url>` parsed as JSON (never scraping CLI text output); resolve-only — our engine still downloads, so naming/sidecars/state/dedup are identical across adapters (xdl decision #2).
-- **`chain.ts`**: walks adapters in order; **every adapter error falls through**; the terminal error folds as: `NOT_FOUND` wins (definitive) → else `RATE_LIMITED` (retry signal) → else the last adapter's error. The user-facing message includes the trail (`tried: syndication → fxtwitter`).
+- **`chain.ts`**: walks adapters in order; **every adapter error falls through**; the terminal error folds as: a **primary-adapter** `NOT_FOUND` wins → else `RATE_LIMITED` (retry signal) → else the last adapter's error. A **non-primary** 404 folds to `NOT_EMBEDDABLE` (rev 3: only the primary adapter — or the failure-path probe — may declare a post deleted), and the message includes the trail (`tried: syndication → fxtwitter`). On a terminal `NOT_EMBEDDABLE`, one failure-path probe (`publish.twitter.com/oembed`) separates deleted (404 ⇒ `NOT_FOUND`) from alive-but-unembeddable (200) — see `technical/resolver-chain.md` §6.
 
 Full mapping tables and error semantics: [`technical/resolver-chain.md`](technical/resolver-chain.md).
 
@@ -138,14 +138,14 @@ normalize inputs (pure)         → dedupe by tweet id (first occurrence wins)
 ```
 
 - The two semaphores are **independent pools** (xdl decision #23: nesting a transfer inside a resolve slot silently collapses resolve parallelism and lets a 429-stalled transfer occupy a resolve slot).
-- **Item-level containment**: an escaping `DlError` becomes that item's failure; any other exception becomes `UNEXPECTED` for that item only. A 500-line batch is never lost to one malformed post. `AbortError` stays uncaught on purpose.
+- **Item-level containment**: an escaping `DlError` becomes that item's failure; any other exception becomes `UNEXPECTED` for that item only. A 500-line batch is never lost to one malformed post. `AbortError` is **rethrown per item and caught at the run boundary** (rev 3): in-flight items end `cancelled` and the run still emits its terminal event — see the cancel contract in `technical/download-engine.md` §3.
 - `onEvent` is an injected callback — CLI prints, main coalesces into IPC, tests collect into an array. No Electron, no `console` inside core.
 
 ### 7. Main glue — `src/main/downloader.ts`
 
 Thin, like the rest of `src/main`:
 
-- Registers `shortz:dl:*` handlers (see `technical/ui-and-ipc.md` §3 for the exact channel/type list).
+- Registers `shortz:dl:*` handlers **via `registerDownloaderIpc(deps)` called from `registerIpcHandlers()`** — `handle()` and the single-flight flags are private to `ipc.ts`, so they arrive as injected deps: a small `JobSlots` object (`exportInFlight`, `dlInFlight`) shared with export/batch keeps the mutual-exclusion rules in one place (rev 3; see `technical/ui-and-ipc.md` §3 for the exact channel/type list).
 - Owns **one download job slot** (single-flight). It is *separate* from the export slot: downloading is network-bound and may run while an export burns CPU; two download jobs at once are not allowed (one state writer, one progress stream).
 - Reads settings → `RunOptions`; maps `onEvent` → coalesced `webContents.send('shortz:dl:progress', …)` (≈ 10 Hz, plus every lifecycle transition immediately).
 - "New project" from a downloaded file reuses the existing `createProject` logic (probe → `project.json` → thumbnail) — no duplicate import path.
@@ -190,7 +190,7 @@ Summary { total, ok, skipped, partial, failed, cancelled } → toast + row state
 | Process | Everything in the main process; no worker threads, no child processes (except `yt-dlp.exe` in D5). Node's async I/O keeps the UI responsive; the renderer never awaits a byte. |
 | Job slots | **One** download run at a time (single-flight in `main/downloader.ts`). A second click = disabled button, mirroring export. |
 | Parallelism inside a run | `resolveSem = 4`, `downloadSem = 3` (settings range 1–5 / 1–3). Resolves overlap earlier transfers — a batch's network wait is the slowest chain, not the sum. **Bounded lookahead** (rev 2): an item resolves only while fewer than `downloadConcurrency × 2` transfers are pending — resolve never runs a whole batch ahead of download (rate limits + signed-URL expiry). |
-| Cancel | One `AbortController` per run; per-item links composed from it. Cancel mid-transfer keeps the `.part` (resume later) and marks the item `cancelled`. Cancel between items stops scheduling immediately. |
+| Cancel | One `AbortController` per run; per-item links composed from it. Cancel mid-transfer keeps the `.part` (resume later) and marks the item `cancelled`. Cancel between items stops scheduling immediately. **Exactly one `run-done` event per run, always** — cancel included — so `dlInFlight` can never leak (rev 3). |
 | Cross-feature | Downloader may run during an export/batch render (different bottleneck). Shared resources are read-only (settings, probe cache) or same-dir-only (state file, written by one job). |
 | Progress | Core emits fine ticks; main coalesces to ~10 Hz; every status transition (resolving→downloading→done) is sent immediately so rows never look stuck. |
 
@@ -224,8 +224,8 @@ Rationale for media outside `%APPDATA%`: downloaded videos are user content the 
 | Failure | Behavior |
 |---|---|
 | Malformed line | Caught in the renderer parser; the line is marked, never sent; batch proceeds |
-| Deleted post | `NOT_FOUND` after all adapters; line shows "Post not found or deleted" |
-| Sensitive/protected post | `NOT_EMBEDDABLE` per adapter → final message "Not embeddable (sensitive or protected)" — never "deleted" |
+| Deleted post | `NOT_FOUND` — probe-confirmed (oembed 404) or primary-adapter 404; otherwise the honest "deleted, private, or sensitive" copy (rev 3) |
+| Sensitive/protected post | `NOT_EMBEDDABLE`; a third party's 404 never wins the fold and the probe (200) confirms the post is alive — the line never claims "deleted" (rev 3) |
 | Login-walled | `AUTH_REQUIRED` + "ShortZ doesn't sign in to X" |
 | No video (photos only) | `NO_VIDEO` per line |
 | 429 | Global pause; retry with backoff; after attempts → `RATE_LIMITED` "X is rate-limiting — try later" |

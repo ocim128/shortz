@@ -77,18 +77,24 @@ export interface HttpDeps {
   now?: () => number            // injected clock for throttle tests
 }
 
-const RESOLVE_HOSTS = new Set(['cdn.syndication.twimg.com', 'api.fxtwitter.com', 't.co', 'x.com', 'twitter.com'])
-const MEDIA_HOST_RE = /(^|\.)(twimg\.com|x\.com)$/   // exact-suffix, dot-anchored
+const RESOLVE_HOSTS = new Set(['cdn.syndication.twimg.com', 'api.fxtwitter.com', 'publish.twitter.com', 't.co', 'x.com', 'twitter.com'])
+const MEDIA_HOST_RE = /(^|\.)(twimg\.com)$/          // exact-suffix, dot-anchored — HTTPS enforced separately
+// rev 3: x.com dropped from the media list — no evidence of media there, and
+// api.x.com passing the old regex shows why loose inclusion is a bug.
 
 export function createDlClient(deps: HttpDeps): DlClient
 //   getJson(url, { signal }): Promise<unknown>      — allow-list: RESOLVE_HOSTS (fxtwitter only when enabled)
 //   expandTco(url, { signal }): Promise<string>     — redirect:'manual', reads Location, result re-parsed by urls.ts
-//   streamTo(url, dest, { signal, offset }): ...    — allow-list: MEDIA_HOST_RE; returns verified size
+//   streamTo(url, dest, { signal, offset }): ...    — https:// enforced, MEDIA_HOST_RE, `accept-encoding: identity`;
+//                                                     returns verified size + ETag/Last-Modified for If-Range
 ```
 
 - `evil-twimg.com` fails `MEDIA_HOST_RE` (the dot anchor), `https://x.com.evil.example/...` fails too. Unit-tested with a hostile-URL matrix (DA10).
-- **`*.twitter.com` stays out of the media allow-list (rev 2):** the resolver-host set includes `twitter.com` for redirects/landing pages, but media evidence points only at `*.twimg.com` (`video`, `pbs`, `ton`). Widening a trust boundary needs a recorded fixture, not a hunch — the D4 live matrix is the gate.
-- Timeouts: `AbortSignal.any([jobSignal, AbortSignal.timeout(ms)])` — resolve 15 s, media idle 30 s (idle = per-read stall, not total — big files on slow lines must not die at 30 s total; implemented by wrapping the body reader).
+- **`*.twitter.com` and `x.com` stay out of the media allow-list (rev 2, extended rev 3):** resolver hosts include them for redirects/landing pages, but media evidence points only at `*.twimg.com` (`video`, `pbs`, `ton`). `x.com` was in the list by inheritance, not evidence — and `api.x.com` passing the old regex shows why that is a bug, not a courtesy. Widening a trust boundary needs a recorded fixture; the D4 live matrix is the gate.
+- **HTTPS-only media** (rev 3): `streamTo` requires `u.protocol === 'https:'` — the hostname regex alone let `http://video.twimg.com/…` (plaintext, tamperable) pass.
+- **`accept-encoding: identity` on media GETs** (rev 3): undici negotiates gzip transparently, so `Content-Length` would describe the *encoded* body and the exact-size check would raise a spurious `INTEGRITY_MISMATCH` (and delete a good `.part`).
+- **Proxy honesty** (rev 3): undici ignores system proxies; on a `NETWORK` verdict, main enriches the detail once via `session.defaultSession.resolveProxy(url)` — *"a system proxy is configured — ShortZ doesn't use it yet"* — turning the worst support ticket into a self-explaining message. undici itself stays (the test seam is worth more).
+- Timeouts: `AbortSignal.any([jobSignal, …])` — resolve 15 s total; media **5 s to first response header**, then 30 s idle between body chunks with timers re-armed per chunk (rev 3: a dead network must fail a line in seconds, not minutes; implemented by wrapping the body reader).
 
 ## State store: JSON vs the alternatives
 
@@ -125,13 +131,14 @@ function variantScore(v: Variant): number {
 | Layer | What | How |
 |---|---|---|
 | `urls.ts` | Every link form ×15, hostile hosts, embedded-in-text, invalid ids | Vitest table tests; cases ported from xdl's suite |
-| `token.ts` | Byte-exactness | **Golden tests: the 17 Node-computed tokens from xdl's `test_token.py`** (`"20" → "6dq1a2xwd9"`), plus a 3 000-id differential test in CI-light mode against recorded vectors |
+| `token.ts` | Byte-exactness | **Golden tests: the 17 Node-verified tokens embedded in `technical/resolver-chain.md` §2** (`"20" → "6dq1a2xwd93"` — rev 3 fixed a prose-quoted vector that had lost its last digit), plus a 3 000-id differential test in CI-light mode against recorded vectors |
 | `select.ts` / `naming.ts` | Policy + sanitizer | Pure tables: bitrate ties, cap-above-fit, reserved names, control chars, 19-digit ids, surrogates |
 | Resolvers | Payload mapping, error codes | Injected `fetchImpl` returning recorded JSON fixtures (`tests/fixtures/syndication/*.json`); a `scripts/record-dl-fixture.ts` re-records live payloads (never committed with real captions unless the user opts in) |
 | Chain | Fall-through + terminal-error folding | Table tests per xdl's semantics |
 | Engine | Resume, integrity, 429, cancel, ENOSPC | In-memory `fetchImpl` + temp dirs: Range honored/ignored (200 restart), truncated body → `INTEGRITY_MISMATCH`, `AbortController` mid-stream keeps `.part`, `ENOSPC` → `DISK_FULL` |
 | Throttle | Slot reservation, global pause, escalation | Injected clock; assert no burst under 8 concurrent gates |
-| Orchestrator | Batch semantics | Fake chain + fake engine: partial multi-video, skip completeness, circuit breaker at 8, cancel drain |
+| Orchestrator | Batch semantics | Fake chain + fake engine: partial multi-video, skip completeness, circuit breaker at 8, cancel drain (exactly one `run-done`) |
+| Settings normalization | `downloads` block clamped in `defaultSettings` **and** `normalizeSettings` (rev 3) | Vitest: a hand-edited `downloadConcurrency: 9` falls back to 3 |
 | GUI/E2E | Downloader screen happy path + cancel | Existing CDP harness (`e2e/run.mjs`) with a `SHORTZ_DL_FIXTURE` env that swaps the client for the fixture impl — the GUI is tested without network |
 | Live (opt-in) | `LIVE_DL=1 pnpm test` | One real syndication call + one real small-video download; skipped by default, same philosophy as xdl's `-m live` |
 

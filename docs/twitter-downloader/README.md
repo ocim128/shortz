@@ -1,9 +1,9 @@
 # ShortZ — Twitter/X Video Downloader (Feature Plan)
 
 **Feature:** paste X (Twitter) status links → download the video(s) → edit → post, without leaving ShortZ.
-**Status:** Planning — **Rev 2** (nothing implemented yet; external audit applied — see Revision history at the bottom).
+**Status:** Planning — **Rev 3** (nothing implemented yet; two external audits applied — see Revision history at the bottom).
 **Scope owner:** this folder. The main app plan stays in [`../README.md`](../README.md).
-**Reference implementation (prior art, not shipped code):** `../downloader` (the `xdl` Python package, M0–M6 shipped). This plan ports its *design*, not its code — see [`03-tech-stack.md`](03-tech-stack.md) for why.
+**Reference implementation (prior art, not shipped code):** the **`xdl` Python package** in the *sibling repository* `../downloader` (i.e. `tiktok-repost/downloader`, **outside this Git repo**; M0–M6 shipped). This plan ports its *design*, not its code — see [`03-tech-stack.md`](03-tech-stack.md) for why. Every "xdl D#" citation refers to that repo's `DECISIONS.md`; **each citation carries its full rationale inline**, and the load-bearing data (the 17 token goldens) is reproduced in [`technical/resolver-chain.md`](technical/resolver-chain.md) Node-verified — nothing in this plan requires access to the other repo to be checked (rev 3).
 
 ## The one-paragraph version
 
@@ -50,13 +50,14 @@ ShortZ already turns a local clip into a vertical video. The missing first step 
 
 ## Relationship to the existing plan
 
-This feature **amends** two statements in the main docs, and the amendment is deliberate:
+This feature **amends** the network posture across the main docs — five one-line pointers in `../01-goals.md`, `../02-architecture.md`, `../03-tech-stack.md`, `../05-roadmap.md`, `../technical/future-extensions.md` — and the amendment is deliberate:
 
 1. `03-tech-stack.md` §"Dependency policy" says *"No network-capable dependency is allowed"*. The downloader needs network. The rule becomes: **network code exists only in `src/core/downloader` behind one allow-listed client; no network-capable *dependency* is added** (Node's built-in `fetch` is not a dependency). The renderer still performs zero network I/O.
 2. `02-architecture.md` §"Security posture" says *"Zero network calls"*. It becomes: **zero unprompted network**; the downloader runs only on explicit user action, talks only to documented hosts, never sends cookies or credentials, and the app remains fully functional offline.
 
 ## Revision history
 
+- **Rev 3 — second audit applied (`AUDIT.md`, 24 findings):** terminal-error fold fixed — a third party's 404 can never report "deleted"; honest three-cause default copy + failure-path oembed probe (A1); token golden corrected to the Node-verified `6dq1a2xwd93`, all 17 goldens embedded Node-checked with the generator (A2); xdl citations made self-contained with the sibling-repo note (A3); IPC inputs carry `{key, lineNumber, text}` and events echo `key` (A4); `retryFailed`, `shortz:dl:openFolder`, `pickDirectory()` added (A5); state schema v2 gains `caption`/`url` on tweets + a `runs` map (A6); error sentences moved to pure `shared/downloader/copy.ts` (A7); cancel contract — exactly one `run-done`, always (A8); `If-Range`/`.part.json` validator sidecar (A9); fsync via `FileHandle` + `moveWithRetry` finalize (A10); media boundary https-only and `x.com` dropped, `accept-encoding: identity` (A11/A12); settings `downloads` block normalized in both `defaultSettings` and `normalizeSettings` (A13); 240-char total path budget + D0 test (A14); hardened sanitizer lands in `src/shared/naming.ts`, reused by `output-path.ts` (A15); five main-doc network amendments (A16); `registerDownloaderIpc(deps)` + `JobSlots` (A17); `ThrottleState` typed monotonic clock + signal (A18); poster cache skip/sweep/lazy (A19); DA9 restated to a ~20 s per-line budget with a 5 s headers budget (A20); `_v{n}` only when `{index}` unused (A21); single verdict owner in main (A22); failures also log through `core/log` (A23); proxy hint on `NETWORK` (A24).
 - **Rev 2 — external audit applied (13 findings):** scheme-less URL parsing with a hostile-host boundary rule (1); resume write via `flags` + `start` so `'r+'` can never overwrite the `.part` head (2); throttle wake-and-recheck loop + `lastRequest` advance on pause — sleeping callers can neither fire inside a 429 cooldown nor falsely trip escalation (3; hardens the reference implementation too); state **pre-skip before any network** for offline idempotence (4); HTTP `416` → finalize-or-restart (5); posters ride progress/list events as ready `media://` URLs minted by main (6 — the `media://` handler already serves JPEG/PNG; what rejects posters is `getMediaUrl`, so main mints directly); **bounded resolve lookahead** `K = 2× downloadConcurrency` against rate-limit burn and signed-URL expiry (7); Analyze unified with `dlStart({ dryRun: true })` — streaming, cancellable (8); `dlList` bounded to the newest 100 entries (9); `NOT_EMBEDDABLE` rows get an enable-fallback hint (10); media allow-list keeps out `*.twitter.com` — checked against evidence, not adopted (11); `select()` deterministic under null/0 bitrates via pixel-area fallback (12); textarea frozen during runs with row snapshot at start (13).
 - **Rev 1:** initial plan.
 

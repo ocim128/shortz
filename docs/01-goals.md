@@ -30,7 +30,7 @@ The output must be **TikTok-ready**: 1080×1920, H.264/AAC, correct safe zones, 
 | G3 | WYSIWYG preview that matches the final render | Preview and export use same layout math + same fonts |
 | G4 | Deterministic, high-quality render via FFmpeg | Same inputs → byte-similar outputs; CRF 18 quality |
 | G5 | Extensible template library | Adding a template = adding a JSON file, no recompile |
-| G6 | Runs fully offline, zero accounts, zero telemetry | No network calls in the app at all |
+| G6 | Runs fully offline, zero accounts, zero telemetry | No *unprompted* network. The optional Downloader feature (`twitter-downloader/01-goals.md` §G6′) is the sole, explicitly user-triggered exception |
 | G7 | Never blocks the UI | Renders run in child processes, cancel any time |
 
 ## Non-goals (MVP — deliberately out of scope)

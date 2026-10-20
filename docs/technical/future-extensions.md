@@ -59,7 +59,7 @@ TikTok Content Posting API requires: registered developer app, approved products
 
 ## 6. AI hook suggestions — opt-in only
 
-Local: too heavy. User-provided API key (stored in settings, never synced): a "suggest hook" button next to the textarea sending the transcript (from #1) + template context. Off by default; app remains zero-network unless the user flips it on. Guarded behind the same review as any network-capable dependency (dependency policy in `03-tech-stack.md`).
+Local: too heavy. User-provided API key (stored in settings, never synced): a "suggest hook" button next to the textarea sending the transcript (from #1) + template context. Off by default; app remains zero-unprompted-network unless the user flips it on (the Downloader feature is the one built-in exception — `twitter-downloader/01-goals.md` §G6′). Guarded behind the same review as any network-capable dependency (dependency policy in `03-tech-stack.md`).
 
 ## 7. Analytics-lite (local)
 

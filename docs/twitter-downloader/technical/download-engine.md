@@ -18,9 +18,9 @@ export async function fetchToFile(url: string, dest: string, ctx: FetchCtx): Pro
 
 Flow (every step from xdl's `fetch`, which survived three audit rounds):
 
-1. **Trust boundary first** — `isAllowedMediaUrl(url)` (dot-anchored `*.twimg.com` / `*.x.com`), else `URL_UNRECOGNIZED`. Already checked in the client; re-checked here. A hostile URL never reaches a socket even if a future caller forgets.
+1. **Trust boundary first** — `isAllowedMediaUrl(url)` (dot-anchored `*.twimg.com` — media list is twimg-only since rev 3) **and `https:` enforced**, else `URL_UNRECOGNIZED`. Already checked in the client; re-checked here. A hostile URL never reaches a socket even if a future caller forgets.
 2. **Resume probe** — if `<dest>.part` exists, `offset = stat().size`; send `Range: bytes=<offset>-`. When the expected total is already known (state `sizeBytes`) and `offset === total`, skip the request entirely and go straight to verify + rename (audit rev 2 — the interrupted-at-100% case).
-3. **Pacing** — `await throttle.gate()` before the request so resolve and download share one policy.
+3. **Pacing** — `await throttle.gate()` before the request so resolve and download share one policy. Media GETs send `accept-encoding: identity` (rev 3: undici's transparent gzip would make `Content-Length` describe the *encoded* body) and capture the response's `ETag`/`Last-Modified` for the validator sidecar (step 7).
 4. **Status handling:**
 
 | Response | Action |
@@ -35,20 +35,25 @@ Flow (every step from xdl's `fetch`, which survived three audit rounds):
 | timeout | `NETWORK`; transport error | `NETWORK` |
 | `ENOSPC` on write | `DISK_FULL`; other FS error | `WRITE_ERROR` |
 
-5. **Streaming write** — the open mode is decided *after* the status is known (audit rev 2: `'r+'` without `start` writes at byte 0 and would overwrite the first N bytes instead of resuming):
+5. **Streaming write** — the open mode is decided *after* the status is known (audit rev 2: `'r+'` without `start` writes at byte 0 and would overwrite the first N bytes instead of resuming), and the fsync needs the *same* handle (rev 3: `pipeline` + `createWriteStream` alone never exposes one):
 
 ```ts
-const resume = res.status === 206 && offset > 0
-await pipeline(
-  Readable.fromWeb(res.body),
-  createWriteStream(part, { flags: resume ? 'r+' : 'w', start: resume ? offset : 0 })
-)
+const fh = await fsp.open(part, resume ? 'r+' : 'w')
+try {
+  await pipeline(
+    Readable.fromWeb(res.body),
+    fh.createWriteStream({ start: resume ? offset : 0, autoClose: false })
+  )
+  await fh.sync()          // the rename is only as durable as the flush before it
+} finally {
+  await fh.close()
+}
 ```
 
 with the abort signal composed in; on abort, the current chunk boundary is the stop point and **the `.part` is kept** for resume. A `200` answer to a ranged request lands here as `resume = false` → `'w'` truncates — the restart-from-zero rule falls out of the same branch. Progress callback per chunk (64 KiB), coalesced upstream.
-6. **fsync while the handle is open** (`filehandle.sync()`), then close — the rename is only as durable as the flush before it.
-7. **Integrity** — when `total` is known and `size !== total`: delete the `.part`, raise `INTEGRITY_MISMATCH`. When `total` is unknown: a clean stream end + rename *is* the integrity bar (no false mismatch — xdl rule).
-8. **Atomic finalize** — `fs.rename(part, dest)`: same directory, atomic on NTFS. The destination never exists in a half-written state.
+6. **Integrity** — when `total` is known and `size !== total`: delete the `.part`, raise `INTEGRITY_MISMATCH`. When `total` is unknown: a clean stream end + rename *is* the integrity bar (no false mismatch — xdl rule).
+7. **Validator sidecar (rev 3 — same-size corruption must not pass):** the first response's `ETag`/`Last-Modified` and the known total persist beside the partial as `<name>.mp4.part.json` (`{ etag, lastModified, total }`); every resume request carries `If-Range: <validator>` — the server answers `206` only if the object is unchanged, and a `200` means *object changed* → truncate and restart. This retires the "stale `.part` from an older encoding" case by construction; the size check stays as belt-and-braces.
+8. **Atomic finalize** — `moveWithRetry(part, dest)` from `core/store/fs-utils` (rev 3: plain `fs.rename` fails `EPERM`/`EBUSY` exactly when "New project" has ffprobe or the preview holding the destination). Same volume, atomic; the destination never exists in a half-written state.
 
 Result: the number of bytes written (for the state row and the summary).
 
@@ -63,8 +68,16 @@ Port of xdl `engine/throttle.py`, including the subtlety that makes it correct u
 ```ts
 // src/core/downloader/engine/throttle.ts (shape)
 export class ThrottleState {
+  // rev 3: the clock is injected AND monotonic — performance.now(), never
+  // Date.now() (an NTP step would corrupt the cooldown math); the abort signal
+  // is a declared field, not an implicit global.
+  constructor(
+    private readonly now: () => number = () => performance.now(),
+    private readonly signal?: AbortSignal
+  ) {}
+
   private minGap: number          // jittered 0.2–0.5 s at construction (or settings floor)
-  private pauseUntil = 0          // monotonic ms
+  private pauseUntil = 0          // monotonic ms, in this.now()'s domain
   private lastRequest = 0
   private recent429: number[] = []
 
@@ -131,7 +144,7 @@ export interface RunDeps {
 export async function runDl(req: DlRunRequest, deps: RunDeps): Promise<DlRunSummary>
 ```
 
-- **Normalize** (pure): each input line → `TweetRef` (t.co expansion is the one network hop, throttled, inside the resolve zone) → **dedupe by `tweetId`**, first occurrence wins, later duplicates become `skipped (duplicate)` without network.
+- **Normalize (one verdict owner, rev 3):** every line arrives from the renderer as `{ key, lineNumber, text }` — duplicates and junk included; the renderer's parse is a *preview only*. Main parses again, maps `text → TweetRef` (t.co expansion is the one network hop, throttled), and returns a **verdict per key**: later duplicates become `skipped (duplicate)`, junk lines fail typed — no line is ever dropped, so row mapping cannot shift.
 - **Pre-skip before any resolve** (audit rev 2): the `tweetId` is known synchronously for every direct status URL, so the orchestrator checks the state index *first* — complete (ok rows == `mediaCount`, files stat) → item `skipped` with **zero network I/O**. Offline re-runs (DU8) and deleted-after-download re-runs stay idempotent; `force` bypasses. A `t.co` input pays only its single expansion hop before the id is known.
 - **Two independent semaphores** (xdl D23 — do not merge):
 
@@ -151,11 +164,12 @@ catch (e) {
   if (e instanceof DlError) verdict = { status: 'failed', error: e }
   else verdict = { status: 'failed', error: new DlError('UNEXPECTED', String(e)) }
 }
-// AbortError (CancelToken semantics) is NOT caught — it drains the run.
+// AbortError is rethrown here and caught ONCE at the run boundary (rev 3):
+// in-flight items end 'cancelled' and the run still emits its terminal event.
 ```
 
 - **Circuit breaker** — 8 consecutive failed/partial items → open; remaining unstarted items become `skipped (circuit open)` (recorded incomplete only when the tweet has no download rows); the summary carries one line "stopped after 8 consecutive failures — Retry failed to continue".
-- **Cancel** — `signal.abort()` between items stops scheduling; mid-transfer it raises at the next chunk boundary (`.part` retained); in-flight items end `cancelled`, summary says so. Second-press hard-exit is unnecessary in a GUI (no process to kill); the CLI maps it to exit 130.
+- **Cancel (contract, rev 3):** `signal.abort()` between items stops scheduling; mid-transfer it raises at the next chunk boundary (`.part` retained). `AbortError` is caught at the **run** boundary: in-flight items end `cancelled` and **exactly one `run-done` event is emitted per run — always** — with the summary marked `cancelled`. That single guarantee is what clears `dlInFlight`, renders the UI's `cancelled` chip, and makes the CLI's exit 130 possible.
 - **Events** — lifecycle per item (`item-start`, `item-skip`, `item-resolve-done`, `media-start`, `media-progress`, `media-done`, `item-done`, `run-done`) carry `(jobId, lineIndex, tweetId, mediaIndex, status, bytes, total, error?)`; main coalesces `media-progress` to ~10 Hz and forwards everything else immediately.
 
 ## 4. Retry schedule (orchestrator-owned)
@@ -166,11 +180,12 @@ catch (e) {
 | `LINK_EXPIRED` (403 on media) | exactly **one** re-resolve (fresh signed URL), then Range-resume the `.part` |
 | `INTEGRITY_MISMATCH` | exactly **one** clean restart (`.part` deleted) |
 | everything else | no retry — the verdict is final for the run |
-| attempts/wall-time | recorded on `MediaOutcome` (`attempts`, `elapsedMs`) and surfaced in the row tooltip — visibility without a logging subsystem (xdl's reason for deleting theirs) |
+| attempts/wall-time | recorded on `MediaOutcome` (`attempts`, `elapsedMs`) and surfaced in the row tooltip; **failures additionally log through the existing `core/log` file sink** (`logWarn`, URL sanitized — there are no cookies) so "why did last night fail" never requires hovering a tooltip (rev 3) |
+| proxy awareness (main) | a `NETWORK` verdict triggers one `session.defaultSession.resolveProxy(url)` check; with a proxy configured, the error detail gains "a system proxy is configured — ShortZ doesn't use it yet" (rev 3; the orchestrator stays Electron-free — main owns the enrichment) |
 
 ## 5. What is deliberately absent
 
 - **No worker threads.** Async I/O saturates long before a thread pool would help; the single-threaded loop *is* the throttle's correctness model.
-- **No per-request proxy config** — Node fetch ignores env proxies; parking-lot (`net.fetch` switch) if a user ever needs it.
+- **No per-request proxy config** — Node fetch ignores env/system proxies; the mitigation is the self-explaining `NETWORK` hint above (rev 3), and a `net.fetch` switch stays in the parking lot.
 - **No request coalescing/dedup of variant URLs** — dedup happens at the tweet level; two variants of one post are two legitimate files (`_v2`).
 - **No checksum sidecar** — exact-size verification + Range resume already bound the failure modes xdl considered (`--checksum` was built and deliberately removed there).

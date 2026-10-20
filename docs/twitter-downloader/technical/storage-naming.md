@@ -35,7 +35,7 @@ Port of xdl `storage/{naming,sidecar,state}.py` + `DECISIONS.md` #13–17, adapt
 | `{index}` | 1-based media position |
 | `{slug}` | caption → lowercase, `[^a-z0-9-]+ → '-'`, collapsed, stripped, ≤ 30 chars |
 
-- Multi-video: index ≥ 2 appends `_v{index}` (`<id>_v2.mp4`) — the 95% single-video case keeps a clean name (xdl D13).
+- Multi-video: index ≥ 2 appends `_v{index}` (`<id>_v2.mp4`) — **only when the template did not already consume `{index}`** (rev 3: otherwise `{id}_{index}` would produce `123_2_v2.mp4`); the 95% single-video case keeps a clean name (xdl D13).
 - Layouts: `by-author` → `x/<author>/`; `by-date` → `x/<yyyy>/<mm>/`; `flat` → `x/`. Switching layout does **not** invalidate state: skip reads the stored `file_path`, so old and new names coexist (xdl D13).
 - `{date}` uses the *post's* date, not the download date — a batch downloaded today stays grouped by when it was posted.
 
@@ -50,6 +50,10 @@ Port of xdl `storage/{naming,sidecar,state}.py` + `DECISIONS.md` #13–17, adapt
 7. Slugs are additionally lowercased ASCII-classed (see `{slug}` above) — captions with emoji/CJK degrade to `-` runs that collapse away.
 
 Hostile-input rule: the caption and author name flow **only** through these functions — a caption containing `..\..\evil`, `CON`, or a 400-character emoji run cannot escape the configured root or break a path.
+
+**Total-path budget (rev 3):** the 120-char segment cap alone does not bound the path — a deep profile plus `Videos\ShortZ\Downloads\x\<author>\<120-char name>.mp4` can exceed MAX_PATH, and the codebase has no `\\?\` handling. `renderPath` therefore enforces **root + segments ≤ 240 chars**, shrinking the *variable* parts (`author`, `slug`) first and never the id; a D0 table test pins it with a 100-char root.
+
+**One sanitizer, both call sites (rev 3):** the hardened rules land in `src/shared/naming.ts` (pure tier) and `src/main/output-path.ts` consumes them for export/batch names — its callers only get stricter. Two Windows rule sets that drift is exactly what `src/shared/video-extensions.ts` exists to prevent.
 
 ## 3. Sidecar — `<name>.mp4.meta.json`
 
@@ -84,17 +88,22 @@ Purpose: the file is self-documenting outside the app (caption, origin, provenan
 
 ## 4. State index — `<dataDir>\downloads\state.json`
 
-Single JSON document, schema v1 (port of the SQLite tables, one file instead):
+Single JSON document, schema v2 (port of the SQLite tables, one file instead; v2 adds `caption`/`url` on tweets and the `runs` map — free now, a migration after D3):
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "tweets": {
     "1750123456789012352": {
       "author": "someuser",
+      "caption": "caption text, exactly as resolved",
+      "url": "https://x.com/someuser/status/1750123456789012352",
       "mediaCount": 2,
       "firstSeen": "2026-10-20T19:01:02Z"
     }
+  },
+  "runs": {
+    "01JD7…": { "startedAt": "2026-10-20T19:01:00Z", "finishedAt": "2026-10-20T19:02:40Z", "total": 5, "ok": 4, "skipped": 0, "failed": 1 }
   },
   "downloads": {
     "1750123456789012352:1": {
@@ -103,7 +112,7 @@ Single JSON document, schema v1 (port of the SQLite tables, one file instead):
       "status": "ok",
       "error": null,
       "source": "syndication",
-      "batchId": "01JD7…",
+      "runId": "01JD7…",
       "downloadedAt": "2026-10-20T19:02:11Z",
       "updatedAt": "2026-10-20T19:02:11Z"
     },
@@ -115,6 +124,7 @@ Single JSON document, schema v1 (port of the SQLite tables, one file instead):
 Rules ported from xdl with the JSON idioms added:
 
 - **`tweets.mediaCount` counts downloadable media (video/gif) only**; the tweet row is written only after `select()` succeeds (a photo-only post must never anchor `mediaCount = 0` — that made every re-run a false skip in xdl's audit).
+- **`caption` + `url` on the tweet row and the `runs` map (rev 3 A6):** the history panel (`DlListEntry`) is built from these without re-resolving, `runId` finally hangs off a real entity, and the item verdict `partial` is **derived** from media rows (some ok + some failed), never stored.
 - **Completeness** = `count(ok downloads for id) === mediaCount` **and** every `filePath` stats as a file. Not "any row exists" — a multi-video post with one failed video is *incomplete*, its ok rows do not skip (xdl audit round 2).
 - **Skip** on re-run: complete per the rule above → item `skipped`, no network. `force: true` bypasses.
 - **`retry-failed`**: enqueue only rows whose last status is `failed`/`incomplete` (or items of incomplete tweets).
@@ -127,7 +137,7 @@ Rules ported from xdl with the JSON idioms added:
 
 ## 5. Poster cache
 
-`downloads\cache\posters\<tweetId>_<mediaIndex>.jpg` — fetched by the core during resolve (best-effort; failure never blocks), served to the renderer via `media://` like project thumbnails. Rationale: the renderer performs zero remote I/O; posters must also survive offline later (they are UI state, not content).
+`downloads\cache\posters\<tweetId>_<mediaIndex>.jpg` — fetched by the core during resolve (best-effort; failure never blocks), served to the renderer via `media://` like project thumbnails. Cache discipline (rev 3 A19): **skip when the file exists**, sweep at 30 days via the existing `sweepStaleDirs`, and Analyze (dry-run) fetches posters **lazily** so previewing 25 links does not pull 25 images nobody looked at. Rationale: the renderer performs zero remote I/O; posters must also survive offline later (they are UI state, not content).
 
 ## 6. What the state does **not** do
 

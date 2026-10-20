@@ -71,7 +71,7 @@ Parse order and rules (port of `urls.py::parse`):
 
 **Trust boundary for media** (same rule as xdl): a variant URL is downloadable only if its hostname is `twimg.com`, `*.twimg.com`, `x.com`, or `*.x.com` — dot-anchored suffix match, so `evil-twimg.com` and `twimg.com.evil.example` both fail. Enforced in the client wrapper *and* re-checked in `engine/fetch.ts` (belt and braces).
 
-**Audit note — `*.twitter.com` media (rev 2):** a suggestion to add `twitter.com` to the media allow-list was checked against evidence: X's video/image payloads live on `video.twimg.com`, `pbs.twimg.com`, `ton.twimg.com` — all already inside `*.twimg.com`; no source shows media served from `video.twitter.com`. The boundary therefore stays minimal, and the D4 live matrix asserts every observed variant host is inside it — any future host gets added deliberately, with a fixture, never preemptively.
+**Audit note — media allow-list (rev 2, tightened rev 3):** a suggestion to add `twitter.com` was checked against evidence: X's video/image payloads live on `video.twimg.com`, `pbs.twimg.com`, `ton.twimg.com` — all inside `*.twimg.com`; no source shows media on `video.twitter.com` **or on `x.com`** — so rev 3 also *drops* `x.com` from the media list (and with it the accidental `api.x.com` pass). The boundary stays minimal and HTTPS-only; the D4 live matrix asserts every observed variant host is inside it — any future host gets added deliberately, with a fixture, never preemptively.
 
 ## 2. The syndication token — one line, exact by construction
 
@@ -91,7 +91,29 @@ export function syndicationToken(tweetId: string): string {
 ```
 
 - xdl had to emulate V8's base-36 float formatting in Python (a 150-line Dragon-fraction loop with round-to-even and carry back-trace) and verify 3 000 ids against Node 22. **Electron's main process *is* V8** — the port cannot drift, and the goldens prove it.
-- Golden vectors (from xdl's `test_token.py`, 17 total — all become Vitest cases): id `"20"` → `"6dq1a2xwd9"`, plus the 16 others copied verbatim.
+- **Goldens (rev 3: regenerated, not quoted).** The one-liner above, run on Node ≥ 20, is the generator; the 17 vectors below were re-verified against Node v24 for this plan. (A prose-quoted vector — `"20" → "6dq1a2xwd9"` — had lost its trailing digit; the true value is `"6dq1a2xwd93"`. The shorter form is a strict prefix that only works because the endpoint accepts any non-empty token — do not "fix" the algorithm to produce it.)
+
+  | id | token |
+  |---|---|
+  | `20` | `6dq1a2xwd93` |
+  | `21` | `6p7jcdvzsb` |
+  | `123456789012345678` | `arumtis9w99` |
+  | `1750123456789012352` | `48q6asjxr3` |
+  | `1799999999999999999` | `4d2v7cbm2xj` |
+  | `100` | `vwm6eephu8` |
+  | `12345` | `31esng3xq8a` |
+  | `5639204740561071959` | `do4313qj6b` |
+  | `5895164605079987165` | `eag7eqi7c2m` |
+  | `6121601747147618504` | `eu7kuhf2awe` |
+  | `6372485000959720218` | `fg3r2oaxtge` |
+  | `6595826540000181755` | `fzleenudshf` |
+  | `6817747400060980518` | `giyl2ckost` |
+  | `7045075807784168866` | `h2sravznr6` |
+  | `7299418402012119495` | `hozsrsqux8` |
+  | `7540523709986053373` | `ia1951k8u8a` |
+  | `7785376654501314647` | `ivehct9lfa` |
+
+  All 17 become Vitest cases, and the generator one-liner is committed next to them in D0, so drift re-bases on evidence, not prose.
 - Today the live endpoint does not validate tokens (xdl verified: any non-empty token is accepted), but exactness is free insurance against enforcement being switched on (xdl D1).
 
 ## 3. Adapter A — `cdn.syndication.twimg.com` (primary, always on)
@@ -136,7 +158,7 @@ GET https://api.fxtwitter.com/status/<tweetId>          Accept: application/json
 
 - Off by default. The Settings toggle copy states the cost plainly: *"When ShortZ can't resolve a post itself, it will send the link to fxtwitter.com (a third-party service) to fetch it."*
 - Mapping: `tweet.media.videos[] → Variant{ url, width, height }` (single progressive MP4, `bitrate: null`), `tweet.media.photos[] → photo assets` (still reported; only video/gif are downloaded), `created_at` or `created_timestamp` (unix s).
-- Errors: 404 → **`NOT_FOUND` (definitive — fxtwitter knows the post table)**; 429 → `RATE_LIMITED`; ≥500 / other → `UPSTREAM_ERROR`; missing `tweet` object → `NOT_FOUND`.
+- Errors: 404 → `NOT_FOUND` **as a non-primary adapter signal** (rev 3: the fold demotes it to `NOT_EMBEDDABLE` — a third party must never be authoritative about deletion); 429 → `RATE_LIMITED`; ≥500 / other → `UPSTREAM_ERROR`; missing `tweet` object → `NOT_FOUND` (same demotion).
 
 ## 5. Adapter D — `yt-dlp` sidecar (D5, opt-in, resolve-only)
 
@@ -166,8 +188,9 @@ export class FallbackChain implements Resolver {
 }
 ```
 
-- **Every adapter error falls through.** `NOT_EMBEDDABLE` ≠ "post gone"; only `NOT_FOUND` is definitive.
-- Terminal error priority (port of `_terminal_error`): `NOT_FOUND` wins → else `RATE_LIMITED` (it is the retryable signal) → else the **last** adapter's error. The message carries the trail: `Not embeddable (sensitive or protected) — tried: syndication → fxtwitter`.
+- **Every adapter error falls through.** `NOT_EMBEDDABLE` ≠ "post gone".
+- **Terminal error priority (rev 3):** a `NOT_FOUND` is terminal **only from the primary adapter** (syndication — which today never emits it) **or when the failure-path probe confirms it**; a *non-primary* 404 (fxtwitter, yt-dlp) folds to `NOT_EMBEDDABLE` with the trail. Otherwise `RATE_LIMITED` wins (retryable signal), then the **last** adapter's error. Default copy for a 404-shaped refusal names all three causes honestly: *"Can't embed this post — deleted, private, or sensitive."*
+- **Failure-path probe (the common case deserves the real answer):** exactly one extra request, only after a terminal `NOT_EMBEDDABLE`: `GET publish.twitter.com/oembed?url=<canonical>&omit_script=1` — HTTP 404 ⇒ `NOT_FOUND` ("Post not found or deleted"); HTTP 200 ⇒ `NOT_EMBEDDABLE` (the post exists). `publish.twitter.com` joins the resolve allow-list for this one call. D1 live-verifies the signal (follow at most one redirect); if it proves unreliable, the three-cause copy ships and the probe stays disabled.
 - Composition by settings (port of `build_chain`): `off → [syndication]`; `fxtwitter → [syndication, fxtwitter]`; `auto` (D5) → `[syndication, ytdlp?]` — ytdlp silently skipped when the binary is absent; explicit `ytdlp` fails fast with an install message.
 
 ## 7. Error taxonomy (shared with engine/orchestrator/UI)
@@ -179,7 +202,7 @@ Port of xdl's `ErrorCode` — one union, one retryability map, user copy in `str
 | `URL_UNRECOGNIZED` | not an X status link (parse) | no |
 | `TWEET_ID_INVALID` | status-shaped, implausible id (2–19 digits) | no |
 | `NOT_EMBEDDABLE` | this endpoint refuses (tombstone/sensitive/fresh) | no (chain decides) |
-| `NOT_FOUND` | deleted / never existed — **definitive** | no |
+| `NOT_FOUND` | deleted / never existed — **definitive only from the primary adapter or the failure-path probe** (rev 3) | no |
 | `AUTH_REQUIRED` | login-walled / 401/403 | no |
 | `NO_VIDEO` | post has no downloadable video/gif | no |
 | `RATE_LIMITED` | 429 anywhere in the chain | **yes** |

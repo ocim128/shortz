@@ -133,7 +133,7 @@ The preview plays the **original file directly** through `media://` — hardware
 
 ## Security posture
 
-- **Zero network calls.** No update pings, no telemetry. (electron-builder updates can be enabled later, opt-in.)
+- **Zero unprompted network.** No update pings, no telemetry. The optional Downloader feature (`twitter-downloader/02-architecture.md` §Network posture) is the sole networked surface: explicit user action only, host allow-list, no credentials. (electron-builder updates can be enabled later, opt-in.)
 - Electron: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` for the renderer; all FS/process access goes through a typed preload bridge with an allow-list (`openFile`, `probe`, `render`, `cancel`, `revealInExplorer`, …).
 - The `media://` scheme is registered as **privileged** and its URLs are minted only by the main process after validating the path — the renderer cannot use it to read arbitrary files it wasn't handed.
 - Source files are read only; ShortZ never writes to the input directory.

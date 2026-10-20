@@ -41,7 +41,7 @@ Everything the renderer sees. The rule from the batch screen applies twice over:
 - The URL may sit inside surrounding text (a pasted sentence) — the grammar's `.search()`-equivalent extracts it; **at most one link per line** (a second link on the same line is a `multiple-links` problem, forcing the user to split it rather than silently guessing).
 - Quotes ("Copy as path"-style) stripped; trailing punctuation `,` `)` tolerated.
 - Problem codes: `no-link`, `invalid-id` (status-shaped, implausible), `short-link` (t.co — *not* a problem, shown as "will expand"), `duplicate` (same tweet id earlier in the list), `multiple-links`.
-- Duplicate rule: same `tweetId` after normalization → flagged like Batch's `duplicate-path`; the earlier line wins.
+- **The renderer's parse is a preview only (rev 3 A4/A22):** every line is sent, wrapped as `{ key, lineNumber, text }` — duplicates and junk included — and **main** returns the authoritative verdict per key, including `duplicate` and `multiple-links`. One verdict owner; the row mapping can never shift between the renderer's parse and main's.
 
 **Freeze while running** (audit rev 2 — the Batch screen does the same): the textarea is `readOnly` while a run is active, and `dlStore` snapshots the parsed lines at `dlStart` into `run.rows`. Incoming `DlProgressEvent.index` values map against that snapshot, never against the live textarea — an edit mid-run cannot shuffle rows.
 
@@ -51,9 +51,9 @@ Everything the renderer sees. The rule from the batch screen applies twice over:
 |---|---|
 | **Analyze** | A normal run with `dryRun: true` — **not** a separate IPC (audit rev 2): rows fill in live (`resolving → planned`) with author/caption/dims/count and the **planned path** (same `naming.ts` the core uses); `Cancel` aborts it like any run |
 | **Download** | Start the run (single-flight). Disabled while a run is active |
-| **Retry failed** | Re-enqueues only failed/incomplete rows of the last run (reads state) |
-| **Cancel** | Abort run; in-flight transfers stop at a chunk boundary (`.part` kept) |
-| **Open folder** | `shell.openPath` on the download dir |
+| **Retry failed** | Sends `retryFailed: true` on the run request; **main** derives the set from state + the last `jobId` (rev 3 A5 — the field exists in the contract now, not at implementation time) |
+| **Cancel** | Abort run; in-flight transfers stop at a chunk boundary (`.part` kept); exactly one `run-done` still arrives (rev 3) |
+| **Open folder** | `shortz:dl:openFolder` → `shell.openPath` on the download dir (rev 3 A5) |
 
 Per-row `⋯` menu: New project · Reveal · Copy path · Copy URL · (D5) Convert to GIF.
 
@@ -66,6 +66,7 @@ queued → resolving → planned ─┬→ skipped (already downloaded / duplica
 downloading ─→ cancelled · partial (some media failed) — multi-video rows show per-media chips
 ```
 
+- Exactly one `run-done` per run — cancel included (rev 3 A8): `cancelled` rows and the summary chip both come from it, and `dlInFlight` clears in its handler. No code path may return from a run without emitting it.
 - Row carries: author @handle, caption (1 line, ellipsized), resolution badge, size, source adapter badge (syndication/fxtwitter/yt-dlp), poster thumbnail (from the local cache via `media://`), planned/actual file name.
 - Errors render as **sentence first, code in a tooltip** (`strings.ts` map; e.g. `NOT_EMBEDDABLE` → "Not embeddable — the post is sensitive or protected (not deleted)"). A `NOT_EMBEDDABLE` row shows an inline hint when the fallback is off (audit rev 2): *"Not embeddable via Twitter syndication — enable the fxtwitter fallback in Settings to try harder."* with a settings deep link.
 
@@ -79,13 +80,24 @@ Types live in `src/shared/downloader/types.ts` and are re-exported by `src/prelo
 
 ```ts
 // ---------- requests ----------
+/** One textarea line, identified (audit rev 3 A4 — mirrors BatchRenderItem.id). */
+export interface DlInput {
+  /** Stable per-line key from the parser; echoed on every event for this line. */
+  key: string
+  /** 1-based physical line number (blank/comment lines keep their number). */
+  lineNumber: number
+  /** The line text exactly as typed (trimmed). */
+  text: string
+}
 export interface DlRunRequest {
-  /** Non-blank textarea lines as typed; main re-parses — the renderer's parse is preview only. */
-  inputs: string[]
+  /** EVERY line — duplicates and junk included; main owns all verdicts (rev 3). */
+  inputs: DlInput[]
   quality?: DlQuality              // 'best' | 'worst' | { maxHeight: number }
   outputDir?: string               // falls back to settings.downloads.dir
   force?: boolean                  // re-download even when complete
   dryRun?: boolean                 // Analyze
+  /** Retry-failed: main derives the set from state + the last run (rev 3 A5). */
+  retryFailed?: true
 }
 export type DlQuality = 'best' | 'worst' | { maxHeight: number }
 
@@ -96,7 +108,11 @@ export type DlItemStatus =
 
 export interface DlProgressEvent {
   jobId: string
-  /** 0-based index among the run's non-blank lines; total on the terminal event. */
+  /** The input line this event belongs to (audit rev 3 A4). */
+  key: string
+  /** Echoed so rows can be labelled "line 4" without re-parsing. */
+  lineNumber: number
+  /** 0-based position among the run's accepted items; total on the terminal event. */
   index: number
   total: number
   /** Lifecycle transitions are immediate; byte ticks are coalesced (~10 Hz) in main. */
@@ -132,18 +148,26 @@ export interface ShortzApi {
   dlCancel(): Promise<void>
   /** History: newest 100 entries from the state index (audit rev 2: bounded). */
   dlList(): Promise<DlListEntry[]>
+  /** Opens settings.downloads.dir in Explorer (audit rev 3 A5). */
+  dlOpenFolder(): Promise<void>
+  /** Directory picker for the settings folder field (audit rev 3 A5). */
+  pickDirectory(): Promise<string | null>
   onDlProgress(cb: (e: DlProgressEvent) => void): Unsubscribe
 }
 export interface DlListEntry {
-  tweetId: string; author: string | null; caption: string
+  tweetId: string; author: string | null
+  /** From the tweet row (schema v2 stores caption/url — audit rev 3 A6). */
+  caption: string
   /** Ready media:// URL for the cached poster — minted by main (audit rev 2). */
   posterMediaUrl?: string
   files: { path: string; sizeBytes: number; mediaIndex: number }[]
-  status: 'ok' | 'partial' | 'failed'; downloadedAt: string
+  /** Derived from media rows: some ok + some failed = 'partial' (not stored). */
+  status: 'ok' | 'partial' | 'failed'
+  downloadedAt: string
 }
 ```
 
-Channel names (main): `shortz:dl:start`, `shortz:dl:cancel`, `shortz:dl:list`, `shortz:dl:progress` — the existing `handle()` helper, nothing exotic; Analyze rides `shortz:dl:start` with `dryRun: true` (audit rev 2 — no separate `dl:analyze` channel). The single-flight rule mirrors `exportInFlight`: `dlInFlight` boolean, second `dl:start` rejects with a readable error the renderer turns into a toast.
+Channel names (main): `shortz:dl:start`, `shortz:dl:cancel`, `shortz:dl:list`, `shortz:dl:openFolder`, `shortz:dl:progress` — Analyze rides `shortz:dl:start` with `dryRun: true`. Handlers register through **`registerDownloaderIpc(deps)` called from `registerIpcHandlers()`** (rev 3 A17): `handle()` and the flight flags are private to `ipc.ts`, so a small `JobSlots` object (`exportInFlight`, `dlInFlight`) is injected and the single-flight rules live in one place. Divergence from batch, deliberately: a download run does **not** block on `exportInFlight` (network vs CPU bottleneck); the one real collision — re-downloading a file an export is reading — lands as a retried `EPERM` via `moveWithRetry`, not a deadlock. Second `dl:start` rejects with a readable error the renderer toasts.
 
 **Event coalescing** (`main/downloader.ts`): core `media-progress` ticks enter a per-media buffer; a `setTimeout(100)` flush sends the latest tick per media; every non-progress event bypasses the buffer. On `run-done` the buffer is dropped.
 
@@ -151,7 +175,7 @@ Channel names (main): `shortz:dl:start`, `shortz:dl:cancel`, `shortz:dl:list`, `
 
 ## 4. Settings additions
 
-`src/shared/domain.ts` gains one additive section (the settings store merges defaults on load, so existing `settings.json` files keep working without a schema bump):
+`src/shared/domain.ts` gains one additive section. Existing `settings.json` files keep working without a schema bump — but the merge alone is not enough (rev 3 A13): `normalizeSettings()` rebuilds the object field-by-field, so the `downloads` block must be added to **both** `defaultSettings()` and `normalizeSettings()` (`oneOf`/boolean/non-empty-string per field), or a hand-edited `downloadConcurrency: 9` reaches the typed `1|2|3` field untouched:
 
 ```ts
 export interface Settings {
@@ -188,9 +212,9 @@ interface DlState {
 - The renderer **never** computes planned paths itself outside Analyze rows — it renders what main resolved; the only path logic it owns is displaying strings.
 - Row actions call existing bridges: New project → `createProject(filePath)` then `projectStore` open (the editor path is the existing one, byte for byte).
 
-## 6. Strings (`strings.ts` additions, the full user-facing copy surface)
+## 6. Copy (`src/shared/downloader/copy.ts` — pure, rev 3 A7)
 
-Error-code sentences (tooltip carries the code): not found / not embeddable / needs login / no video / rate limited / link expired / network / disk full / write error / integrity / cancelled / circuit open / duplicate / unexpected. Plus: run summary line ("4 done · 1 skipped · 1 failed"), analyze badge, empty state, legal line, settings hints. No error string is composed in a component — the map is the single source.
+Error-code sentences live in a **pure shared module**, not the renderer's `strings.ts` (Tier 3): main must phrase the `error` field on events and the CLI/log lines too, and main importing renderer strings would break the tier rule. `copy.ts` maps `DlErrorCode → sentence`: not found / not embeddable (three-cause default: "Can't embed this post — deleted, private, or sensitive.") / needs login / no video / rate limited / link expired / network (main appends the proxy hint where relevant) / disk full / write error / integrity / cancelled / circuit open / duplicate / unexpected. The renderer re-uses the same map for tooltips; `strings.ts` keeps UI chrome only — run summary line ("4 done · 1 skipped · 1 failed"), analyze badge, empty state, legal line, settings hints. No error string is composed in a component.
 
 ## 7. What the UI deliberately does not do
 

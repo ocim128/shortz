@@ -106,15 +106,16 @@ Mirroring the main plan's A1–A6 style; each is a scripted, repeatable check.
 | # | Test | Pass condition |
 |---|------|----------------|
 | DA1 | Single URL, happy path | One MP4 + one `.meta.json` + one state row; file probes as H.264 video with expected dimensions |
-| DA2 | Batch: 3 valid links + 1 malformed line + 1 deleted post | 3 `ok`, malformed line fails at parse (no network), deleted post fails typed (`NOT_FOUND`); batch summary `3 ok / 2 failed`; no crash, no partial state |
+| DA2 | Batch: 3 valid links + 1 malformed line + 1 deleted post | 3 `ok`, malformed line fails at parse (no network), deleted post fails typed — `NOT_FOUND` via the failure-path probe (default) or the honest three-cause `NOT_EMBEDDABLE` copy with the probe off; batch summary `3 ok / 2 failed`; no crash, no partial state (rev 3) |
 | DA3 | Idempotent re-run | Second identical run: all `skipped` with **zero network requests** (state checked before resolve — works offline; rev 2) |
 | DA4 | Cancel + resume | Cancel at ~40%; `.part` exists; re-run completes by Range resume (server log shows `Range: bytes=…`) and final size verifies |
 | DA5 | 429 handling (simulated clock) | First 429 pauses ≥ `max(Retry-After, 30 s)`; 3 × 429 within 60 s → pause ≥ 120 s; item then succeeds or lands `RATE_LIMITED` |
 | DA6 | Multi-video post | `_v2`/`_v3` files + sidecars; item is `partial` if one media fails, `ok` only when all are `ok`; re-run downloads only the missing one |
-| DA7 | Sensitive/not-embeddable post | Falls through adapters; terminal message says "not embeddable / protected", never "deleted"; with fallback off, no fxtwitter request is made |
+| DA7 | Sensitive/not-embeddable post | Falls through adapters; terminal message is the honest three-cause copy or "not embeddable" — never "deleted" while the probe reports the post alive; with fallback off, no fxtwitter request is made (rev 3) |
 | DA8 | Download → project | "New project" on a finished item creates a project whose probe matches the file; editor opens; export from it succeeds |
 | DA9 | Offline behavior | With network disabled, a run fails fast (`NETWORK`) per line in < 5 s each (no endless hangs); app stays responsive; already-downloaded links still skip cleanly with the network off (rev 2) |
 | DA10 | Hostile URL | `https://evil.example/x.com/a/status/123` and a `twimg.com.evil.example` media URL are rejected (`URL_UNRECOGNIZED`), no request is made |
+| DA11 | Sensitive post **with fxtwitter enabled** (rev 3) | fxtwitter 404s the post, the fold still lands `NOT_EMBEDDABLE` — a third party's 404 never reports "deleted" for an alive post |
 
 ## Success signals (after two weeks of real use)
 

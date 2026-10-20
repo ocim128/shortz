@@ -80,7 +80,7 @@ No CI infrastructure in v0.1 (personal project, local `pnpm test` gate). GitHub 
 
 ## Dependency policy
 
-Every dependency must earn its place; target **≤ 15 runtime deps**. Everything video-related is delegated to FFmpeg processes, so the JS surface stays small and auditable. No network-capable dependency is allowed (enforced by review; `electron` itself is the only one with net access, unused).
+Every dependency must earn its place; target **≤ 15 runtime deps**. Everything video-related is delegated to FFmpeg processes, so the JS surface stays small and auditable. No network-capable dependency is allowed (enforced by review; `electron` itself is the only one with net access, unused). **Amendment (Downloader feature, rev 3):** no network-capable *dependency* — network *code* exists only in `src/core/downloader` behind a host allow-list (`twitter-downloader/03-tech-stack.md` §Dependency policy amendment).
 
 ## Decided at planning time (formerly "open items")
 
