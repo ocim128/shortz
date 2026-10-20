@@ -69,6 +69,23 @@ export function probeCachesDir(): string {
 }
 
 /**
+ * Downloader bookkeeping root: `state.json` + the poster cache live with the
+ * app, while downloaded media lives in the user's folder
+ * (docs/twitter-downloader/technical/storage-naming.md §1).
+ */
+export function downloadsDir(): string {
+  return path.join(dataDir(), 'downloads')
+}
+
+export function dlStateDir(): string {
+  return downloadsDir()
+}
+
+export function dlPostersDir(): string {
+  return path.join(downloadsDir(), 'cache', 'posters')
+}
+
+/**
  * Memoized settings — hot paths (every export/import/relink) call this, so
  * the memo skips the read+parse+merge. It is mtime-validated: settings.json
  * stays externally writable (tests, hand edits) and any write is picked up

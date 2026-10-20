@@ -18,6 +18,7 @@ import type {
 } from '../preload/api'
 import { buildOutputPath } from './output-path'
 import { cancelBatchRun, runBatch, setBatchEmitter } from './batch'
+import { registerDownloaderIpc } from './downloader'
 import { getMediaUrlForFile, mintMediaUrl } from './protocol/media'
 import {
   currentSettings,
@@ -55,7 +56,12 @@ import { VIDEO_EXTENSIONS } from '../shared/video-extensions'
 import { resolveFfmpegBinariesCached } from '../core/ffmpeg/resolve-bin'
 import { probeWithCache } from '../core/ffmpeg/probe'
 import { generateThumbnail } from '../core/media/thumbnail'
-import { renderProject, defaultTmpRoot, RenderCancelledError, RenderError } from '../core/render/orchestrator'
+import {
+  renderProject,
+  defaultTmpRoot,
+  RenderCancelledError,
+  RenderError
+} from '../core/render/orchestrator'
 import { emojiFontBytes, FONT_FILES } from '../core/render/fonts'
 import { toProgressEvent } from './progress'
 import {
@@ -82,7 +88,10 @@ export function sendMenuCommand(cmd: 'new-project' | 'open-settings'): void {
   sendToRenderer('shortz:menu:command', cmd)
 }
 
-function handle<A extends unknown[]>(channel: string, fn: (...args: A) => Promise<unknown>): void {
+export function handle<A extends unknown[]>(
+  channel: string,
+  fn: (...args: A) => Promise<unknown>
+): void {
   ipcMain.handle(channel, (_event, ...args: A) => fn(...args))
 }
 
@@ -100,7 +109,14 @@ async function resolveBinariesWithSettings(): Promise<
 
 // One render at a time (the renderer's store models a single job).
 let activeAbort: AbortController | null = null
-let exportInFlight = false
+
+/**
+ * The cross-feature job slots (AUDIT A17). Both the export/batch path and the
+ * downloader guard their own slot; a download run deliberately ignores
+ * `exportInFlight` (network vs CPU — the real collision is a retried EPERM in
+ * the core's move). Exported so `downloader.ts` can be registered with it.
+ */
+export const jobSlots = { exportInFlight: false, dlInFlight: false }
 
 // --- output filename (docs/technical/export-spec.md §filename convention) ----
 
@@ -338,11 +354,14 @@ export function registerIpcHandlers(): void {
 
   // --- editor configs (named slots — save/list/load/delete, no file dialogs) ---
 
-  handle('shortz:saveEditorConfig', async (c: Omit<EditorConfig, 'savedAt'>): Promise<EditorConfigMeta> => {
-    // sanitizeEditorConfig (inside the store) rejects bad shapes with a
-    // readable message that the renderer toasts.
-    return saveEditorConfig(c, dataDir())
-  })
+  handle(
+    'shortz:saveEditorConfig',
+    async (c: Omit<EditorConfig, 'savedAt'>): Promise<EditorConfigMeta> => {
+      // sanitizeEditorConfig (inside the store) rejects bad shapes with a
+      // readable message that the renderer toasts.
+      return saveEditorConfig(c, dataDir())
+    }
+  )
 
   handle('shortz:listEditorConfigs', async (): Promise<EditorConfigMeta[]> => {
     return listEditorConfigs(dataDir())
@@ -367,6 +386,15 @@ export function registerIpcHandlers(): void {
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
+  })
+
+  handle('shortz:pickDirectory', async (): Promise<string | null> => {
+    const result = await dialog.showOpenDialog(firstWindow()!, {
+      title: 'Choose a folder',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0] ?? null
   })
 
   handle('shortz:getMediaUrl', async (sourcePath: string) => getMediaUrlForFile(sourcePath))
@@ -403,20 +431,26 @@ export function registerIpcHandlers(): void {
     const userDir = userTemplatesDir()
     await fsp.mkdir(userDir, { recursive: true }).catch(() => undefined)
     const user = await listTemplateFiles(userDir)
-    return [...builtin.map((m) => wireTemplateMeta(m, 'built-in')), ...user.map((m) => wireTemplateMeta(m, 'user'))]
+    return [
+      ...builtin.map((m) => wireTemplateMeta(m, 'built-in')),
+      ...user.map((m) => wireTemplateMeta(m, 'user'))
+    ]
   })
 
   // --- render -----------------------------------------------------------------
 
-  handle('shortz:exportProject', async (p: Project, opts: ExportOptions = {}): Promise<ExportResult> => {
-    if (exportInFlight) throw new Error('An export is already running — cancel it first')
-    exportInFlight = true
-    try {
-      return await runExport(p, opts)
-    } finally {
-      exportInFlight = false
+  handle(
+    'shortz:exportProject',
+    async (p: Project, opts: ExportOptions = {}): Promise<ExportResult> => {
+      if (jobSlots.exportInFlight) throw new Error('An export is already running — cancel it first')
+      jobSlots.exportInFlight = true
+      try {
+        return await runExport(p, opts)
+      } finally {
+        jobSlots.exportInFlight = false
+      }
     }
-  })
+  )
 
   handle('shortz:cancelExport', async (): Promise<void> => {
     activeAbort?.abort()
@@ -429,12 +463,12 @@ export function registerIpcHandlers(): void {
   handle('shortz:batchRender', async (req: BatchRunRequest): Promise<BatchRunSummary> => {
     // The batch queue owns the ffmpeg concurrency, so it must not race a single
     // export (and vice versa) — same single-flight rule, separate slots.
-    if (exportInFlight) throw new Error('An export is already running — finish it first')
-    exportInFlight = true
+    if (jobSlots.exportInFlight) throw new Error('An export is already running — finish it first')
+    jobSlots.exportInFlight = true
     try {
       return await runBatch(req)
     } finally {
-      exportInFlight = false
+      jobSlots.exportInFlight = false
     }
   })
 
@@ -476,4 +510,8 @@ export function registerIpcHandlers(): void {
   })
 
   handle('shortz:appVersion', async () => app.getVersion())
+
+  // --- downloader (single-flight slot shared with export via jobSlots) --------
+
+  registerDownloaderIpc({ handle, jobSlots, sendToRenderer, dataDir })
 }
