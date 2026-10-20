@@ -66,3 +66,98 @@ describe('loadSettings — normalization', () => {
     expect(settings.encoder.preferred).toBe('auto')
   })
 })
+
+describe('loadSettings — downloads (twitter-downloader, AUDIT A13)', () => {
+  it('adds the downloads block to defaults', async () => {
+    const settings = await loadSettings(path.join(scratchDir, 'missing-downloads'))
+    expect(settings.downloads.dir.length).toBeGreaterThan(0)
+    expect(settings.downloads.layout).toBe('by-author')
+    expect(settings.downloads.filenameTemplate).toBe('{id}')
+    expect(settings.downloads.quality).toBe('best')
+    expect(settings.downloads.resolveConcurrency).toBe(4)
+    expect(settings.downloads.downloadConcurrency).toBe(3)
+    expect(settings.downloads.fallback).toBe('off')
+    expect(settings.downloads.writeSidecars).toBe(true)
+  })
+
+  it('loads a pre-downloader settings file with defaults and schemaVersion 1', async () => {
+    await writeSettings(
+      JSON.stringify({
+        schemaVersion: 1,
+        output: { dir: 'C:\\Videos', filenamePattern: '{name}' },
+        encoder: { preferred: 'libx264', crf: 20, fps: 60 },
+        ffmpeg: { source: 'system' },
+        ui: { safeZonesDefault: false }
+      })
+    )
+    const settings = await loadSettings(scratchDir)
+    expect(settings.schemaVersion).toBe(1)
+    expect(settings.output.dir).toBe('C:\\Videos')
+    expect(settings.downloads.filenameTemplate).toBe('{id}')
+    expect(settings.downloads.downloadConcurrency).toBe(3)
+  })
+
+  it('clamps every hand-edited downloads field to a valid value', async () => {
+    await writeSettings(
+      JSON.stringify({
+        downloads: {
+          dir: '',
+          layout: 'nope',
+          filenameTemplate: '',
+          quality: 'ultra',
+          resolveConcurrency: 0,
+          downloadConcurrency: 9,
+          fallback: 'ytdlp',
+          writeSidecars: 'yes'
+        }
+      })
+    )
+    const settings = await loadSettings(scratchDir)
+    expect(settings.downloads.dir.length).toBeGreaterThan(0)
+    expect(settings.downloads.layout).toBe('by-author')
+    expect(settings.downloads.filenameTemplate).toBe('{id}')
+    expect(settings.downloads.quality).toBe('best')
+    expect(settings.downloads.resolveConcurrency).toBe(4)
+    expect(settings.downloads.downloadConcurrency).toBe(3)
+    expect(settings.downloads.fallback).toBe('off')
+    expect(settings.downloads.writeSidecars).toBe(true)
+  })
+
+  it('keeps valid downloads values, including a maxHeight quality', async () => {
+    await writeSettings(
+      JSON.stringify({
+        downloads: {
+          dir: 'D:\\clips',
+          layout: 'flat',
+          filenameTemplate: '{author}_{id}_{slug}',
+          quality: { maxHeight: 720 },
+          resolveConcurrency: 2,
+          downloadConcurrency: 1,
+          fallback: 'fxtwitter',
+          writeSidecars: false
+        }
+      })
+    )
+    const settings = await loadSettings(scratchDir)
+    expect(settings.downloads).toEqual({
+      dir: 'D:\\clips',
+      layout: 'flat',
+      filenameTemplate: '{author}_{id}_{slug}',
+      quality: { maxHeight: 720 },
+      resolveConcurrency: 2,
+      downloadConcurrency: 1,
+      fallback: 'fxtwitter',
+      writeSidecars: false
+    })
+  })
+
+  it('rejects an implausible maxHeight quality and a scalar downloads block', async () => {
+    await writeSettings(JSON.stringify({ downloads: { quality: { maxHeight: 'huge' } } }))
+    expect((await loadSettings(scratchDir)).downloads.quality).toBe('best')
+
+    await writeSettings(JSON.stringify({ downloads: 'on' }))
+    const settings = await loadSettings(scratchDir)
+    expect(settings.downloads.downloadConcurrency).toBe(3)
+    expect(settings.downloads.quality).toBe('best')
+  })
+})

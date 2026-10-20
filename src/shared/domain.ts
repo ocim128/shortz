@@ -1,3 +1,4 @@
+import type { DlQuality } from './downloader/types'
 import type { KnobId } from './template/knob-registry'
 
 /**
@@ -65,6 +66,23 @@ export interface Settings {
   }
   ui: {
     safeZonesDefault: boolean
+  }
+  /**
+   * Twitter/X downloader (docs/twitter-downloader/technical/ui-and-ipc.md §4).
+   * Additive: settings written before this feature load with defaults. The
+   * block is still clamped field-by-field in normalizeSettings() — a merged
+   * default is not a validated value (AUDIT A13).
+   */
+  downloads: {
+    dir: string
+    layout: 'by-author' | 'by-date' | 'flat'
+    filenameTemplate: string
+    quality: DlQuality
+    resolveConcurrency: 1 | 2 | 3 | 4 | 5
+    downloadConcurrency: 1 | 2 | 3
+    /** 'auto' = the yt-dlp sidecar (D5); degrades honestly until it ships. */
+    fallback: 'off' | 'fxtwitter' | 'auto'
+    writeSidecars: boolean
   }
 }
 

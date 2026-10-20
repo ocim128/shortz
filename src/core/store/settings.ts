@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { promises as fs } from 'node:fs'
 import { isPlainObject, type Settings } from '../../shared/domain'
+import type { DlQuality } from '../../shared/downloader/types'
 import { atomicWriteFile, stripBom } from './fs-utils'
 
 export function defaultSettings(): Settings {
@@ -14,7 +15,17 @@ export function defaultSettings(): Settings {
     },
     encoder: { preferred: 'auto', crf: 18, fps: 30 },
     ffmpeg: { source: 'auto' },
-    ui: { safeZonesDefault: true }
+    ui: { safeZonesDefault: true },
+    downloads: {
+      dir: path.join(os.homedir(), 'Videos', 'ShortZ', 'Downloads'),
+      layout: 'by-author',
+      filenameTemplate: '{id}',
+      quality: 'best',
+      resolveConcurrency: 4,
+      downloadConcurrency: 3,
+      fallback: 'off',
+      writeSidecars: true
+    }
   }
 }
 
@@ -84,6 +95,10 @@ const ENCODER_PREFERRED = ['auto', 'libx264', 'h264_nvenc'] as const
 const CRF_VALUES = [17, 18, 20, 23] as const
 const FPS_VALUES = [30, 60, 'source'] as const
 const FFMPEG_SOURCES = ['auto', 'system', 'bundled'] as const
+const DL_LAYOUTS = ['by-author', 'by-date', 'flat'] as const
+const DL_RESOLVE_CONCURRENCY = [1, 2, 3, 4, 5] as const
+const DL_DOWNLOAD_CONCURRENCY = [1, 2, 3] as const
+const DL_FALLBACKS = ['off', 'fxtwitter', 'auto'] as const
 
 function oneOf<T extends readonly (string | number)[]>(
   values: T,
@@ -97,6 +112,29 @@ function nonEmptyString(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.length > 0 ? value : fallback
 }
 
+/** Sanity bounds for a hand-edited `{ maxHeight }` quality. */
+const MAX_HEIGHT_RANGE = { min: 144, max: 4320 } as const
+
+/**
+ * `DlQuality` is `'best' | 'worst' | { maxHeight }`; the object arm needs its
+ * own guard or a hand-edited `{ maxHeight: "huge" }` would reach the selector.
+ */
+function normalizeQuality(value: unknown, fallback: DlQuality): DlQuality {
+  if (value === 'best' || value === 'worst') return value
+  if (isPlainObject(value)) {
+    const height = value.maxHeight
+    if (
+      typeof height === 'number' &&
+      Number.isFinite(height) &&
+      height >= MAX_HEIGHT_RANGE.min &&
+      height <= MAX_HEIGHT_RANGE.max
+    ) {
+      return { maxHeight: Math.round(height) }
+    }
+  }
+  return fallback
+}
+
 /**
  * Clamp the typed fields of a merged Settings to their declared domains.
  * Anything out of domain falls back to the default for that field; unknown
@@ -104,11 +142,19 @@ function nonEmptyString(value: unknown, fallback: string): string {
  */
 export function normalizeSettings(merged: Settings): Settings {
   const defaults = defaultSettings()
+  // mergeSettings() only merges plain objects, so `downloads` can still be a
+  // scalar from a hand-edited file — read it through a guard, never directly.
+  const downloads: Record<string, unknown> = isPlainObject(merged.downloads)
+    ? (merged.downloads as unknown as Record<string, unknown>)
+    : {}
   return {
     ...merged,
     output: {
       dir: nonEmptyString(merged.output.dir, defaults.output.dir),
-      filenamePattern: nonEmptyString(merged.output.filenamePattern, defaults.output.filenamePattern)
+      filenamePattern: nonEmptyString(
+        merged.output.filenamePattern,
+        defaults.output.filenamePattern
+      )
     },
     encoder: {
       preferred: oneOf(ENCODER_PREFERRED, merged.encoder.preferred, 'auto'),
@@ -123,6 +169,30 @@ export function normalizeSettings(merged: Settings): Settings {
         typeof merged.ui.safeZonesDefault === 'boolean'
           ? merged.ui.safeZonesDefault
           : defaults.ui.safeZonesDefault
+    },
+    downloads: {
+      dir: nonEmptyString(downloads.dir, defaults.downloads.dir),
+      layout: oneOf(DL_LAYOUTS, downloads.layout, defaults.downloads.layout),
+      filenameTemplate: nonEmptyString(
+        downloads.filenameTemplate,
+        defaults.downloads.filenameTemplate
+      ),
+      quality: normalizeQuality(downloads.quality, defaults.downloads.quality),
+      resolveConcurrency: oneOf(
+        DL_RESOLVE_CONCURRENCY,
+        downloads.resolveConcurrency,
+        defaults.downloads.resolveConcurrency
+      ),
+      downloadConcurrency: oneOf(
+        DL_DOWNLOAD_CONCURRENCY,
+        downloads.downloadConcurrency,
+        defaults.downloads.downloadConcurrency
+      ),
+      fallback: oneOf(DL_FALLBACKS, downloads.fallback, defaults.downloads.fallback),
+      writeSidecars:
+        typeof downloads.writeSidecars === 'boolean'
+          ? downloads.writeSidecars
+          : defaults.downloads.writeSidecars
     }
   }
 }
