@@ -123,6 +123,22 @@ export interface DlMediaState {
   total: number | null
 }
 
+/** Variants that were actually chosen, for display (additive, v1.1).
+ *
+ * The frozen v1 item event carries planned paths but not what was picked, so
+ * `--dry-run` could not print dimensions/bitrate and the renderer could not show
+ * a "720p" chip without re-resolving. Purely informational: the core never
+ * re-reads it. See NOTES-A.md. */
+export interface DlChosenInfo {
+  index: number
+  width: number | null
+  height: number | null
+  bitrate: number | null
+  contentType: string | null
+  /** The signed variant URL, as selected. */
+  url: string
+}
+
 export interface DlItemEvent {
   jobId: string
   kind: 'item'
@@ -147,6 +163,8 @@ export interface DlItemEvent {
     errorDetail?: string
     skipReason?: DlSkipReason
     media?: DlMediaState[]
+    /** The chosen variant per media asset (additive, v1.1). */
+    chosen?: DlChosenInfo[]
   }
 }
 

@@ -55,7 +55,10 @@ function kindOf(raw: Record<string, unknown>): MediaKind {
   return 'unknown'
 }
 
-function dimensionsOf(raw: Record<string, unknown>): { width: number | null; height: number | null } {
+function dimensionsOf(raw: Record<string, unknown>): {
+  width: number | null
+  height: number | null
+} {
   const original = asRecord(raw.original_info)
   const fromOriginal =
     original === null

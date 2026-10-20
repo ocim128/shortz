@@ -23,7 +23,14 @@ import type {
   Variant
 } from '../../../shared/downloader/types'
 import type { ResolveCtx, Resolver } from './ctx'
-import { asArray, asFiniteNumber, asRecord, asString, toIsoFromUnixSeconds, toIsoTimestamp } from './ctx'
+import {
+  asArray,
+  asFiniteNumber,
+  asRecord,
+  asString,
+  toIsoFromUnixSeconds,
+  toIsoTimestamp
+} from './ctx'
 
 export function fxTwitterUrl(tweetId: string): string {
   return `https://api.fxtwitter.com/status/${tweetId}`
@@ -99,7 +106,8 @@ export function mapFxTwitterPayload(ref: TweetRef, payload: unknown): ResolvedTw
   const videos = media === null ? [] : mapVideos(media, 0)
   const photos = media === null ? [] : mapPhotos(media, videos.length)
 
-  const createdAt = toIsoTimestamp(tweet.created_at) ?? toIsoFromUnixSeconds(tweet.created_timestamp)
+  const createdAt =
+    toIsoTimestamp(tweet.created_at) ?? toIsoFromUnixSeconds(tweet.created_timestamp)
 
   return {
     ref: { tweetId: ref.tweetId, screenName, canonicalUrl: ref.canonicalUrl },

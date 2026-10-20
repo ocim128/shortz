@@ -89,7 +89,8 @@ export function fakeFetch(routes: FakeRoute[]): FakeFetch {
   const calls: FakeCall[] = []
 
   const impl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
     const call: FakeCall = {
       url,
       method: init?.method ?? 'GET',
@@ -117,7 +118,11 @@ export function fakeFetch(routes: FakeRoute[]): FakeFetch {
 }
 
 /** A JSON `Response` from a fixture body. */
-export function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+export function jsonResponse(
+  body: unknown,
+  status = 200,
+  headers: Record<string, string> = {}
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json', ...headers }
@@ -149,6 +154,114 @@ export function mediaRoute(
           ...(options.etag === undefined ? {} : { etag: options.etag }),
           ...(options.lastModified === undefined ? {} : { 'last-modified': options.lastModified })
         }
+      })
+  }
+}
+
+export interface RangeRouteOptions {
+  etag?: string
+  /** Refuse to resume: always answer 200 to a ranged request. */
+  ignoreRange?: boolean
+  /** Fail the first N requests with this status (before serving any bytes). */
+  failFirst?: number
+  failStatus?: number
+  /** Overrides the total reported by a 416 (the `bytes` asterisk-slash n form). */
+  rangeTotal?: number
+}
+
+/**
+ * A media route that speaks the same Range dialect as Twimg: 206 + Content-Range
+ * for a satisfiable range, 416 past the end, 200 when `If-Range` no longer
+ * matches. This is what the resume tests assert against.
+ */
+export function rangeMediaRoute(body: Uint8Array, options: RangeRouteOptions = {}): FakeRoute {
+  const size = body.byteLength
+  const etag = options.etag ?? '"media-v1"'
+  let served = 0
+  return {
+    match: (url: string) => url.startsWith('https://video.twimg.com/'),
+    respond: (call) => {
+      served += 1
+      if (options.failFirst !== undefined && served <= options.failFirst) {
+        return new Response(null, { status: options.failStatus ?? 503 })
+      }
+      const range = call.headers.range
+      const ifRange = call.headers['if-range']
+      if (range === undefined || options.ignoreRange === true) {
+        return new Response(body as unknown as BodyInit, {
+          status: 200,
+          headers: {
+            'content-type': 'video/mp4',
+            'content-length': String(size),
+            etag,
+            'accept-ranges': 'bytes'
+          }
+        })
+      }
+      if (ifRange !== undefined && ifRange !== etag) {
+        // The validator changed between attempts: full body, no resume.
+        return new Response(body as unknown as BodyInit, {
+          status: 200,
+          headers: { 'content-type': 'video/mp4', 'content-length': String(size), etag }
+        })
+      }
+      const start = Number.parseInt(range.replace(/^bytes=/, '').split('-')[0] ?? '0', 10)
+      if (!Number.isFinite(start) || start >= size) {
+        return new Response(null, {
+          status: 416,
+          headers: { 'content-range': `bytes */${options.rangeTotal ?? size}` }
+        })
+      }
+      const slice = body.slice(start)
+      return new Response(slice as unknown as BodyInit, {
+        status: 206,
+        headers: {
+          'content-type': 'video/mp4',
+          'content-length': String(slice.byteLength),
+          'content-range': `bytes ${start}-${size - 1}/${size}`,
+          etag,
+          'accept-ranges': 'bytes'
+        }
+      })
+    }
+  }
+}
+
+/** A 200 whose body dies after `cutAt` bytes — the mid-transfer network failure. */
+export function truncatedMediaRoute(body: Uint8Array, cutAt: number): FakeRoute {
+  return {
+    match: (url: string) => url.startsWith('https://video.twimg.com/'),
+    respond: () => {
+      let sent = 0
+      // `pull` (not a queue-then-error in `start`, which DISCARDS the queued
+      // chunk): real bytes must reach the .part before the connection dies.
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent >= cutAt) {
+            controller.error(new Error('connection reset'))
+            return
+          }
+          const end = Math.min(cutAt, sent + 512)
+          controller.enqueue(body.slice(sent, end))
+          sent = end
+        }
+      })
+      return new Response(stream, {
+        status: 200,
+        headers: { 'content-type': 'video/mp4', 'content-length': String(body.byteLength) }
+      })
+    }
+  }
+}
+
+/** A poster (JPEG-ish bytes) for `pbs.twimg.com`. */
+export function posterRoute(bytes: Uint8Array = fakeVideoBytes(64, 3)): FakeRoute {
+  return {
+    match: (url: string) => url.startsWith('https://pbs.twimg.com/'),
+    respond: () =>
+      new Response(bytes as unknown as BodyInit, {
+        status: 200,
+        headers: { 'content-type': 'image/jpeg', 'content-length': String(bytes.byteLength) }
       })
   }
 }

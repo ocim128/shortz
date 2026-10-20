@@ -64,7 +64,9 @@ export function asDlError(error: unknown): DlError {
     return new DlError('CANCELLED', error instanceof Error ? error.message : String(error))
   }
   if (error instanceof Error) {
-    const code = (error as NodeJS.ErrnoException).code
+    // Local shape, not `NodeJS.ErrnoException`: this file is in the pure tier and
+    // the web tsconfig has no `node` types (errors.ts is re-exported to preload).
+    const code = (error as { code?: string }).code
     return new DlError(
       'UNEXPECTED',
       code === undefined ? error.message : `${code}: ${error.message}`

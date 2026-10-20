@@ -89,7 +89,11 @@ describe('syndication adapter — payload mapping (fixtures)', () => {
       readFixtureBody('syndication/single-video.json')
     )
     expect(resolved.source).toBe('syndication')
-    expect(resolved.author).toEqual({ screenName: 'someuser', displayName: 'Some User', verified: true })
+    expect(resolved.author).toEqual({
+      screenName: 'someuser',
+      displayName: 'Some User',
+      verified: true
+    })
     expect(resolved.text).toBe('A single video post')
     expect(resolved.createdAt).toBe('2024-01-31T12:34:56.000Z')
     expect(resolved.media).toHaveLength(1)
@@ -147,7 +151,10 @@ describe('syndication adapter — payload mapping (fixtures)', () => {
 
   it('rejects a payload for a different id as UPSTREAM_ERROR', () => {
     expect(() =>
-      mapSyndicationPayload(refOf('1750123456789099999'), readFixtureBody('syndication/single-video.json'))
+      mapSyndicationPayload(
+        refOf('1750123456789099999'),
+        readFixtureBody('syndication/single-video.json')
+      )
     ).toThrow(expect.objectContaining({ code: 'UPSTREAM_ERROR' }))
   })
 
@@ -179,9 +186,9 @@ describe('syndication adapter — request shape and error mapping', () => {
 
   it('maps a 404 to NOT_EMBEDDABLE (the endpoint cannot say "deleted")', async () => {
     const { client } = clientFor([syndicationRoute('sensitive-404.json')])
-    await expect(new SyndicationResolver().resolve(refOf(SINGLE_ID), ctxOf(client))).rejects.toMatchObject(
-      { code: 'NOT_EMBEDDABLE' }
-    )
+    await expect(
+      new SyndicationResolver().resolve(refOf(SINGLE_ID), ctxOf(client))
+    ).rejects.toMatchObject({ code: 'NOT_EMBEDDABLE' })
   })
 
   it('maps 401/403 to AUTH_REQUIRED and 429 to RATE_LIMITED', async () => {
@@ -219,7 +226,10 @@ describe('fxtwitter adapter — payload mapping and error mapping', () => {
   })
 
   it('maps gif videos and the unix created_timestamp fallback', () => {
-    const resolved = mapFxTwitterPayload(refOf(GIF_ID, 'gifuser'), readFixtureBody('fxtwitter/gif.json'))
+    const resolved = mapFxTwitterPayload(
+      refOf(GIF_ID, 'gifuser'),
+      readFixtureBody('fxtwitter/gif.json')
+    )
     expect(resolved.media[0]?.kind).toBe('gif')
     expect(resolved.createdAt).toBe(new Date(1685606400 * 1000).toISOString())
   })
@@ -337,7 +347,10 @@ describe('FallbackChain — fall-through and the failure-path probe', () => {
   })
 
   it('does not probe a successful resolve', async () => {
-    const { client, fetchImpl } = clientFor([syndicationRoute('single-video.json'), oembedRoute(404)])
+    const { client, fetchImpl } = clientFor([
+      syndicationRoute('single-video.json'),
+      oembedRoute(404)
+    ])
     await buildChain({ fallback: 'off', client }).resolve(refOf(SINGLE_ID), ctxOf(client))
     expect(fetchImpl.count('publish.twitter.com/oembed')).toBe(0)
   })
@@ -416,8 +429,8 @@ describe('FallbackChain — fall-through and the failure-path probe', () => {
       ],
       null
     )
-    await expect(chain.resolve(refOf(SINGLE_ID), ctxOf(createDlClient({ fallback: 'off' })))).rejects.toMatchObject(
-      { name: 'AbortError' }
-    )
+    await expect(
+      chain.resolve(refOf(SINGLE_ID), ctxOf(createDlClient({ fallback: 'off' })))
+    ).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

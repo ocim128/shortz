@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { runDlCommand } from './dl'
 import { loadProjectDocument, ProjectFileError } from '../core/store/projects'
 import { loadTemplateById } from '../core/store/templates'
 import {
@@ -12,12 +13,13 @@ import {
 import { TemplateValidationError } from '../shared/template/validate'
 import type { EncoderKind } from '../core/ffmpeg/argbuilder'
 
-const USAGE = `ShortZ render CLI (headless pipeline)
+const USAGE = `ShortZ CLI (headless pipeline)
 
 Usage:
   shortz render <project.json> [-o <out.mp4>] [options]
+  shortz dl [<link|file>...] [options]      Twitter/X downloader (see: shortz dl --help)
 
-Options:
+Render options:
   -o, --output <file>     Output file (default: <name>_<yyyyMMdd>_<HHmm>.mp4 in cwd)
       --fps <n>           Output fps (default 30)
       --crf <n>           x264 CRF (default 18)
@@ -240,6 +242,12 @@ async function runRender(options: CliOptions): Promise<number> {
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
+  // The downloader owns its own flag grammar (src/cli/dl.ts) — one dispatch, no
+  // flag-sharing between two unrelated pipelines.
+  if (argv[0] === 'dl') {
+    return runDlCommand(argv.slice(1))
+  }
+
   let options: CliOptions
   try {
     options = parseArgs(argv)
@@ -256,7 +264,6 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     process.stderr.write(`Unknown command "${options.command}"\n\n${USAGE}`)
     return 1
   }
-
   try {
     return await runRender(options)
   } catch (error) {

@@ -18,7 +18,7 @@
  */
 
 import { promises as fs } from 'node:fs'
-import { Readable, Transform } from 'node:stream'
+import { Readable, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { DlError } from '../../../shared/downloader/errors'
 import { isAllowedMediaUrl } from '../../../shared/downloader/urls'
@@ -55,7 +55,12 @@ export interface DlClient {
        * can resume with `If-Range` instead of restarting. */
       validatorPath?: string
     }
-  ): Promise<{ bytes: number; total: number | null; etag: string | null; lastModified: string | null }>
+  ): Promise<{
+    bytes: number
+    total: number | null
+    etag: string | null
+    lastModified: string | null
+  }>
   /**
    * Additive (see NOTES-A): the failure-path probe's status, with at most one
    * redirect followed. `publish.twitter.com/oembed` answers 200 for an alive post
@@ -103,7 +108,10 @@ export function isAllowedResolveUrl(url: string, fallback: 'off' | 'fxtwitter' |
 }
 
 /** `Retry-After`: seconds (int/float) or an HTTP-date. Absent/invalid → null. */
-export function parseRetryAfter(header: string | null | undefined, nowMs = Date.now()): number | null {
+export function parseRetryAfter(
+  header: string | null | undefined,
+  nowMs = Date.now()
+): number | null {
   if (header === null || header === undefined) return null
   const value = header.trim()
   if (value.length === 0) return null
@@ -185,7 +193,8 @@ async function withTimeout<T>(
   const timer = setTimeout(() => {
     controller.abort(new DlError('NETWORK', detail))
   }, ms)
-  const signal = parent === undefined ? controller.signal : AbortSignal.any([parent, controller.signal])
+  const signal =
+    parent === undefined ? controller.signal : AbortSignal.any([parent, controller.signal])
   try {
     return await work(signal)
   } finally {
@@ -211,6 +220,19 @@ async function* bodyChunks(
           reject(new DlError('NETWORK', `no body data for ${idleMs} ms`))
         }, idleMs)
       })
+      // Cancel must not wait for the idle timer: race the signal too, so an
+      // aborted transfer settles in milliseconds even if the socket is silent.
+      // The listener is removed after every chunk — a long transfer yields
+      // thousands of chunks and would otherwise grow `signal` without bound.
+      let onAbort: (() => void) | undefined
+      const aborted = new Promise<never>((_resolve, reject) => {
+        if (signal.aborted) {
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+          return
+        }
+        onAbort = () => reject(new DOMException('The operation was aborted.', 'AbortError'))
+        signal.addEventListener('abort', onAbort, { once: true })
+      })
       const read = reader.read().catch((error: unknown) => {
         if (error instanceof DlError) throw error
         if (isAbort(error) && signal.aborted) throw error
@@ -218,9 +240,10 @@ async function* bodyChunks(
       })
       let result: ReadableStreamReadResult<Uint8Array>
       try {
-        result = await Promise.race([read, timeout])
+        result = await Promise.race([read, timeout, aborted])
       } finally {
         if (timer !== undefined) clearTimeout(timer)
+        if (onAbort !== undefined) signal.removeEventListener('abort', onAbort)
       }
       if (result.done === true) return
       if (result.value !== undefined) yield Buffer.from(result.value)
@@ -300,10 +323,7 @@ export function createDlClient(config: DlClientConfig): DlClient {
     return location
   }
 
-  async function probeStatus(
-    url: string,
-    opts: { signal?: AbortSignal } = {}
-  ): Promise<number> {
+  async function probeStatus(url: string, opts: { signal?: AbortSignal } = {}): Promise<number> {
     assertResolveAllowed(url)
     const first = await withTimeout(
       (signal) =>
@@ -350,7 +370,12 @@ export function createDlClient(config: DlClientConfig): DlClient {
       onProgress?: (delta: number, total: number | null) => void
       validatorPath?: string
     }
-  ): Promise<{ bytes: number; total: number | null; etag: string | null; lastModified: string | null }> {
+  ): Promise<{
+    bytes: number
+    total: number | null
+    etag: string | null
+    lastModified: string | null
+  }> {
     // Belt and braces (D-A9): the engine checks too, but a hostile URL must never
     // reach a socket even if a future caller forgets.
     if (!isAllowedMediaUrl(url)) {
@@ -418,7 +443,7 @@ export function createDlClient(config: DlClientConfig): DlClient {
       const partialTotal = contentRangeTotal(res.headers.get('content-range'))
       const remaining = contentLength(res)
       const total = isPartial
-        ? partialTotal ?? (remaining === null ? null : offset + remaining)
+        ? (partialTotal ?? (remaining === null ? null : offset + remaining))
         : remaining
       const etag = res.headers.get('etag')
       const lastModified = res.headers.get('last-modified')
@@ -445,21 +470,26 @@ export function createDlClient(config: DlClientConfig): DlClient {
       })
       let written = 0
       try {
-        const sink = fh.createWriteStream({
-          start: resumed ? offset : 0,
-          autoClose: false
-        })
-        // A Transform counts progress INSIDE the pipeline: attaching a 'data'
-        // listener instead would switch the source to flowing mode and race the sink.
-        const counter = new Transform({
-          transform(chunk: Buffer, _encoding, callback) {
+        // Positional writes through an explicit Writable: a FileHandle write
+        // stream with `autoClose: false` never emits 'close', so `pipeline()`
+        // would wait forever (found the hard way). This also guarantees that a
+        // chunk handed to the sink is on disk before the next one is read, which
+        // is what makes a .part usable after an interrupt.
+        const sink = new Writable({
+          write(chunk: Buffer, _encoding, callback) {
+            const position = (resumed ? offset : 0) + written
             written += chunk.length
-            opts.onProgress?.(chunk.length, total)
-            callback(null, chunk)
+            fh.write(chunk, 0, chunk.length, position).then(
+              () => {
+                opts.onProgress?.(chunk.length, total)
+                callback()
+              },
+              (error: unknown) => callback(error as Error)
+            )
           }
         })
         const source = Readable.from(bodyChunks(body, MEDIA_IDLE_TIMEOUT_MS, opts.signal))
-        await pipeline(source, counter, sink).catch((error: unknown) => {
+        await pipeline(source, sink).catch((error: unknown) => {
           if (error instanceof DlError) throw error
           if (isAbort(error)) throw error
           const code = (error as NodeJS.ErrnoException | undefined)?.code

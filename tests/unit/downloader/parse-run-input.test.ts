@@ -36,11 +36,24 @@ describe('parseRunInput — physical lines and stable keys', () => {
 })
 
 describe('parseRunInput — problems', () => {
-  it('flags a comment / junk line as no-link but keeps it', () => {
+  it('flags a junk / prose line as no-link but keeps it', () => {
     const [line] = parseRunInput('my favourite clips:')
     expect(line?.problems).toEqual(['no-link'])
     expect(line?.url).toBeNull()
     expect(line?.tweetId).toBeNull()
+  })
+
+  it('drops # comments but keeps physical line numbers', () => {
+    const lines = parseRunInput(`# the funny squirrel one\n${A}\n  # trailing note\n${B}`)
+    expect(lines.map((line) => line.lineNumber)).toEqual([2, 4])
+    expect(lines.map((line) => line.key)).toEqual(['line-2', 'line-4'])
+    expect(lines.map((line) => line.text)).toEqual([A, B])
+  })
+
+  it('only treats # at line start as a comment (never inside a URL line)', () => {
+    const [line] = parseRunInput(`look at ${A} #squirrel`)
+    expect(line?.tweetId).toBe('1750123456789012352')
+    expect(line?.problems).toEqual([])
   })
 
   it('flags an implausible id as invalid-id', () => {

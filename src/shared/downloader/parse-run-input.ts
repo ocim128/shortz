@@ -40,9 +40,10 @@ export function lineKey(lineNumber: number): string {
 }
 
 /**
- * Parse the textarea. Blank lines are dropped (a trailing newline is not an item);
- * every other line is returned with its problems, so one bad line never hides the
- * ones around it.
+ * Parse the textarea. Blank lines and `# …` comments are dropped (a trailing
+ * newline is not an item); every other line is returned with its problems, so one
+ * bad line never hides the ones around it. A comment is only a `#` at line start
+ * (`ui-and-ipc.md` §2) — X URLs contain no `#`, and a `#` mid-line is preserved.
  */
 export function parseRunInput(text: string): ParsedLine[] {
   const lines: ParsedLine[] = []
@@ -51,7 +52,7 @@ export function parseRunInput(text: string): ParsedLine[] {
 
   for (let index = 0; index < raw.length; index += 1) {
     const trimmed = (raw[index] ?? '').trim()
-    if (trimmed.length === 0) continue
+    if (trimmed.length === 0 || trimmed.startsWith('#')) continue
 
     const lineNumber = index + 1
     const problems: DlLineProblemCode[] = []

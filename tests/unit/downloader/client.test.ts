@@ -82,7 +82,9 @@ describe('getJson — status mapping', () => {
       fetchImpl: fakeFetch([{ match: 'cdn.syndication', respond: () => jsonResponse({ ok: 1 }) }]),
       fallback: 'off'
     })
-    await expect(client.getJson('https://cdn.syndication.twimg.com/tweet-result?id=1')).resolves.toEqual({
+    await expect(
+      client.getJson('https://cdn.syndication.twimg.com/tweet-result?id=1')
+    ).resolves.toEqual({
       ok: 1
     })
   })
@@ -97,10 +99,14 @@ describe('getJson — status mapping', () => {
       [503, 'UPSTREAM_ERROR']
     ] as const) {
       const client = createDlClient({
-        fetchImpl: fakeFetch([{ match: 'cdn.syndication', respond: () => new Response(null, { status }) }]),
+        fetchImpl: fakeFetch([
+          { match: 'cdn.syndication', respond: () => new Response(null, { status }) }
+        ]),
         fallback: 'off'
       })
-      await expect(client.getJson('https://cdn.syndication.twimg.com/tweet-result?id=1')).rejects.toMatchObject({
+      await expect(
+        client.getJson('https://cdn.syndication.twimg.com/tweet-result?id=1')
+      ).rejects.toMatchObject({
         code
       })
     }
@@ -221,7 +227,9 @@ describe('expandTco', () => {
 
   it('fails honestly when there is no Location', async () => {
     const client = createDlClient({
-      fetchImpl: fakeFetch([{ match: 'https://t.co/', respond: () => new Response(null, { status: 200 }) }]),
+      fetchImpl: fakeFetch([
+        { match: 'https://t.co/', respond: () => new Response(null, { status: 200 }) }
+      ]),
       fallback: 'off'
     })
     await expect(client.expandTco('https://t.co/abc123')).rejects.toMatchObject({
@@ -236,7 +244,9 @@ describe('expandTco', () => {
       ]),
       fallback: 'off'
     })
-    await expect(client.expandTco('https://t.co/abc123')).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(client.expandTco('https://t.co/abc123')).rejects.toMatchObject({
+      code: 'NOT_FOUND'
+    })
   })
 })
 
@@ -270,14 +280,18 @@ describe('probeStatus', () => {
       {
         match: 'publish.twitter.com/oembed',
         respond: () =>
-          new Response(null, { status: 302, headers: { location: 'https://publish.twitter.com/other' } })
+          new Response(null, {
+            status: 302,
+            headers: { location: 'https://publish.twitter.com/other' }
+          })
       },
-      { match: 'https://publish.twitter.com/other', respond: () => new Response(null, { status: 200 }) }
+      {
+        match: 'https://publish.twitter.com/other',
+        respond: () => new Response(null, { status: 200 })
+      }
     ])
     const client = createDlClient({ fetchImpl, fallback: 'off' })
-    await expect(
-      client.probeStatus('https://publish.twitter.com/oembed?url=x')
-    ).resolves.toBe(200)
+    await expect(client.probeStatus('https://publish.twitter.com/oembed?url=x')).resolves.toBe(200)
     expect(fetchImpl.calls).toHaveLength(2)
   })
 
