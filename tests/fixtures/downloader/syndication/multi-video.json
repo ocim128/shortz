@@ -1,0 +1,63 @@
+{
+  "__typename": "Tweet",
+  "id_str": "1750123456789012353",
+  "text": "Three videos in one post",
+  "created_at": "Wed Oct 22 15:33:18 +0000 2020",
+  "lang": "en",
+  "user": {
+    "id_str": "1002",
+    "screen_name": "multiuser",
+    "name": "Multi User",
+    "verified": false
+  },
+  "mediaDetails": [
+    {
+      "type": "video",
+      "media_url_https": "https://pbs.twimg.com/media/multi-1.jpg",
+      "original_info": { "width": 1280, "height": 720 },
+      "video_info": {
+        "aspect_ratio": [16, 9],
+        "duration_millis": 8000,
+        "variants": [
+          {
+            "bitrate": 832000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/v/multi-1-832.mp4"
+          }
+        ]
+      }
+    },
+    {
+      "type": "video",
+      "media_url_https": "https://pbs.twimg.com/media/multi-2.jpg",
+      "original_info": { "width": 640, "height": 360 },
+      "video_info": {
+        "aspect_ratio": [16, 9],
+        "duration_millis": 9000,
+        "variants": [
+          {
+            "bitrate": 320000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/v/multi-2-320.mp4"
+          }
+        ]
+      }
+    },
+    {
+      "type": "video",
+      "media_url_https": "https://pbs.twimg.com/media/multi-3.jpg",
+      "sizes": { "large": { "w": 1920, "h": 1080, "resize": "fit" } },
+      "video_info": {
+        "aspect_ratio": [16, 9],
+        "duration_millis": 10000,
+        "variants": [
+          {
+            "bitrate": 2176000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/v/multi-3-2176.mp4"
+          }
+        ]
+      }
+    }
+  ]
+}

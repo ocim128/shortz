@@ -1,0 +1,30 @@
+{
+  "__typename": "Tweet",
+  "id_str": "1750123456789012354",
+  "text": "An animated gif post",
+  "created_at": "2023-06-01T08:00:00.000Z",
+  "lang": "en",
+  "user": {
+    "id_str": "1003",
+    "screen_name": "gifuser",
+    "name": "Gif User",
+    "verified": false
+  },
+  "mediaDetails": [
+    {
+      "type": "animated_gif",
+      "media_url_https": "https://pbs.twimg.com/tweet_video_thumb/gif.jpg",
+      "original_info": { "width": 480, "height": 270 },
+      "video_info": {
+        "aspect_ratio": [16, 9],
+        "variants": [
+          {
+            "bitrate": 0,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/tweet_video/gif.mp4"
+          }
+        ]
+      }
+    }
+  ]
+}

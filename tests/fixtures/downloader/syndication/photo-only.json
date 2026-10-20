@@ -1,0 +1,25 @@
+{
+  "__typename": "Tweet",
+  "id_str": "1750123456789012355",
+  "text": "Four photos, no video",
+  "created_at": "2023-02-02T10:00:00.000Z",
+  "lang": "en",
+  "user": {
+    "id_str": "1004",
+    "screen_name": "photouser",
+    "name": "Photo User",
+    "verified": false
+  },
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/photo-1.jpg",
+      "original_info": { "width": 1200, "height": 800 }
+    },
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/photo-2.jpg",
+      "original_info": { "width": 1200, "height": 800 }
+    }
+  ]
+}

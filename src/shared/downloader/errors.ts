@@ -11,12 +11,19 @@ import type { DlErrorCode } from './types'
 export class DlError extends Error {
   readonly code: DlErrorCode
   readonly detail?: string
+  /**
+   * Additive (see NOTES-A): milliseconds from a 429's `Retry-After`, when the
+   * server said so. The throttle uses it for the global pause; code that only
+   * reads `code`/`detail` is unaffected.
+   */
+  readonly retryAfterMs?: number
 
-  constructor(code: DlErrorCode, detail?: string) {
+  constructor(code: DlErrorCode, detail?: string, options: { retryAfterMs?: number } = {}) {
     super(detail === undefined ? code : `${code}: ${detail}`)
     this.name = 'DlError'
     this.code = code
     if (detail !== undefined) this.detail = detail
+    if (options.retryAfterMs !== undefined) this.retryAfterMs = options.retryAfterMs
   }
 }
 
@@ -42,7 +49,9 @@ export function retryable(code: DlErrorCode): boolean {
 export function isAbortError(error: unknown): boolean {
   if (error instanceof DlError) return error.code === 'CANCELLED'
   const name = (error as { name?: string } | null | undefined)?.name
-  return name === 'AbortError' || name === 'TimeoutError'
+  // NOTE: `TimeoutError` (AbortSignal.timeout) is deliberately NOT an abort — a
+  // timeout is `NETWORK` weather, while a cancel is the user's decision.
+  return name === 'AbortError'
 }
 
 /**

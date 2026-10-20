@@ -1,0 +1,26 @@
+{
+  "code": 200,
+  "message": "OK",
+  "tweet": {
+    "id": "1750123456789012354",
+    "text": "A gif post (fxtwitter shape)",
+    "created_timestamp": 1685606400,
+    "author": {
+      "screen_name": "gifuser",
+      "name": "Gif User",
+      "verified": false
+    },
+    "media": {
+      "videos": [
+        {
+          "type": "gif",
+          "url": "https://video.twimg.com/tweet_video/fx-gif.mp4",
+          "width": 480,
+          "height": 270,
+          "thumbnail_url": "https://pbs.twimg.com/tweet_video_thumb/fx-gif.jpg"
+        }
+      ],
+      "photos": []
+    }
+  }
+}
