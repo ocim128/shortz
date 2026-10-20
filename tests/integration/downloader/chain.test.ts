@@ -19,6 +19,7 @@ import {
   syndicationUrl
 } from '../../../src/core/downloader/resolve/syndication'
 import { DlError } from '../../../src/shared/downloader/errors'
+import { selectAllChosen } from '../../../src/shared/downloader/select'
 import { syndicationToken } from '../../../src/shared/downloader/token'
 import type { TweetRef } from '../../../src/shared/downloader/types'
 import {
@@ -107,8 +108,55 @@ describe('syndication adapter — payload mapping (fixtures)', () => {
     expect(asset.variants).toHaveLength(4)
     const mp4 = asset.variants.filter((variant) => variant.contentType === 'video/mp4')
     expect(mp4.map((variant) => variant.bitrate)).toEqual([320000, 832000, 2176000])
-    // Dimensions are inherited at the asset level, so maxHeight selection works.
+    // No per-variant dims in these URLs, so the asset-level dims are inherited.
     expect(mp4.every((variant) => variant.height === 720)).toBe(true)
+  })
+
+  it('reads per-variant dimensions from the twimg path when the payload has none', () => {
+    const payload = {
+      __typename: 'Tweet',
+      id_str: SINGLE_ID,
+      text: 'a real ladder',
+      created_at: '2024-01-31T12:34:56.000Z',
+      user: { screen_name: 'someuser', name: 'Some User', verified: false },
+      mediaDetails: [
+        {
+          type: 'video',
+          original_info: { width: 3840, height: 2160 },
+          media_url_https: 'https://pbs.twimg.com/media/ladder.jpg',
+          video_info: {
+            variants: [
+              {
+                content_type: 'video/mp4',
+                bitrate: 288_000,
+                url: 'https://video.twimg.com/amplify_video/1/vid/avc1/480x270/a.mp4'
+              },
+              {
+                content_type: 'video/mp4',
+                bitrate: 2_176_000,
+                url: 'https://video.twimg.com/amplify_video/1/vid/avc1/1280x720/b.mp4'
+              },
+              {
+                content_type: 'application/x-mpegURL',
+                url: 'https://video.twimg.com/amplify_video/1/pl/x.m3u8'
+              }
+            ]
+          }
+        }
+      ]
+    }
+
+    const resolved = mapSyndicationPayload(refOf(SINGLE_ID), payload)
+    expect(resolved.media[0]?.variants.map((one) => [one.width, one.height])).toEqual([
+      [480, 270],
+      [1280, 720],
+      // The HLS playlist has no path dims: the asset dims remain the fallback.
+      [3840, 2160]
+    ])
+
+    // maxHeight must now choose the real 720p rung, not the biggest bitrate.
+    const chosen = selectAllChosen(resolved, { maxHeight: 720 })
+    expect(chosen[0]?.variant.url).toContain('/1280x720/')
   })
 
   it('maps a multi-video payload, both timestamp formats and sizes.large dims', () => {

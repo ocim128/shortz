@@ -74,6 +74,22 @@ function dimensionsOf(raw: Record<string, unknown>): {
   return fromOriginal
 }
 
+/**
+ * Twimg's progressive ladder puts the real dimensions in the path:
+ * `…/vid/avc1/1280x720/<file>.mp4`. The payload only carries the ASSET's
+ * dimensions (`original_info`, e.g. 3840x2160), so copying those onto every
+ * rung would label the 480p variant "4K" and break `maxHeight` selection
+ * (all rungs look like the same 2160px cap). Prefer the URL evidence; fall
+ * back to the asset dims when a URL does not carry them (D-A21 in NOTES-A).
+ */
+const VARIANT_DIMS_RE = /\/vid\/[^/]+\/(\d{2,5})x(\d{2,5})\//
+
+function variantDimensions(url: string): { width: number | null; height: number | null } {
+  const match = VARIANT_DIMS_RE.exec(url)
+  if (match === null) return { width: null, height: null }
+  return { width: Number(match[1]), height: Number(match[2]) }
+}
+
 function variantsOf(
   raw: Record<string, unknown>,
   width: number | null,
@@ -87,12 +103,13 @@ function variantsOf(
     if (variant === null) continue
     const url = asString(variant.url)
     if (url === null) continue
+    const own = variantDimensions(url)
     out.push({
       url,
       bitrate: asFiniteNumber(variant.bitrate),
       contentType: asString(variant.content_type),
-      width,
-      height
+      width: own.width ?? width,
+      height: own.height ?? height
     })
   }
   return out
