@@ -155,6 +155,7 @@ export interface BatchRunSummary {
 // ---------------------------------------------------------------------------
 
 export type {
+  DlChosenInfo,
   DlErrorCode,
   DlInput,
   DlItemStatus,
@@ -196,6 +197,8 @@ export interface DlProgressEvent {
     errorDetail?: string
     skipReason?: DlSkipReason
     media?: DlMediaState[]
+    /** Chosen variants (additive v1.1) — the row's resolution badge. */
+    chosen?: DlChosenInfo[]
   }
   /** media-progress only: which media of the item, and its byte counters. */
   mediaIndex?: number

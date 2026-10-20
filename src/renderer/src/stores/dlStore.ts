@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type {
+  DlChosenInfo,
   DlErrorCode,
   DlItemStatus,
   DlListEntry,
@@ -58,6 +59,8 @@ export interface DlRow {
   errorDetail?: string
   skipReason?: DlSkipReason
   media?: DlMediaState[]
+  /** Variants the core actually chose; drives the resolution badge. */
+  chosen?: DlChosenInfo[]
   progress?: DlRowProgress
 }
 
@@ -339,7 +342,8 @@ export const useDlStore = create<DlStoreState>((set, get) => {
                 ...(item.errorCode !== undefined ? { errorCode: item.errorCode } : {}),
                 ...(item.errorDetail !== undefined ? { errorDetail: item.errorDetail } : {}),
                 ...(item.skipReason !== undefined ? { skipReason: item.skipReason } : {}),
-                ...(item.media !== undefined ? { media: item.media } : {})
+                ...(item.media !== undefined ? { media: item.media } : {}),
+                ...(item.chosen !== undefined ? { chosen: item.chosen } : {})
               }
             : {})
         }

@@ -365,6 +365,7 @@ export function DownloaderScreen({
                   const file = rowFile(row)
                   const firstFile = row.files?.[0] ?? null
                   const notEmbeddable = row.errorCode === 'NOT_EMBEDDABLE' && fallbackOff
+                  const resolution = row.chosen?.find((one) => one.height !== null)?.height ?? null
                   return (
                     <li key={row.key} className={`dl-row dl-row--${row.status}`}>
                       <div className="dl-row__thumb">
@@ -384,6 +385,9 @@ export function DownloaderScreen({
                             <span className="dl-row__id" title={row.tweetId}>
                               {shortTweetId(row.tweetId)}
                             </span>
+                          )}
+                          {resolution !== null && (
+                            <span className="dl-row__badge">{resolution}p</span>
                           )}
                           <span className="dl-row__status">{statusLabel(row)}</span>
                         </div>

@@ -1692,6 +1692,15 @@ input[type='range']:active:not(:disabled)::-webkit-slider-thumb {
   font-size: 11px;
   color: var(--fg-1);
 }
+.dl-row__badge {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg-1);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .dl-row__status {
   margin-left: auto;
   font-size: 11px;
