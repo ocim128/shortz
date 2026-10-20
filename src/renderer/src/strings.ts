@@ -204,6 +204,7 @@ export const S = {
   dlRowCopyUrl: 'Copy URL',
   dlRowMore: 'More actions',
   dlMediaPosition: (media: number, count: number) => (count > 1 ? `media ${media}/${count}` : ''),
+  dlMediaCount: (count: number) => `${count} files`,
   dlPercent: (pct: number) => `${pct}%`,
   dlEmptyTitle: 'Paste a few links to start',
   dlEmptyBody:

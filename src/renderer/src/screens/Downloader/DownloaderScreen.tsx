@@ -23,6 +23,8 @@ import { S } from '../../strings'
 interface DownloaderScreenProps {
   onBack: () => void
   onOpenDownloadsSettings: () => void
+  /** Settings is above this screen — Escape must close that first. */
+  modalOpen: boolean
 }
 
 const TERMINAL_STATUSES = new Set(['ok', 'partial', 'failed', 'skipped', 'cancelled'])
@@ -122,7 +124,8 @@ function runStateText(run: DlRun, phase: 'idle' | 'running' | 'finished'): strin
 
 export function DownloaderScreen({
   onBack,
-  onOpenDownloadsSettings
+  onOpenDownloadsSettings,
+  modalOpen
 }: DownloaderScreenProps): JSX.Element {
   const text = useDlStore((s) => s.text)
   const setText = useDlStore((s) => s.setText)
@@ -159,18 +162,28 @@ export function DownloaderScreen({
   useEffect(() => {
     if (!menuKey) return
     const close = (): void => setMenuKey(null)
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') close()
-    }
     window.addEventListener('click', close)
     window.addEventListener('blur', close)
-    window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('click', close)
       window.removeEventListener('blur', close)
-      window.removeEventListener('keydown', onKey)
     }
   }, [menuKey])
+
+  // Escape closes an open row menu first, then leaves the screen (the spec's
+  // "Escape/Back returns home"). A modal above the screen owns its own Escape.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      if (menuKey) {
+        setMenuKey(null)
+        return
+      }
+      if (!modalOpen) onBack()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [menuKey, modalOpen, onBack])
 
   const parsed = useMemo(() => parseRunInput(text), [text])
   const problemLines = useMemo(() => parsed.filter((line) => line.problems.length > 0), [parsed])
@@ -263,9 +276,11 @@ export function DownloaderScreen({
             />
           </div>
 
-          <p className="dl__summary" aria-live="polite">
-            {S.dlLinkSummary(linkCount, blockingCount)}
-          </p>
+          {parsed.length > 0 && (
+            <p className="dl__summary" aria-live="polite">
+              {S.dlLinkSummary(linkCount, blockingCount)}
+            </p>
+          )}
 
           <div className="dl__verdicts">
             {problemLines.slice(0, 8).map((line) => (
@@ -398,16 +413,22 @@ export function DownloaderScreen({
                           </div>
                         )}
 
-                        {(row.status === 'ok' || row.status === 'partial') && (
-                          <div className="dl-row__meta">
-                            {size > 0 && <span>{formatBytes(size)}</span>}
-                            {file && (
-                              <span className="dl-row__file" title={file}>
-                                {basenameOf(file)}
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        {(row.status === 'ok' ||
+                          row.status === 'partial' ||
+                          row.status === 'planned') &&
+                          (size > 0 || file !== null) && (
+                            <div className="dl-row__meta">
+                              {size > 0 && <span>{formatBytes(size)}</span>}
+                              {row.media && row.media.length > 1 && (
+                                <span>{S.dlMediaCount(row.media.length)}</span>
+                              )}
+                              {file && (
+                                <span className="dl-row__file" title={file}>
+                                  {basenameOf(file)}
+                                </span>
+                              )}
+                            </div>
+                          )}
 
                         {row.skipReason && (
                           <div className="dl-row__skip">{dlSkipText(row.skipReason)}</div>

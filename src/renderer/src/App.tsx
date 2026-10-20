@@ -81,6 +81,7 @@ export function App(): JSX.Element {
         <DownloaderScreen
           onBack={() => setScreen('home')}
           onOpenDownloadsSettings={() => openSettings('downloads')}
+          modalOpen={settingsOpen}
         />
       ) : (
         <HomeScreen

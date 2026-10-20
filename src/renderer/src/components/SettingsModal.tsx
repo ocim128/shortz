@@ -117,6 +117,15 @@ export function SettingsModal({
     )
   }
 
+  const qualitySelectValue = qualityValue(draft.downloads.quality)
+  const QUALITY_PRESETS = ['best', 'worst', 'max:1080', 'max:720']
+  const customQualityHeight =
+    draft.downloads.quality !== 'best' &&
+    draft.downloads.quality !== 'worst' &&
+    !QUALITY_PRESETS.includes(qualitySelectValue)
+      ? draft.downloads.quality.maxHeight
+      : null
+
   const set = (mut: (d: Settings) => void): void => {
     setDraft((prev) => {
       const next: Settings = JSON.parse(JSON.stringify(prev))
@@ -341,9 +350,14 @@ export function SettingsModal({
             <select
               id="set-dl-quality"
               className="input"
-              value={qualityValue(draft.downloads.quality)}
+              value={qualitySelectValue}
               onChange={(e) => set((d) => (d.downloads.quality = parseQuality(e.target.value)))}
             >
+              {customQualityHeight !== null && (
+                <option value={qualitySelectValue}>
+                  {S.downloadsQualityMax(customQualityHeight)}
+                </option>
+              )}
               <option value="best">{S.downloadsQualityBest}</option>
               <option value="worst">{S.downloadsQualityWorst}</option>
               <option value="max:1080">{S.downloadsQualityMax(1080)}</option>
