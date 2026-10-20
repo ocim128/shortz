@@ -5,7 +5,7 @@ import { hasBlockingProblem, parseRunInput } from '../../../../shared/downloader
 import { dlSkipText } from '../../../../shared/downloader/copy'
 import { Icon } from '../../components/Icon'
 import { formatBytes } from '../../lib/format'
-import { useDlStore, type DlRow, type DlRun } from '../../stores/dlStore'
+import { isCommentLine, useDlStore, type DlRow, type DlRun } from '../../stores/dlStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { toast } from '../../stores/toastStore'
 import { S } from '../../strings'
@@ -185,7 +185,7 @@ export function DownloaderScreen({
     return () => window.removeEventListener('keydown', onKey)
   }, [menuKey, modalOpen, onBack])
 
-  const parsed = useMemo(() => parseRunInput(text), [text])
+  const parsed = useMemo(() => parseRunInput(text).filter((line) => !isCommentLine(line)), [text])
   const problemLines = useMemo(() => parsed.filter((line) => line.problems.length > 0), [parsed])
   const linkCount = useMemo(() => parsed.filter((line) => line.url !== null).length, [parsed])
   const blockingCount = useMemo(

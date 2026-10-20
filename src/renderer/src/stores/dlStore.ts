@@ -114,6 +114,16 @@ interface DlStoreState {
   applyEvent: (e: DlProgressEvent) => void
 }
 
+/**
+ * `#` at line start is a comment, not an input (ui-and-ipc §2) — it has no
+ * verdict and is never sent. parseRunInput owns the rest of the grammar; this
+ * filter keeps the screen honest until the shared parser drops comments too
+ * (ASK A in NOTES-B).
+ */
+export function isCommentLine(line: ParsedLine): boolean {
+  return line.text.startsWith('#')
+}
+
 function seedRow(line: ParsedLine): DlRow {
   return {
     key: line.key,
@@ -139,7 +149,8 @@ export const useDlStore = create<DlStoreState>((set, get) => {
   const begin = async (mode: DlRunMode): Promise<void> => {
     if (get().phase === 'running') return
 
-    const parsed = mode === 'retry' ? [] : parseRunInput(get().text)
+    const parsed =
+      mode === 'retry' ? [] : parseRunInput(get().text).filter((line) => !isCommentLine(line))
     // Junk and duplicates are sent too — main owns every verdict (AUDIT A22).
     if (mode !== 'retry' && parsed.length === 0) {
       toast.err(S.dlDownloadDisabled)

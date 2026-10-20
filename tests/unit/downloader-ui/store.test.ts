@@ -71,6 +71,17 @@ describe('dlStore — rows and run lifecycle', () => {
     expect(run?.rows.get('line-2')?.status).toBe('queued')
   })
 
+  it('treats #-prefixed lines as comments: neither sent nor seeded', async () => {
+    await startWith('# the funny squirrel one\nhttps://x.com/a/status/1750123456789012352')
+    const request = dlStart.mock.calls[0]?.[0] as {
+      inputs: { key: string; lineNumber: number; text: string }[]
+    }
+    expect(request.inputs).toHaveLength(1)
+    expect(request.inputs[0]?.key).toBe('line-2')
+    expect(request.inputs[0]?.lineNumber).toBe(2)
+    expect(useDlStore.getState().run?.rows.size).toBe(1)
+  })
+
   it('analyze is the same run with dryRun: true', async () => {
     useDlStore.setState({ text: 'https://x.com/a/status/1750123456789012352' })
     await useDlStore.getState().analyze()
