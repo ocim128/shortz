@@ -381,7 +381,9 @@ export function DownloaderScreen({
                           <span className="dl-row__author">
                             {row.author ? `@${row.author}` : S.dlRowLine(row.lineNumber)}
                           </span>
-                          {row.tweetId.length > 0 && (
+                          {/* With an author the handle is the identity; the id
+                              only earns its width when there is no handle. */}
+                          {row.author === undefined && row.tweetId.length > 0 && (
                             <span className="dl-row__id" title={row.tweetId}>
                               {shortTweetId(row.tweetId)}
                             </span>
