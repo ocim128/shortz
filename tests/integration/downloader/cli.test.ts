@@ -9,7 +9,8 @@ import {
   jsonResponse,
   posterRoute,
   rangeMediaRoute,
-  readFixtureBody
+  readFixtureBody,
+  type FakeRoute
 } from '../../unit/downloader/helpers/fixtures'
 
 const SINGLE = '1750123456789012352'
@@ -42,6 +43,36 @@ afterEach(async () => {
   vi.unstubAllGlobals()
   await fs.rm(root, { recursive: true, force: true })
 })
+
+/** A media body that sends one chunk and then never finishes, so a cancel lands mid-transfer. */
+function slowMediaRoute(bytes: Uint8Array): FakeRoute {
+  return {
+    match: (url: string) => url.startsWith('https://video.twimg.com/'),
+    respond: () => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes.slice(0, 512))
+        }
+      })
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          'content-type': 'video/mp4',
+          'content-length': String(bytes.byteLength)
+        }
+      })
+    }
+  }
+}
+
+async function waitFor(check: () => Promise<boolean>, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await check()) return
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw new Error('condition not met before the deadline')
+}
 
 function routes() {
   return [
@@ -188,6 +219,40 @@ describe('dl command — end to end', () => {
     expect(code).toBe(1)
     expect(stderr.join('')).toContain('failed')
     expect(stdout.join('')).toContain('Done: 1 line(s)')
+  })
+
+  it('Ctrl+C keeps the .part + validator and exits 130', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fakeFetch([
+        {
+          match: 'cdn.syndication.twimg.com',
+          respond: () => jsonResponse(readFixtureBody('syndication/single-video.json'))
+        },
+        slowMediaRoute(fakeVideoBytes(64 * 1024)),
+        posterRoute()
+      ])
+    )
+
+    const running = runDlCommand([URL_, '--out', outDir, '--data', dataDir])
+    const dest = path.join(outDir, 'x', 'someuser', `${SINGLE}.mp4`)
+    const part = `${dest}.part`
+    await waitFor(async () => {
+      try {
+        return (await fs.stat(part)).size > 0
+      } catch {
+        return false
+      }
+    })
+
+    process.emit('SIGINT')
+    expect(await running).toBe(130)
+
+    // The bytes and the resume validator survive; no final file appears.
+    expect((await fs.stat(part)).size).toBeGreaterThan(0)
+    expect((await fs.stat(`${part}.json`)).size).toBeGreaterThan(0)
+    await expect(fs.stat(dest)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(stderr.join('')).toContain('cancelling')
   })
 
   it('--retry-failed needs no links and picks up the failed row', async () => {
