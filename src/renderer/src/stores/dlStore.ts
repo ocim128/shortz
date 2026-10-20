@@ -7,6 +7,7 @@ import type {
   DlProgressEvent,
   DlRequest,
   DlSkipReason,
+  ShortzApi,
   Unsubscribe
 } from '../../../preload/api'
 import type { DlLineProblemCode, ParsedLine } from '../../../shared/downloader/parse-run-input'
@@ -124,6 +125,15 @@ export function isCommentLine(line: ParsedLine): boolean {
   return line.text.startsWith('#')
 }
 
+/**
+ * The bridge: exposed on the window (== globalThis) by the preload. Reading it
+ * through this accessor instead of `window.shortz` keeps the store importable
+ * from the core-tier tests, whose tsconfig has no DOM lib.
+ */
+function bridge(): ShortzApi {
+  return (globalThis as unknown as { shortz: ShortzApi }).shortz
+}
+
 function seedRow(line: ParsedLine): DlRow {
   return {
     key: line.key,
@@ -192,7 +202,7 @@ export const useDlStore = create<DlStoreState>((set, get) => {
     })
 
     try {
-      const { jobId } = await window.shortz.dlStart(req)
+      const { jobId } = await bridge().dlStart(req)
       set((prev) => (prev.run ? { run: { ...prev.run, jobId } } : {}))
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -208,7 +218,7 @@ export const useDlStore = create<DlStoreState>((set, get) => {
 
     loadHistory: async () => {
       try {
-        const history = await window.shortz.dlList()
+        const history = await bridge().dlList()
         set({ history })
       } catch {
         /* history is a nicety — never block the screen on it */
@@ -221,12 +231,14 @@ export const useDlStore = create<DlStoreState>((set, get) => {
 
     cancel: async () => {
       if (get().phase !== 'running') return
-      await window.shortz.dlCancel().catch(() => undefined)
+      await bridge()
+        .dlCancel()
+        .catch(() => undefined)
     },
 
     openFolder: async () => {
       try {
-        await window.shortz.dlOpenFolder()
+        await bridge().dlOpenFolder()
       } catch (err) {
         toast.err(err instanceof Error ? err.message : String(err))
       }
@@ -352,5 +364,5 @@ export const useDlStore = create<DlStoreState>((set, get) => {
 
 /** Subscribe once at App mount; returns the unsubscribe (mirrors batchStore). */
 export function subscribeDlProgress(): Unsubscribe {
-  return window.shortz.onDlProgress((e) => useDlStore.getState().applyEvent(e))
+  return bridge().onDlProgress((e) => useDlStore.getState().applyEvent(e))
 }

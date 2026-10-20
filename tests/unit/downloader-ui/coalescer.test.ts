@@ -116,7 +116,7 @@ describe('downloader event coalescer', () => {
       jobId: 'job-1',
       kind: 'run-done',
       total: 1,
-      summary: { ok: 0, skipped: 0, partial: 0, failed: 1, cancelled: false },
+      summary: { ok: 0, skipped: 0, partial: 0, failed: 1, cancelled: 0 },
       cancelled: false
     })
     expect(events).toHaveLength(1)

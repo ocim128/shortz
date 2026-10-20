@@ -15,15 +15,14 @@ const dlOpenFolder = vi.fn(async () => undefined)
 const onDlProgress = vi.fn(() => () => undefined)
 
 beforeEach(() => {
-  ;(globalThis as unknown as { window: unknown }).window = {
-    shortz: {
-      dlStart,
-      dlCancel,
-      dlList,
-      dlOpenFolder,
-      onDlProgress,
-      revealInExplorer: vi.fn(async () => undefined)
-    }
+  // dlStore reads the bridge off globalThis (window === globalThis at runtime).
+  ;(globalThis as unknown as { shortz: unknown }).shortz = {
+    dlStart,
+    dlCancel,
+    dlList,
+    dlOpenFolder,
+    onDlProgress,
+    revealInExplorer: vi.fn(async () => undefined)
   }
   dlStart.mockClear()
   dlCancel.mockClear()
