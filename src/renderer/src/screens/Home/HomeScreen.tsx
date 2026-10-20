@@ -9,9 +9,14 @@ import { S } from '../../strings'
 interface HomeScreenProps {
   onOpenSettings: () => void
   onOpenBatch: () => void
+  onOpenDownloader: () => void
 }
 
-export function HomeScreen({ onOpenSettings, onOpenBatch }: HomeScreenProps): JSX.Element {
+export function HomeScreen({
+  onOpenSettings,
+  onOpenBatch,
+  onOpenDownloader
+}: HomeScreenProps): JSX.Element {
   const list = useProjectStore((s) => s.list)
   const [dragOver, setDragOver] = useState(false)
   const dragDepth = useRef(0)
@@ -123,6 +128,10 @@ export function HomeScreen({ onOpenSettings, onOpenBatch }: HomeScreenProps): JS
             {S.appName}
           </div>
           <div className="home__header-actions">
+            <button type="button" className="btn btn-ghost" onClick={onOpenDownloader}>
+              <Icon name="download" size={15} />
+              {S.homeDownloader}
+            </button>
             <button type="button" className="btn btn-ghost" onClick={onOpenBatch}>
               <Icon name="zap" size={15} />
               {S.homeBatch}
