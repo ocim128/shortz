@@ -116,14 +116,7 @@ export interface BatchRunRequest {
 }
 
 export type BatchRenderItemStatus =
-  | 'starting'
-  | 'probing'
-  | 'rendering'
-  | 'done'
-  | 'error'
-  | 'skipped'
-  | 'finished'
-  | 'cancelled'
+  'starting' | 'probing' | 'rendering' | 'done' | 'error' | 'skipped' | 'finished' | 'cancelled'
 
 /** Emitted over webContents.send('shortz:batch:progress'). */
 export interface BatchRenderEvent {
@@ -153,6 +146,63 @@ export interface BatchRunSummary {
   completed: number
   failed: number
   cancelled: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Downloader (Twitter/X) — the data contract lives in
+// src/shared/downloader/types.ts and is re-exported here so the renderer has
+// one import site, exactly like BatchRunRequest above.
+// ---------------------------------------------------------------------------
+
+export type {
+  DlErrorCode,
+  DlInput,
+  DlItemStatus,
+  DlListEntry,
+  DlMediaState,
+  DlQuality,
+  DlRequest,
+  DlSkipReason
+} from '../shared/downloader/types'
+
+/**
+ * What main sends on 'shortz:dl:progress': the core event, de-coded and
+ * enriched. Main renames the byte total's field (`mediaTotal`) so the top-level
+ * `total` always means "items in the run", and fills `posterMediaUrl` +
+ * `error` because the renderer never builds media:// URLs or error sentences.
+ */
+export interface DlProgressEvent {
+  jobId: string
+  /** The textarea line this event belongs to: 'line-<lineNumber>'. */
+  key: string
+  lineNumber: number
+  /** 0-based position among the run's items; equals total on the terminal event. */
+  index: number
+  total: number
+  kind: 'item' | 'media-progress' | 'run-done'
+  item?: {
+    tweetId: string
+    status: DlItemStatus
+    author?: string
+    caption?: string
+    /** Ready media:// URL for the cached poster — minted by main. */
+    posterMediaUrl?: string
+    plannedPaths?: string[]
+    files?: string[]
+    /** Human sentence from copy.ts — main phrases it, never the renderer. */
+    error?: string
+    errorCode?: DlErrorCode
+    /** Raw detail for the tooltip/log; never the primary sentence. */
+    errorDetail?: string
+    skipReason?: DlSkipReason
+    media?: DlMediaState[]
+  }
+  /** media-progress only: which media of the item, and its byte counters. */
+  mediaIndex?: number
+  bytes?: number
+  mediaTotal?: number | null
+  /** run-done only. */
+  summary?: { ok: number; skipped: number; partial: number; failed: number; cancelled: number }
 }
 
 /**
@@ -207,6 +257,18 @@ export interface ShortzApi {
   batchRender(req: BatchRunRequest): Promise<BatchRunSummary>
   cancelBatch(jobId?: string): Promise<void>
   onBatchProgress(cb: (e: BatchRenderEvent) => void): Unsubscribe
+  // downloader (Analyze IS a run with dryRun: true — one path, cancellable)
+  /** Rejects when a run is already active (single-flight). */
+  dlStart(req: DlRequest): Promise<{ jobId: string }>
+  /** Aborts the active run (download or analyze) at the next chunk boundary. */
+  dlCancel(): Promise<void>
+  /** Newest 100 finished downloads from the state index. */
+  dlList(): Promise<DlListEntry[]>
+  /** Opens settings.downloads.dir in Explorer. */
+  dlOpenFolder(): Promise<void>
+  /** Folder picker for the settings download-dir field. */
+  pickDirectory(): Promise<string | null>
+  onDlProgress(cb: (e: DlProgressEvent) => void): Unsubscribe
   // shell
   revealInExplorer(path: string): Promise<void>
   openUserTemplatesFolder(): Promise<void>
