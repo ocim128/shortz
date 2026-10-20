@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { sanitizeNamePart as sanitizeNameSegment } from '../shared/naming'
 
 /**
  * Output filename convention (docs/technical/export-spec.md §filename
@@ -9,10 +10,18 @@ import path from 'node:path'
  * Unknown tokens are kept verbatim, and the result is stripped of characters
  * Windows rejects so a title with `:` or `?` cannot fail the move at the end of
  * a long render.
+ *
+ * The character rules themselves live in `src/shared/naming.ts` (AUDIT A15: one
+ * Windows rule set for both the exporter and the downloader). This module keeps
+ * its own *policy* — the 80-char export-name cap — which is about export naming,
+ * not about what Windows accepts.
  */
 
+/** Export-name policy: names are short so a folder of exports stays readable. */
+const MAX_EXPORT_NAME_LENGTH = 80
+
 export function sanitizeNamePart(value: string): string {
-  return value.replace(/[\\/:*?"<>|]/g, '_').trim()
+  return sanitizeNameSegment(value)
 }
 
 function pad2(n: number): string {
@@ -38,7 +47,7 @@ export function buildOutputPath(input: OutputPathInput): string {
     template: sanitizeNamePart(input.templateId),
     seq: String(input.seq ?? 1),
     yyyyMMdd: `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}`,
-    HHmm: `${pad2(now.getHours())}${pad2(now.getMinutes())}`,
+    HHmm: `${pad2(now.getHours())}${pad2(now.getMinutes())}`
   }
 
   let base = ''
@@ -51,7 +60,12 @@ export function buildOutputPath(input: OutputPathInput): string {
     last = (m.index ?? 0) + m[0].length
   }
   base += input.pattern.slice(last)
-  base = sanitizeNamePart(base).replace(/^_+|_+$/g, '').slice(0, 80)
-  if (base.length === 0) base = 'export'
-  return path.join(input.dir, `${base}.mp4`)
+  const stripped = sanitizeNamePart(base)
+    .replace(/^_+|_+$/g, '')
+    .slice(0, MAX_EXPORT_NAME_LENGTH)
+  // Re-sanitize the final name: stripping separators can surface a reserved
+  // device name (a project called "CON") that the sanitizer had prefixed.
+  const finalName = stripped.length === 0 ? 'export' : sanitizeNamePart(stripped)
+  const safeName = finalName.length === 0 ? 'export' : finalName
+  return path.join(input.dir, `${safeName}.mp4`)
 }
