@@ -240,7 +240,9 @@ export function registerDownloaderIpc(deps: DownloaderIpcDeps): void {
               skipped: summary.skipped,
               partial: summary.partial,
               failed: summary.failed,
-              cancelled: summary.cancelled
+              // DlRunSummary.cancelled is a boolean; the event's summary wants a
+              // count. This fallback path has no per-item detail to count.
+              cancelled: summary.cancelled ? 1 : 0
             },
             cancelled: summary.cancelled
           })
