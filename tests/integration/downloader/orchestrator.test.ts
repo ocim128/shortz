@@ -68,6 +68,7 @@ interface Harness {
       onEvent?: (event: DlEvent) => void
       retryFailed?: boolean
       state?: StateStore
+      logger?: (message: string) => void
     }
   ) => Promise<Awaited<ReturnType<typeof runDl>>>
 }
@@ -99,7 +100,7 @@ function harness(routes: FakeRoute[]): Harness {
           backoffMs: [0, 0, 0],
           // Tests must not pay the real 200–500 ms pacing gap.
           throttle: new ThrottleState(() => performance.now(), extra.signal, { minGapMs: 0 }),
-          logger: () => undefined,
+          logger: extra.logger ?? (() => undefined),
           onEvent: (event) => {
             events.push(event)
             extra.onEvent?.(event)
@@ -344,6 +345,22 @@ describe('runDl — cancel and the circuit breaker', () => {
     const part = await fs.readFile(`${dest}.part`)
     expect(part.byteLength).toBeGreaterThan(0)
     await expect(fs.stat(dest)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('logs every failure with the URL sanitized and the stable code', async () => {
+    const logs: string[] = []
+    const h = harness([])
+    const summary = await h.run(
+      ['https://x.com/someuser/status/1?secret=yes'],
+      {},
+      { logger: (message) => logs.push(message) }
+    )
+
+    expect(summary.failed).toBe(1)
+    expect(logs).toHaveLength(1)
+    expect(logs[0]).toContain('TWEET_ID_INVALID')
+    expect(logs[0]).toContain('https://x.com/someuser/status/1')
+    expect(logs[0]).not.toContain('secret')
   })
 
   it('opens after 8 consecutive failures and skips the rest', async () => {

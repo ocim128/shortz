@@ -612,11 +612,8 @@ class DlRun {
     await this.state.flush().catch(() => undefined)
 
     if (firstError !== null) {
-      this.log(
-        `[dl] ${sanitizeUrlForLog(resolved.ref.canonicalUrl)} -> ${firstError.code}${
-          firstError.detail === undefined ? '' : `: ${firstError.detail}`
-        }`
-      )
+      // Logged once, in `finish()` — every failure path (resolve included) gets
+      // its sanitized URL there, so this layer only records the verdict.
       return {
         status: files.length > 0 ? 'partial' : 'failed',
         files,
@@ -828,6 +825,7 @@ class DlRun {
     }
     if (verdict.status === 'failed') {
       const error = verdict.error ?? new DlError('UNEXPECTED', 'no error recorded')
+      this.logFailure(item, error)
       this.emitItem(item, 'failed', {
         errorCode: error.code,
         errorDetail: error.detail ?? error.code,
@@ -841,6 +839,7 @@ class DlRun {
       this.bumpBreaker()
       return
     }
+    if (verdict.error !== undefined) this.logFailure(item, verdict.error)
     this.emitItem(item, verdict.status, {
       files: verdict.files,
       ...(extra.plannedPaths === undefined ? {} : { plannedPaths: extra.plannedPaths }),
@@ -862,6 +861,17 @@ class DlRun {
       // summary never implies failures that do not exist (NOTES-A).
       this.summary.ok += 1
     }
+  }
+
+  /** `logWarn` with the query stripped — signed URLs never reach a log line. */
+  private logFailure(item: RunItem, error: DlError): void {
+    if (error.code === 'CANCELLED') return
+    const target = item.ref?.canonicalUrl ?? item.text
+    this.log(
+      `[dl] ${sanitizeUrlForLog(target)} -> ${error.code}${
+        error.detail === undefined ? '' : `: ${error.detail}`
+      }`
+    )
   }
 
   private bumpBreaker(): void {
