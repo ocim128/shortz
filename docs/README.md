@@ -54,6 +54,12 @@ The core idea: **templates, not timelines**. We are not building another CapCut.
 | [technical/project-structure.md](technical/project-structure.md) | Repo layout, dev setup, conventions |
 | [technical/future-extensions.md](technical/future-extensions.md) | Auto-captions (Whisper), batch mode, direct upload, and other phase-2+ ideas |
 
+### Feature plans (`<feature>/` folders)
+
+| Plan | What's inside |
+|---|---|
+| [twitter-downloader/](twitter-downloader/README.md) | Download X/Twitter status videos inside ShortZ: goals, architecture, resolver chain (syndication → fxtwitter → yt-dlp), streaming engine with resume, storage/sidecars/state, Downloader screen + IPC spec, roadmap D0–D5 |
+
 ## Reading order
 
 1. `01-goals.md` — what we are building and (importantly) what we are NOT building.
