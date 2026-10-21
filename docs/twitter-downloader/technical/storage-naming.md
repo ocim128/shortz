@@ -129,7 +129,7 @@ Rules ported from xdl with the JSON idioms added:
 - **Skip** on re-run: complete per the rule above → item `skipped`, no network. `force: true` bypasses.
 - **`retry-failed`**: enqueue only rows whose last status is `failed`/`incomplete` (or items of incomplete tweets).
 - **Convert/suffix anchoring** (xdl D15, future-proofing): an `.mp4` ok-row must not anchor a different-output run (e.g. a future GIF-conversion mode); mode changes for a completed tweet require `force`. Same rule will guard any new output kind.
-- **Flush discipline**: mutations at item boundaries (tweet row, media row, verdict) flush the whole doc atomically (`fs-utils` temp+rename with EPERM retry) — a few writes per item, ~ms each; the single-flight slot guarantees one writer.
+- **Flush discipline**: mutations trigger `flushSoon()` at item/media boundaries — a coalesced trailing write (≤250 ms) that rewrites the whole doc atomically (`fs-utils` temp+rename with EPERM retry). `flush()` remains the immediate barrier and is awaited once, after `recordRun`, so a crash loses at most the debounce window of bookkeeping. Concurrent flushes share one write; the document is compact JSON (machine-only). The single-flight slot guarantees one writer.
 - **Crash windows are free**: state loss at worst re-does a rename/sidecar on next run (re-finalize); it cannot corrupt media.
 - **Corrupt file**: quarantined as `state.corrupt-<ts>.json`, store rebuilt empty; files on disk are reconciled by re-resolve + re-finalize (no re-download).
 
@@ -137,7 +137,7 @@ Rules ported from xdl with the JSON idioms added:
 
 ## 5. Poster cache
 
-`downloads\cache\posters\<tweetId>_<mediaIndex>.jpg` — fetched by the core during resolve (best-effort; failure never blocks), served to the renderer via `media://` like project thumbnails. Cache discipline (rev 3 A19): **skip when the file exists**, sweep at 30 days via the existing `sweepStaleDirs`, and Analyze (dry-run) fetches posters **lazily** so previewing 25 links does not pull 25 images nobody looked at. Rationale: the renderer performs zero remote I/O; posters must also survive offline later (they are UI state, not content).
+`downloads\cache\posters\<tweetId>_<mediaIndex>.jpg` — fetched by the core during resolve (best-effort; failure never blocks), served to the renderer via `media://` like project thumbnails. Cache discipline (rev 3 A19): **skip when the file exists**, sweep at 30 days via `sweepPosterCache` (wired into main's startup sweep), and Analyze (dry-run) fetches posters **lazily** so previewing 25 links does not pull 25 images nobody looked at. Rationale: the renderer performs zero remote I/O; posters must also survive offline later (they are UI state, not content).
 
 ## 6. What the state does **not** do
 

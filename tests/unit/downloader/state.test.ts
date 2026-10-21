@@ -102,6 +102,64 @@ describe('StateStore — open / persist / recover', () => {
     const raw = await fs.readFile(path.join(dataDir, 'downloads', 'state.json'), 'utf8')
     expect(() => JSON.parse(raw) as unknown).not.toThrow()
   })
+
+  it('flushSoon coalesces a trailing write; flush() supersedes the timer', async () => {
+    const store = await StateStore.open(dataDir)
+    store.noteTweet({ tweetId: TWEET, author: 'a', caption: 'c', url: 'u', mediaCount: 1 })
+    store.flushSoon(5)
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    const written = JSON.parse(
+      await fs.readFile(path.join(dataDir, 'downloads', 'state.json'), 'utf8')
+    ) as { tweets: Record<string, unknown> }
+    expect(Object.keys(written.tweets)).toEqual([TWEET])
+
+    store.noteTweet({ tweetId: '999', author: 'b', caption: 'd', url: 'u', mediaCount: 1 })
+    store.flushSoon(60_000)
+    await store.flush()
+    const afterBarrier = JSON.parse(
+      await fs.readFile(path.join(dataDir, 'downloads', 'state.json'), 'utf8')
+    ) as { tweets: Record<string, unknown> }
+    expect(Object.keys(afterBarrier.tweets).sort()).toEqual([TWEET, '999'].sort())
+  })
+
+  it('writes the document compactly (machine-only state)', async () => {
+    const store = await StateStore.open(dataDir)
+    store.noteTweet({ tweetId: TWEET, author: 'a', caption: 'c', url: 'u', mediaCount: 1 })
+    await store.flush()
+    const raw = await fs.readFile(path.join(dataDir, 'downloads', 'state.json'), 'utf8')
+    expect(raw.includes('\n')).toBe(false)
+  })
+
+  it('a mutation during an in-flight write is not lost by the coalesced flush', async () => {
+    const store = await StateStore.open(dataDir)
+    store.noteTweet({ tweetId: TWEET, author: 'a', caption: 'c', url: 'u', mediaCount: 2 })
+    const first = await touch(path.join(dataDir, 'out', 'one.mp4'))
+    store.recordDownload({
+      tweetId: TWEET,
+      mediaIndex: 1,
+      filePath: first,
+      sizeBytes: 1,
+      status: 'ok',
+      source: 'syndication',
+      runId: 'j1'
+    })
+    const flushing = store.flush()
+    // Lands while the write above is queued/in flight.
+    const second = await touch(path.join(dataDir, 'out', 'two.mp4'))
+    store.recordDownload({
+      tweetId: TWEET,
+      mediaIndex: 2,
+      filePath: second,
+      sizeBytes: 1,
+      status: 'ok',
+      source: 'syndication',
+      runId: 'j1'
+    })
+    await Promise.all([flushing, store.flush()])
+
+    const reopened = await StateStore.open(dataDir)
+    expect(reopened.downloadsOf(TWEET)).toHaveLength(2)
+  })
 })
 
 describe('StateStore — the completeness rule (storage-naming.md §4)', () => {
@@ -220,6 +278,56 @@ describe('StateStore — history and retry', () => {
     expect(entries[0]?.files.map((file) => file.mediaIndex)).toEqual([1])
     expect(entries[1]?.status).toBe('ok')
     expect(store.listEntries(1)).toHaveLength(1)
+  })
+
+  it('indexes downloads per tweet and keeps it correct across forget + reopen', async () => {
+    const store = await StateStore.open(dataDir)
+    const first = await touch(path.join(dataDir, 'out', 'one.mp4'))
+    const second = await touch(path.join(dataDir, 'out', 'two.mp4'))
+    store.noteTweet({ tweetId: '111', author: 'a', caption: 'c', url: 'u', mediaCount: 2 })
+    store.noteTweet({ tweetId: '222', author: 'b', caption: 'd', url: 'u', mediaCount: 1 })
+    store.recordDownload({
+      tweetId: '111',
+      mediaIndex: 1,
+      filePath: first,
+      sizeBytes: 1,
+      status: 'ok',
+      source: 'syndication',
+      runId: 'j1'
+    })
+    store.recordDownload({
+      tweetId: '111',
+      mediaIndex: 2,
+      filePath: second,
+      sizeBytes: 1,
+      status: 'failed',
+      source: 'syndication',
+      runId: 'j1'
+    })
+    store.recordDownload({
+      tweetId: '222',
+      mediaIndex: 1,
+      filePath: first,
+      sizeBytes: 1,
+      status: 'ok',
+      source: 'syndication',
+      runId: 'j1'
+    })
+
+    expect(store.downloadsOf('111')).toHaveLength(2)
+    expect(store.downloadsOf('222')).toHaveLength(1)
+    expect(store.downloadsOf('999')).toEqual([])
+    expect(store.listEntries(10)).toHaveLength(2)
+    expect(store.retryTargets()).toEqual(['111'])
+
+    store.forgetDownload('111', 2)
+    expect(store.downloadsOf('111')).toHaveLength(1)
+
+    await store.flush()
+    const reopened = await StateStore.open(dataDir)
+    expect(reopened.downloadsOf('111')).toHaveLength(1)
+    expect(reopened.downloadsOf('222')).toHaveLength(1)
+    expect(reopened.retryTargets()).toEqual(['111'])
   })
 
   it('retryTargets lists failed and incomplete posts, never complete ones', async () => {

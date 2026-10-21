@@ -1,8 +1,9 @@
 # CI gate — runs the fast, dependency-light tiers on every push/PR:
-# typecheck (all three tsconfig tiers), lint, and the unit suites. The
-# integration suites spawn real ffmpeg renders and the UI e2e spawns
-# Electron + CDP; both are candidates for a follow-up job once their
-# cross-platform determinism (golden frames, taskkill paths) is verified.
+# typecheck (all three tsconfig tiers), lint, the unit suites, and the
+# downloader integration suite (hermetic: fake fetch, no ffmpeg, ~10 s).
+# The render/batch integration suites spawn real ffmpeg renders and the UI e2e
+# spawns Electron + CDP; both remain local until their cross-platform
+# determinism (golden frames, taskkill paths) is verified.
 name: ci
 
 on:
@@ -32,4 +33,4 @@ jobs:
 
       - run: pnpm lint
 
-      - run: pnpm vitest run tests/unit
+      - run: pnpm vitest run tests/unit tests/integration/downloader

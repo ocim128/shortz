@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DlListEntry, Settings } from '../../../../preload/api'
 import type { DlLineProblemCode } from '../../../../shared/downloader/parse-run-input'
 import { hasBlockingProblem, parseRunInput } from '../../../../shared/downloader/parse-run-input'
@@ -227,6 +227,13 @@ export function DownloaderScreen({
     await window.shortz.revealInExplorer(filePath).catch(() => undefined)
   }, [])
 
+  // Stable handlers + a memoized row: a 10 Hz progress tick replaces only the
+  // ticked row object, so every other row skips re-rendering.
+  const toggleMenu = useCallback((key: string): void => {
+    setMenuKey((prev) => (prev === key ? null : key))
+  }, [])
+  const closeMenu = useCallback((): void => setMenuKey(null), [])
+
   const fallbackOff = settings?.downloads.fallback === 'off'
 
   return (
@@ -359,188 +366,20 @@ export function DownloaderScreen({
               </div>
 
               <ul className="dl__list">
-                {rows.map((row) => {
-                  const percent = mediaPercent(row)
-                  const size = mediaBytes(row)
-                  const file = rowFile(row)
-                  const firstFile = row.files?.[0] ?? null
-                  const notEmbeddable = row.errorCode === 'NOT_EMBEDDABLE' && fallbackOff
-                  const resolution = row.chosen?.find((one) => one.height !== null)?.height ?? null
-                  return (
-                    <li key={row.key} className={`dl-row dl-row--${row.status}`}>
-                      <div className="dl-row__thumb">
-                        {row.posterMediaUrl ? (
-                          <img src={row.posterMediaUrl} alt="" draggable={false} />
-                        ) : (
-                          <Icon name="film" size={16} />
-                        )}
-                      </div>
-
-                      <div className="dl-row__body">
-                        <div className="dl-row__head">
-                          <span className="dl-row__author">
-                            {row.author ? `@${row.author}` : S.dlRowLine(row.lineNumber)}
-                          </span>
-                          {/* With an author the handle is the identity; the id
-                              only earns its width when there is no handle. */}
-                          {row.author === undefined && row.tweetId.length > 0 && (
-                            <span className="dl-row__id" title={row.tweetId}>
-                              {shortTweetId(row.tweetId)}
-                            </span>
-                          )}
-                          {resolution !== null && (
-                            <span className="dl-row__badge">{resolution}p</span>
-                          )}
-                          <span className="dl-row__status">{statusLabel(row)}</span>
-                        </div>
-
-                        {row.caption && (
-                          <div className="dl-row__caption" title={row.caption}>
-                            {row.caption}
-                          </div>
-                        )}
-
-                        {row.status === 'downloading' && (
-                          <div className="dl-row__progress">
-                            <div
-                              className={`dl-row__progress-fill${percent === null ? ' is-indeterminate' : ''}`}
-                              style={percent !== null ? { width: `${percent}%` } : undefined}
-                            />
-                            <span className="dl-row__progress-text">
-                              {percent !== null ? S.dlPercent(percent) : ''}
-                              {size > 0 ? ` · ${formatBytes(size)}` : ''}
-                              {row.progress && row.progress.total
-                                ? ` / ${formatBytes(row.progress.total)}`
-                                : ''}
-                              {row.media && row.media.length > 1
-                                ? ` · ${S.dlMediaPosition(row.progress?.mediaIndex ?? 1, row.media.length)}`
-                                : ''}
-                            </span>
-                          </div>
-                        )}
-
-                        {(row.status === 'ok' ||
-                          row.status === 'partial' ||
-                          row.status === 'planned') &&
-                          (size > 0 || file !== null) && (
-                            <div className="dl-row__meta">
-                              {size > 0 && <span>{formatBytes(size)}</span>}
-                              {row.media && row.media.length > 1 && (
-                                <span>{S.dlMediaCount(row.media.length)}</span>
-                              )}
-                              {file && (
-                                <span className="dl-row__file" title={file}>
-                                  {basenameOf(file)}
-                                </span>
-                              )}
-                            </div>
-                          )}
-
-                        {row.skipReason && (
-                          <div className="dl-row__skip">{dlSkipText(row.skipReason)}</div>
-                        )}
-
-                        {row.error && (
-                          <div
-                            className="dl-row__error"
-                            title={
-                              row.errorCode
-                                ? `${row.errorCode}${row.errorDetail ? `: ${row.errorDetail}` : ''}`
-                                : undefined
-                            }
-                          >
-                            {row.error}
-                          </div>
-                        )}
-
-                        {notEmbeddable && (
-                          <div className="dl-row__hint">
-                            <Icon name="info" size={12} />
-                            <span>{S.dlFallbackHint}</span>
-                            <button
-                              type="button"
-                              className="dl-row__hint-link"
-                              onClick={onOpenDownloadsSettings}
-                            >
-                              {S.dlFallbackSettings}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="dl-row__actions">
-                        {firstFile !== null && (
-                          <button
-                            type="button"
-                            className="btn btn-sm"
-                            onClick={() => void openAsProject(firstFile)}
-                          >
-                            {S.dlRowNewProject}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          aria-label={S.dlRowMore}
-                          title={S.dlRowMore}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setMenuKey((prev) => (prev === row.key ? null : row.key))
-                          }}
-                        >
-                          ⋯
-                        </button>
-
-                        {menuKey === row.key && (
-                          <div className="ctx-menu dl-row__menu" role="menu">
-                            {file && (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  setMenuKey(null)
-                                  void reveal(file)
-                                }}
-                              >
-                                <Icon name="folderOpen" size={14} />
-                                {S.dlRowReveal}
-                              </button>
-                            )}
-                            {file && (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  setMenuKey(null)
-                                  void copyText(file, S.dlCopiedPath)
-                                }}
-                              >
-                                <Icon name="copy" size={14} />
-                                {S.dlRowCopyPath}
-                              </button>
-                            )}
-                            {row.tweetId.length > 0 && (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  setMenuKey(null)
-                                  void copyText(
-                                    `https://x.com/i/status/${row.tweetId}`,
-                                    S.dlCopiedUrl
-                                  )
-                                }}
-                              >
-                                <Icon name="external" size={14} />
-                                {S.dlRowCopyUrl}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </li>
-                  )
-                })}
+                {rows.map((row) => (
+                  <DlRowItem
+                    key={row.key}
+                    row={row}
+                    fallbackOff={fallbackOff}
+                    menuOpen={menuKey === row.key}
+                    onToggleMenu={toggleMenu}
+                    onCloseMenu={closeMenu}
+                    onOpenAsProject={openAsProject}
+                    onReveal={reveal}
+                    onCopy={copyText}
+                    onOpenSettings={onOpenDownloadsSettings}
+                  />
+                ))}
               </ul>
             </>
           ) : (
@@ -573,6 +412,206 @@ export function DownloaderScreen({
     </div>
   )
 }
+
+interface DlRowItemProps {
+  row: DlRow
+  fallbackOff: boolean
+  menuOpen: boolean
+  onToggleMenu: (key: string) => void
+  onCloseMenu: () => void
+  onOpenAsProject: (filePath: string) => void
+  onReveal: (filePath: string) => void
+  onCopy: (value: string, message: string) => void
+  onOpenSettings: () => void
+}
+
+/**
+ * One download row. Memoized: the store keeps untouched rows by reference, so a
+ * 10 Hz byte tick re-renders only the row that moved (the list used to re-render
+ * in full on every tick).
+ */
+const DlRowItem = memo(function DlRowItem({
+  row,
+  fallbackOff,
+  menuOpen,
+  onToggleMenu,
+  onCloseMenu,
+  onOpenAsProject,
+  onReveal,
+  onCopy,
+  onOpenSettings
+}: DlRowItemProps): JSX.Element {
+  const percent = mediaPercent(row)
+  const size = mediaBytes(row)
+  const file = rowFile(row)
+  const firstFile = row.files?.[0] ?? null
+  const notEmbeddable = row.errorCode === 'NOT_EMBEDDABLE' && fallbackOff
+  const resolution = row.chosen?.find((one) => one.height !== null)?.height ?? null
+
+  return (
+    <li className={`dl-row dl-row--${row.status}`}>
+      <div className="dl-row__thumb">
+        {row.posterMediaUrl ? (
+          <img src={row.posterMediaUrl} alt="" draggable={false} />
+        ) : (
+          <Icon name="film" size={16} />
+        )}
+      </div>
+
+      <div className="dl-row__body">
+        <div className="dl-row__head">
+          <span className="dl-row__author">
+            {row.author ? `@${row.author}` : S.dlRowLine(row.lineNumber)}
+          </span>
+          {/* With an author the handle is the identity; the id
+              only earns its width when there is no handle. */}
+          {row.author === undefined && row.tweetId.length > 0 && (
+            <span className="dl-row__id" title={row.tweetId}>
+              {shortTweetId(row.tweetId)}
+            </span>
+          )}
+          {resolution !== null && <span className="dl-row__badge">{resolution}p</span>}
+          <span className="dl-row__status">{statusLabel(row)}</span>
+        </div>
+
+        {row.caption && (
+          <div className="dl-row__caption" title={row.caption}>
+            {row.caption}
+          </div>
+        )}
+
+        {row.status === 'downloading' && (
+          <div className="dl-row__progress">
+            <div
+              className={`dl-row__progress-fill${percent === null ? ' is-indeterminate' : ''}`}
+              style={percent !== null ? { width: `${percent}%` } : undefined}
+            />
+            <span className="dl-row__progress-text">
+              {percent !== null ? S.dlPercent(percent) : ''}
+              {size > 0 ? ` · ${formatBytes(size)}` : ''}
+              {row.progress && row.progress.total
+                ? ` / ${formatBytes(row.progress.total)}`
+                : ''}
+              {row.media && row.media.length > 1
+                ? ` · ${S.dlMediaPosition(row.progress?.mediaIndex ?? 1, row.media.length)}`
+                : ''}
+            </span>
+          </div>
+        )}
+
+        {(row.status === 'ok' || row.status === 'partial' || row.status === 'planned') &&
+          (size > 0 || file !== null) && (
+            <div className="dl-row__meta">
+              {size > 0 && <span>{formatBytes(size)}</span>}
+              {row.media && row.media.length > 1 && (
+                <span>{S.dlMediaCount(row.media.length)}</span>
+              )}
+              {file && (
+                <span className="dl-row__file" title={file}>
+                  {basenameOf(file)}
+                </span>
+              )}
+            </div>
+          )}
+
+        {row.skipReason && (
+          <div className="dl-row__skip">{dlSkipText(row.skipReason)}</div>
+        )}
+
+        {row.error && (
+          <div
+            className="dl-row__error"
+            title={
+              row.errorCode
+                ? `${row.errorCode}${row.errorDetail ? `: ${row.errorDetail}` : ''}`
+                : undefined
+            }
+          >
+            {row.error}
+          </div>
+        )}
+
+        {notEmbeddable && (
+          <div className="dl-row__hint">
+            <Icon name="info" size={12} />
+            <span>{S.dlFallbackHint}</span>
+            <button type="button" className="dl-row__hint-link" onClick={onOpenSettings}>
+              {S.dlFallbackSettings}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="dl-row__actions">
+        {firstFile !== null && (
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => onOpenAsProject(firstFile)}
+          >
+            {S.dlRowNewProject}
+          </button>
+        )}
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label={S.dlRowMore}
+          title={S.dlRowMore}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleMenu(row.key)
+          }}
+        >
+          ⋯
+        </button>
+
+        {menuOpen && (
+          <div className="ctx-menu dl-row__menu" role="menu">
+            {file && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onCloseMenu()
+                  void onReveal(file)
+                }}
+              >
+                <Icon name="folderOpen" size={14} />
+                {S.dlRowReveal}
+              </button>
+            )}
+            {file && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onCloseMenu()
+                  void onCopy(file, S.dlCopiedPath)
+                }}
+              >
+                <Icon name="copy" size={14} />
+                {S.dlRowCopyPath}
+              </button>
+            )}
+            {row.tweetId.length > 0 && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onCloseMenu()
+                  void onCopy(`https://x.com/i/status/${row.tweetId}`, S.dlCopiedUrl)
+                }}
+              >
+                <Icon name="external" size={14} />
+                {S.dlRowCopyUrl}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </li>
+  )
+})
 
 function HistoryRow({ entry }: { entry: DlListEntry }): JSX.Element {
   const firstFile = entry.files[0]?.path

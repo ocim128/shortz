@@ -6,6 +6,7 @@ import { runDl, type DlRunOptions } from '../../../src/core/downloader/orchestra
 import { ThrottleState } from '../../../src/core/downloader/engine/throttle'
 import { StateStore } from '../../../src/core/downloader/store/state'
 import { sidecarPathFor } from '../../../src/core/downloader/store/sidecar'
+import { DlError } from '../../../src/shared/downloader/errors'
 import type { DlEvent, DlItemEvent } from '../../../src/shared/downloader/types'
 import {
   fakeFetch,
@@ -428,5 +429,91 @@ describe('runDl — retry-failed', () => {
     const h = harness([])
     await expect(h.run([])).rejects.toThrow(/no input lines/)
     expect(h.events).toHaveLength(0)
+  })
+})
+
+describe('runDl — resolve retry', () => {
+  const resolvedOnce = {
+    ref: {
+      tweetId: SINGLE,
+      screenName: 'someuser',
+      canonicalUrl: `https://x.com/someuser/status/${SINGLE}`
+    },
+    author: { screenName: 'someuser', displayName: null, verified: false },
+    text: 'A single video post',
+    createdAt: null,
+    source: 'syndication' as const,
+    media: [
+      {
+        index: 1,
+        kind: 'video' as const,
+        width: 1280,
+        height: 720,
+        posterUrl: null,
+        variants: [
+          {
+            url: 'https://video.twimg.com/one.mp4',
+            width: 1280,
+            height: 720,
+            bitrate: 1,
+            contentType: 'video/mp4'
+          }
+        ]
+      }
+    ]
+  }
+
+  async function runWithChain(
+    chain: Parameters<typeof runDl>[1]['chain']
+  ): Promise<{ summary: Awaited<ReturnType<typeof runDl>>; events: DlEvent[]; resolves: number }> {
+    const events: DlEvent[] = []
+    let resolves = 0
+    const counting = {
+      resolve: async (...args: Parameters<NonNullable<typeof chain>['resolve']>) => {
+        resolves += 1
+        return chain!.resolve(...args)
+      }
+    }
+    const summary = await runDl(
+      { inputs: [{ key: 'line-1', lineNumber: 1, text: singleUrl }] },
+      {
+        jobId: 'job-resolve-retry',
+        dataDir,
+        signal: new AbortController().signal,
+        options: options(),
+        chain: counting,
+        downloader: async () => ({ bytes: 1, total: 1, attempts: 1, elapsedMs: 1 }),
+        throttle: new ThrottleState(() => performance.now(), undefined, { minGapMs: 0 }),
+        backoffMs: [0, 0, 0],
+        logger: () => undefined,
+        onEvent: (event) => events.push(event)
+      }
+    )
+    return { summary, events, resolves }
+  }
+
+  it('retries a transient resolve failure and downloads on the second attempt', async () => {
+    let attempts = 0
+    const { summary, events, resolves } = await runWithChain({
+      resolve: async () => {
+        attempts += 1
+        if (attempts === 1) throw new DlError('UPSTREAM_ERROR', 'syndication: 503')
+        return resolvedOnce
+      }
+    })
+    expect(resolves).toBe(2)
+    expect(summary.ok).toBe(1)
+    expect(terminal(events).map((event) => event.item.status)).toEqual(['ok'])
+  })
+
+  it('does not retry a terminal resolve failure (NOT_FOUND)', async () => {
+    const { summary, events, resolves } = await runWithChain({
+      resolve: async () => {
+        throw new DlError('NOT_FOUND', 'gone')
+      }
+    })
+    expect(resolves).toBe(1)
+    expect(summary.failed).toBe(1)
+    expect(terminal(events)[0]?.item.errorCode).toBe('NOT_FOUND')
   })
 })

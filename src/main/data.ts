@@ -77,10 +77,6 @@ export function downloadsDir(): string {
   return path.join(dataDir(), 'downloads')
 }
 
-export function dlStateDir(): string {
-  return downloadsDir()
-}
-
 export function dlPostersDir(): string {
   return path.join(downloadsDir(), 'cache', 'posters')
 }

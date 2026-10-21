@@ -89,12 +89,38 @@ function coerceDoc(parsed: unknown): StateDoc | null {
 export class StateStore {
   private doc: StateDoc
   private tail: Promise<void> = Promise.resolve()
+  /**
+   * Per-tweet view of `doc.downloads`, maintained incrementally. Without it,
+   * `downloadsOf`/`listEntries`/`retryTargets` were O(tweets × downloads) on the
+   * main thread (measured: 11.7 s for a 4 000-post library) because each lookup
+   * scanned every download key.
+   */
+  private readonly byTweet = new Map<string, Map<number, StateDownloadRow>>()
+  /** True while a flush task is queued/in flight — concurrent flushes coalesce. */
+  private writePending = false
+  /** Set by every mutation + flush; the write loop consumes it. */
+  private dirty = false
+  /** Pending trailing write scheduled by `flushSoon()`. */
+  private soonTimer: ReturnType<typeof setTimeout> | null = null
 
   private constructor(
     private readonly filePath: string,
     doc: StateDoc
   ) {
     this.doc = doc
+    for (const [key, row] of Object.entries(doc.downloads)) {
+      const at = key.lastIndexOf(':')
+      if (at <= 0) continue
+      const tweetId = key.slice(0, at)
+      const mediaIndex = Number.parseInt(key.slice(at + 1), 10)
+      if (!Number.isFinite(mediaIndex)) continue
+      let media = this.byTweet.get(tweetId)
+      if (media === undefined) {
+        media = new Map()
+        this.byTweet.set(tweetId, media)
+      }
+      media.set(mediaIndex, row)
+    }
   }
 
   /** Path of the state file (the CLI prints it; main does not need to care). */
@@ -139,11 +165,7 @@ export class StateStore {
   }
 
   downloadsOf(tweetId: string): StateDownloadRow[] {
-    const out: StateDownloadRow[] = []
-    for (const [key, row] of Object.entries(this.doc.downloads)) {
-      if (key.startsWith(`${tweetId}:`)) out.push(row)
-    }
-    return out
+    return [...(this.byTweet.get(tweetId)?.values() ?? [])]
   }
 
   /** Every tweet id the index knows, in first-seen order. */
@@ -174,12 +196,9 @@ export class StateStore {
   listEntries(limit: number): DlListEntry[] {
     const entries: DlListEntry[] = []
     for (const [tweetId, tweet] of Object.entries(this.doc.tweets)) {
-      const rows: { mediaIndex: number; row: StateDownloadRow }[] = []
-      for (const [key, row] of Object.entries(this.doc.downloads)) {
-        if (!key.startsWith(`${tweetId}:`)) continue
-        rows.push({ mediaIndex: Number.parseInt(key.slice(tweetId.length + 1), 10), row })
-      }
-      if (rows.length === 0) continue
+      const media = this.byTweet.get(tweetId)
+      if (media === undefined || media.size === 0) continue
+      const rows = [...media.entries()].map(([mediaIndex, row]) => ({ mediaIndex, row }))
 
       const okRows = rows.filter((entry) => entry.row.status === 'ok')
       const hasFailed = rows.some((entry) => entry.row.status === 'failed')
@@ -219,9 +238,17 @@ export class StateStore {
   retryTargets(): string[] {
     const out: string[] = []
     for (const [tweetId, tweet] of Object.entries(this.doc.tweets)) {
-      const rows = this.downloadsOf(tweetId)
-      const okRows = rows.filter((row) => row.status === 'ok').length
-      const failed = rows.some((row) => row.status === 'failed')
+      const rows = this.byTweet.get(tweetId)
+      if (rows === undefined) {
+        if (tweet.mediaCount > 0) out.push(tweetId)
+        continue
+      }
+      let okRows = 0
+      let failed = false
+      for (const row of rows.values()) {
+        if (row.status === 'ok') okRows += 1
+        else failed = true
+      }
       if (failed || (tweet.mediaCount > 0 && okRows < tweet.mediaCount)) out.push(tweetId)
     }
     return out
@@ -261,7 +288,7 @@ export class StateStore {
     const at = row.at ?? new Date().toISOString()
     const key = downloadKey(row.tweetId, row.mediaIndex)
     const existing = this.doc.downloads[key]
-    this.doc.downloads[key] = {
+    const stored: StateDownloadRow = {
       filePath: row.filePath,
       sizeBytes: row.sizeBytes,
       status: row.status,
@@ -271,11 +298,22 @@ export class StateStore {
       downloadedAt: row.status === 'ok' ? at : (existing?.downloadedAt ?? at),
       updatedAt: at
     }
+    this.doc.downloads[key] = stored
+    let media = this.byTweet.get(row.tweetId)
+    if (media === undefined) {
+      media = new Map()
+      this.byTweet.set(row.tweetId, media)
+    }
+    media.set(row.mediaIndex, stored)
   }
 
   /** Forget a media row (a file that vanished, or a clean restart over it). */
   forgetDownload(tweetId: string, mediaIndex: number): void {
     delete this.doc.downloads[downloadKey(tweetId, mediaIndex)]
+    const media = this.byTweet.get(tweetId)
+    if (media === undefined) return
+    media.delete(mediaIndex)
+    if (media.size === 0) this.byTweet.delete(tweetId)
   }
 
   recordRun(summary: DlRunSummary, startedAt: string, finishedAt: string): void {
@@ -297,12 +335,46 @@ export class StateStore {
   }
 
   /**
-   * Flush the whole document atomically. Calls are serialized so two item
-   * boundaries can never interleave their temp files.
+   * Schedule a trailing write instead of paying one now — used at item/media
+   * boundaries, where blocking the transfer loop on a multi-MiB rewrite bought
+   * nothing (a crash may lose ≤ delayMs of bookkeeping; media is untouched).
+   * `flush()` still writes immediately when a caller needs a barrier.
+   */
+  flushSoon(delayMs = 250): void {
+    this.dirty = true
+    if (this.soonTimer !== null) return
+    this.soonTimer = setTimeout(() => {
+      this.soonTimer = null
+      void this.flush().catch(() => undefined)
+    }, delayMs)
+    this.soonTimer.unref?.()
+  }
+
+  /**
+   * Flush the document atomically. Concurrent calls COALESCE into one write:
+   * the run flushes at every item and media boundary, and each flush used to
+   * rewrite the whole (ever-growing) document — 1.68 GB written for a 200-item
+   * run against a 2 MiB index. The write loop re-checks `dirty`, so mutations
+   * that land while a write is in flight are never lost; `execute()`'s final
+   * flush (awaited after `recordRun`) remains the durability barrier.
+   *
+   * Compact JSON: state.json is machine-only (the sidecar is the readable
+   * artifact), and pretty-printing cost 26 % of the bytes on every write.
    */
   flush(): Promise<void> {
+    if (this.soonTimer !== null) {
+      clearTimeout(this.soonTimer)
+      this.soonTimer = null
+    }
+    this.dirty = true
+    if (this.writePending) return this.tail
+    this.writePending = true
     const run = async (): Promise<void> => {
-      await atomicWriteFile(this.filePath, JSON.stringify(this.doc, null, 2))
+      this.writePending = false
+      while (this.dirty) {
+        this.dirty = false
+        await atomicWriteFile(this.filePath, JSON.stringify(this.doc))
+      }
     }
     this.tail = this.tail.then(run, run)
     return this.tail

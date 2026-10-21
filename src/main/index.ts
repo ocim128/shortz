@@ -41,8 +41,21 @@ applyPortableMode()
 process.on('uncaughtException', (error) => {
   void logFatal('uncaughtException', error)
 })
+
+// A rejected promise is not evidence that the process is unusable: killing the
+// app (and the dialog) on every stray fire-and-forget rejection would take a
+// running export or download down with it. Log it, keep going, and only treat
+// a storm as fatal. Uncaught exceptions above stay fatal.
+let rejectionCount = 0
 process.on('unhandledRejection', (reason) => {
-  void logFatal('unhandledRejection', reason)
+  rejectionCount += 1
+  logError('unhandledRejection', reason)
+  if (rejectionCount === 20) {
+    void logFatal(
+      'unhandledRejection storm',
+      new Error(`${rejectionCount} unhandled rejections — something is retrying forever`)
+    )
+  }
 })
 void initFileLogger()
 

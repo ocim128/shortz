@@ -9,14 +9,13 @@
  *  - failures are best-effort and never fail the item;
  *  - Analyze (dry-run) fetches them **lazily** — a preview of 25 links must not
  *    pull 25 images nobody looked at;
- *  - the 30-day sweep is wired into main's startup path; a defensive sweep here
- *    is cheap and keeps a long-lived CLI from growing the cache forever.
+ *  - the 30-day sweep (`sweepPosterCache`) is wired into main's startup path
+ *    (`src/main/sweep.ts`), which also covers a long-lived CLI data dir.
  */
 
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { DlClient } from '../net/client'
-import { sweepStaleDirs } from '../../store/fs-utils'
 
 /** 30 days, per storage-naming.md §5. */
 export const POSTER_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
@@ -69,7 +68,10 @@ export async function ensurePoster(args: {
   }
 }
 
-/** Defensive sweep of poster files older than 30 days. Best-effort. */
+/**
+ * Sweep poster files older than `maxAgeMs` (default 30 days). Best-effort:
+ * the cache is UI state, so a failed sweep must never block startup.
+ */
 export async function sweepPosterCache(
   dataDir: string,
   maxAgeMs: number = POSTER_MAX_AGE_MS
@@ -96,12 +98,4 @@ export async function sweepPosterCache(
     }
   }
   return removed
-}
-
-/** Same 30-day policy for the directory-shaped caches the app already sweeps. */
-export async function sweepPosterDirs(
-  dataDir: string,
-  maxAgeMs: number = POSTER_MAX_AGE_MS
-): Promise<string[]> {
-  return sweepStaleDirs(posterCacheDir(dataDir), maxAgeMs)
 }

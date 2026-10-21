@@ -37,18 +37,35 @@ function toArrayBuffer(buffer: Buffer): ArrayBuffer {
   ) as ArrayBuffer
 }
 
+/** One loader identity per fonts directory, so the shared metrics cache
+ * (`fontCache` in shared/layout/text.ts is keyed by loader identity) survives
+ * across renders. renderProject used to build a fresh closure per render, which
+ * re-parsed all four TTFs each time (~8.5 ms/layout measured) and, with the
+ * cache capped at 4 loader entries, evicted the previous one every render. */
+const fontLoaders = new Map<string, FontLoader>()
+
 /**
  * Synchronous fs-based font loader for opentype.js metrics — used by the CLI,
  * tests, Electron main and (via injected bytes) the renderer. src/shared stays
  * platform-free; only the host supplies this function.
  */
 export function createFontBufferLoader(fontsDir: string): FontLoader {
-  return (key: FontKey): ArrayBuffer => {
+  const dirKey = path.resolve(fontsDir)
+  const existing = fontLoaders.get(dirKey)
+  if (existing !== undefined) return existing
+  const loader: FontLoader = (key: FontKey): ArrayBuffer => {
     if (!(key in FONT_FILES)) {
       throw new Error(`Unknown font key "${String(key)}"`)
     }
     return toArrayBuffer(readFileSync(fontFilePath(fontsDir, key)))
   }
+  fontLoaders.set(dirKey, loader)
+  return loader
+}
+
+/** Test/diagnostic seam: how many directory loaders are memoized. */
+export function fontLoaderCount(): number {
+  return fontLoaders.size
 }
 
 const registered = new Set<string>()

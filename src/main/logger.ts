@@ -23,9 +23,24 @@ export function mainLogPath(): string {
 // Serialize appends so concurrent warnings never interleave inside one line.
 let writeChain: Promise<void> = Promise.resolve()
 
+/** Rotate at most every N lines: the size cap must hold in a long session, not
+ * only across restarts, but a stat per log line would be wasteful. */
+const SIZE_CHECK_EVERY = 256
+let linesSinceSizeCheck = 0
+
+async function rotateIfOversized(): Promise<void> {
+  linesSinceSizeCheck += 1
+  if (linesSinceSizeCheck < SIZE_CHECK_EVERY) return
+  linesSinceSizeCheck = 0
+  const stat = await fsp.stat(mainLogPath()).catch(() => null)
+  if (stat === null || stat.size <= MAX_LOG_BYTES) return
+  await fsp.rename(mainLogPath(), path.join(logsDir(), 'main.old.log')).catch(() => undefined)
+}
+
 function appendLine(line: string): void {
   writeChain = writeChain
     .then(() => fsp.appendFile(mainLogPath(), `${line}\n`, 'utf8'))
+    .then(rotateIfOversized)
     .catch(() => {
       /* a broken sink must never take the app down */
     })

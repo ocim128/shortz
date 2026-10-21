@@ -12,6 +12,7 @@
  *  - **codes, never sentences** — this module never composes user copy.
  */
 
+import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { logWarn } from '../log'
 import { asDlError, DlError, isAbortError } from '../../shared/downloader/errors'
@@ -224,6 +225,10 @@ class DlRun {
   private readonly backoff: readonly number[]
   private readonly resolveSem: Semaphore
   private readonly downloadSem: Semaphore
+  /** Bounds the pre-skip stat burst: a 5 000-line re-paste used to fire
+   * thousands of `fs.stat` calls at once and starve the 4-thread libuv pool
+   * (and with it the in-flight `.part` writes). 8 in flight is enough. */
+  private readonly preSkipSem = new Semaphore(8)
   private readonly lookahead: Lookahead
   private readonly breaker = { streak: 0, open: false }
   private readonly claimed = new Map<string, string>()
@@ -369,13 +374,18 @@ class DlRun {
 
       // 2. Pre-skip BEFORE any resolve (AUDIT rev 2): zero network I/O, so an
       // offline re-run still skips cleanly (DU8/DA9).
-      if (
-        !this.deps.options.force &&
-        !this.deps.options.dryRun &&
-        (await this.state.isComplete(tweetId))
-      ) {
-        this.finish(item, { status: 'skipped', files: [], skipReason: 'already-downloaded' })
-        return
+      if (!this.deps.options.force && !this.deps.options.dryRun) {
+        await this.preSkipSem.acquire()
+        let complete: boolean
+        try {
+          complete = await this.state.isComplete(tweetId)
+        } finally {
+          this.preSkipSem.release()
+        }
+        if (complete) {
+          this.finish(item, { status: 'skipped', files: [], skipReason: 'already-downloaded' })
+          return
+        }
       }
 
       // 3. Bounded lookahead, then prepare (resolve + select + plan + poster).
@@ -423,12 +433,49 @@ class DlRun {
     }
   }
 
-  /** Resolve, select, plan — holds ONE resolve slot, never a download slot. */
-  private async prepare(ref: TweetRef): Promise<Prepared> {
-    const options = this.deps.options
+  /**
+   * One resolve attempt under a resolve slot. Retried by `resolveWithRetry`,
+   * which backs off BETWEEN attempts so a sleeping retry never pins a slot.
+   */
+  private async resolveOnce(ref: TweetRef): Promise<ResolvedTweet> {
     await this.resolveSem.acquire()
     try {
-      const resolved = await this.chain.resolve(ref, this.resolveCtx)
+      return await this.chain.resolve(ref, this.resolveCtx)
+    } finally {
+      this.resolveSem.release()
+    }
+  }
+
+  /**
+   * Resolve with the same bounded, jittered schedule transfers use. Resolve is
+   * the flakiest step (one upstream adapter by default) and used to be a single
+   * attempt: one 500/429/timeout lost the post until "Retry failed". Only
+   * transient codes are retried; NOT_FOUND/AUTH/NO_VIDEO stay terminal.
+   */
+  private async resolveWithRetry(ref: TweetRef): Promise<ResolvedTweet> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.resolveOnce(ref)
+      } catch (error) {
+        if (isAbortError(error) || this.deps.signal.aborted) throw error
+        const dlError = asDlError(error)
+        if (attempt >= MAX_ATTEMPTS - 1 || !shouldRetry(dlError)) throw dlError
+        const delay = this.backoff[Math.min(attempt, this.backoff.length - 1)] ?? 0
+        if (delay > 0) {
+          this.log(
+            `[dl] resolve retry ${attempt + 1}/${MAX_ATTEMPTS - 1} in ${delay} ms (${dlError.code})`
+          )
+          await sleep(jittered(delay), this.deps.signal)
+        }
+      }
+    }
+  }
+
+  /** Resolve, select, plan — never holds a resolve slot while backing off. */
+  private async prepare(ref: TweetRef): Promise<Prepared> {
+    const options = this.deps.options
+    try {
+      const resolved = await this.resolveWithRetry(ref)
       const chosen = selectAllChosen(resolved, options.quality)
       if (chosen.length === 0) {
         throw new DlError('NO_VIDEO', 'no downloadable video in this post')
@@ -465,7 +512,9 @@ class DlRun {
           url: resolved.ref.canonicalUrl,
           mediaCount: chosen.length
         })
-        await this.state.flush().catch(() => undefined)
+        // Trailing write: a per-item barrier used to rewrite the whole index
+        // while holding the resolve slot (see StateStore.flushSoon).
+        this.state.flushSoon()
       }
 
       // One poster per item: the frozen event carries a single localPosterPath
@@ -507,8 +556,8 @@ class DlRun {
       // ('planned' in Analyze, 'downloading' otherwise), so a row never gets two
       // plan events with different statuses.
       return prepared
-    } finally {
-      this.resolveSem.release()
+    } catch (error) {
+      throw asDlError(error)
     }
   }
 
@@ -605,11 +654,11 @@ class DlRun {
         this.updateMedia(rt, position, 'failed', undefined, undefined)
       } finally {
         this.downloadSem.release()
-        await this.state.flush().catch(() => undefined)
+        this.state.flushSoon()
       }
     }
 
-    await this.state.flush().catch(() => undefined)
+    this.state.flushSoon()
 
     if (firstError !== null) {
       // Logged once, in `finish()` — every failure path (resolve included) gets
@@ -704,9 +753,8 @@ class DlRun {
     plan: PlannedMedia,
     resolved: ResolvedTweet
   ): Promise<string | null> {
-    await this.resolveSem.acquire()
     try {
-      const fresh = await this.chain.resolve(resolved.ref, this.resolveCtx)
+      const fresh = await this.resolveWithRetry(resolved.ref)
       const replacement = selectAllChosen(fresh, this.deps.options.quality).find(
         (one) => one.index === plan.chosen.index
       )
@@ -715,8 +763,6 @@ class DlRun {
       return replacement.variant.url
     } catch {
       return null
-    } finally {
-      this.resolveSem.release()
     }
   }
 
@@ -953,7 +999,6 @@ function describeForState(error: DlError): string {
 }
 
 async function statFile(filePath: string): Promise<number | null> {
-  const { promises: fs } = await import('node:fs')
   const stat = await fs.stat(filePath).catch(() => null)
   if (stat === null || !stat.isFile() || stat.size === 0) return null
   return stat.size
