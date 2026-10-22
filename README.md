@@ -17,6 +17,7 @@ pnpm dist         # NSIS installer + portable exe into dist/
 
 Notes:
 
+- To launch from the Windows taskbar, run `run.bat` once, then right-click the ShortZ taskbar icon and choose **Pin to taskbar**. The pin starts the same development app through `run.bat`, including its Vite server. Existing pins that opened Electron's welcome screen are repaired when ShortZ starts; if Windows still shows the old Electron label or icon, unpin it and pin the ShortZ window again.
 - `pnpm dist` on a machine without symlink privileges (no Developer Mode/admin) needs the winCodeSign cache pre-populated once (a known electron-builder Windows quirk; a machine with Developer Mode enabled needs nothing).
 - Portable mode: drop a `portable.flag` file next to `ShortZ.exe` → data moves to `.\data\` next to the exe instead of `%APPDATA%\shortz`.
 - The E2E suite kills running `electron.exe`/`ShortZ.exe` instances first — dev and packaged builds share the single-instance lock.

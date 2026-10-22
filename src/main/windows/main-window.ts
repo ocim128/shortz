@@ -1,5 +1,6 @@
 import path from 'node:path'
-import { BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
+import { configureTaskbar } from './taskbar'
 
 /**
  * Main window (roadmap M0: dark app window, 1280×800 min).
@@ -20,6 +21,7 @@ export function createMainWindow(): BrowserWindow {
     show: false,
     backgroundColor: '#0d0d0f', // --bg-0, avoids white flash
     title: 'ShortZ',
+    icon: path.join(app.getAppPath(), 'resources', 'icons', 'icon.ico'),
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -29,6 +31,8 @@ export function createMainWindow(): BrowserWindow {
       webSecurity: true
     }
   })
+
+  configureTaskbar(win)
 
   win.once('ready-to-show', () => {
     win.show()

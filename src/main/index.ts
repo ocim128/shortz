@@ -7,7 +7,10 @@ import { buildAppMenu } from './menu'
 import { initFileLogger, logFatal } from './logger'
 import { sweepStaleRenderTemp } from './sweep'
 import { createMainWindow } from './windows/main-window'
+import { TASKBAR_APP_ID } from './windows/taskbar'
 import { logError } from '../core/log'
+
+if (process.platform === 'win32') app.setAppUserModelId(TASKBAR_APP_ID)
 
 // Dev-only: enable remote debugging for the verification harness (CDP).
 if (process.env.SHORTZ_REMOTE_DEBUGGING && !app.isPackaged) {

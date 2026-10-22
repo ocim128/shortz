@@ -2,7 +2,7 @@
 setlocal
 rem ============================================================
 rem  ShortZ - kill running instance, then start the app (dev)
-rem  Put this file anywhere; it always runs from its own folder.
+rem  Can be launched from any working directory.
 rem ============================================================
 cd /d "%~dp0"
 
@@ -26,6 +26,6 @@ rem  boots as plain node and the app dies at startup - clear it.
 set ELECTRON_RUN_AS_NODE=
 
 echo Starting ShortZ (pnpm dev)...
-pnpm dev
+call pnpm --dir "%~dp0." dev
 
 endlocal
