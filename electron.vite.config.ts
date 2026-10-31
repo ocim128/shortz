@@ -28,6 +28,7 @@ export default defineConfig({
   },
   renderer: {
     root: 'src/renderer',
+    server: { port: 5190 },
     esbuild: { jsx: 'automatic' },
     build: {
       outDir: 'out/renderer',
