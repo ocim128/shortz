@@ -517,3 +517,74 @@ describe('runDl — resolve retry', () => {
     expect(terminal(events)[0]?.item.errorCode).toBe('NOT_FOUND')
   })
 })
+
+describe('Instagram posts', () => {
+  it('downloads all carousel photos and video, follows safe CDN redirects, and skips on repeat', async () => {
+    const h = harness([
+      {
+        match: 'oginstagram.com/p/AbC_123',
+        respond: (call) => {
+          const index = Number(new URL(call.url).searchParams.get('img_index'))
+          return jsonResponse({
+            attributedTo: 'https://oginstagram.com/creator',
+            content: '<p><b>🖼️ 1 / 3</b></p><p>Caption</p>',
+            published: '2026-01-01T00:00:00Z',
+            attachment: [
+              {
+                url: `https://oginstagram.com/offload/AbC_123/${index}?sig=one`,
+                mediaType: index === 2 ? 'video/mp4' : 'image/jpeg',
+                width: 1080,
+                height: 1920
+              }
+            ]
+          })
+        }
+      },
+      {
+        match: 'oginstagram.com/offload/',
+        respond: (call) =>
+          new Response(null, {
+            status: 302,
+            headers: {
+              location: `https://scontent.cdninstagram.com/${new URL(call.url).pathname.split('/').pop()}`
+            }
+          })
+      },
+      {
+        match: 'scontent.cdninstagram.com/',
+        respond: () => new Response('test media', { headers: { 'content-length': '10' } })
+      }
+    ])
+    const url = 'https://www.instagram.com/p/AbC_123/'
+    const result = await h.run([url])
+    expect(result.ok).toBe(1)
+    const dir = path.join(outDir, 'instagram', 'creator', 'AbC_123')
+    for (const file of ['ig_AbC_123.jpg', 'ig_AbC_123_v2.mp4', 'ig_AbC_123_v3.jpg']) {
+      expect(await fs.readFile(path.join(dir, file), 'utf8')).toBe('test media')
+    }
+    expect(h.fetchImpl.count('oginstagram.com/p/')).toBe(3)
+    const second = await h.run([url])
+    expect(second.skipped).toBe(1)
+    expect(h.fetchImpl.count('oginstagram.com/p/')).toBe(3)
+  })
+
+  it('rejects unsafe media redirects', async () => {
+    const h = harness([
+      {
+        match: 'oginstagram.com/p/',
+        respond: () =>
+          jsonResponse({
+            attachment: [{ url: 'https://oginstagram.com/offload/Test/1', mediaType: 'image/jpeg' }]
+          })
+      },
+      {
+        match: 'oginstagram.com/offload/',
+        respond: () =>
+          new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/private' } })
+      }
+    ])
+    const result = await h.run(['https://instagram.com/p/Test/'])
+    expect(result.failed).toBe(1)
+    expect(h.fetchImpl.count('127.0.0.1')).toBe(0)
+  })
+})

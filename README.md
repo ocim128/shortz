@@ -23,3 +23,5 @@ Notes:
 - The E2E suite kills running `electron.exe`/`ShortZ.exe` instances first — dev and packaged builds share the single-instance lock.
 
 **Status:** end-to-end functional — import → edit → preview (shared layout engine) → export/batch render through FFmpeg, plus a headless render CLI (`pnpm cli render project.json`).
+
+The Downloader accepts X post links and public Instagram post links, including Instagram photos and videos in carousels. Each Instagram post's files are grouped in a folder named for its shortcode, within the selected download layout. Instagram lookups use the third-party OGInstagram service, which receives the post link and your IP address; availability depends on that service and Instagram. Private or login-required posts are not supported.

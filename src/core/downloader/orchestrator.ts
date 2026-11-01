@@ -495,7 +495,16 @@ class DlRun {
           mediaIndex: one.index,
           layout: options.layout,
           filenameTemplate: options.filenameTemplate,
-          rootLength
+          rootLength,
+          platform: resolved.source === 'instagram' ? 'instagram' : 'x',
+          extension:
+            one.media.kind === 'photo'
+              ? one.variant.contentType === 'image/png'
+                ? '.png'
+                : one.variant.contentType === 'image/webp'
+                  ? '.webp'
+                  : '.jpg'
+              : '.mp4'
         })
         const dest = joinPlannedPath(options.outputDir, planned, path.sep)
         plans.push({ chosen: one, dest, fileName: planned.fileName })

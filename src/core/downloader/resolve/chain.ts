@@ -24,6 +24,7 @@ import type { DlClient } from '../net/client'
 import type { ResolveCtx, Resolver } from './ctx'
 import { FxTwitterResolver } from './fxtwitter'
 import { SyndicationResolver } from './syndication'
+import { InstagramResolver } from './instagram'
 
 /** 'gone' ⇒ the post does not exist; 'alive' ⇒ it does; 'unknown' ⇒ don't claim. */
 export type ProbeResult = 'alive' | 'gone' | 'unknown'
@@ -106,6 +107,7 @@ export class FallbackChain {
   }
 
   async resolve(ref: TweetRef, ctx: ResolveCtx): Promise<ResolvedTweet> {
+    if (ref.tweetId.startsWith('ig_')) return new InstagramResolver().resolve(ref, ctx)
     const errors: DlError[] = []
     for (const adapter of this.adapters) {
       try {

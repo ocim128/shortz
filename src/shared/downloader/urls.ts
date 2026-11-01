@@ -92,6 +92,11 @@ const BAD_ID_RE = new RegExp(
   'g'
 )
 
+const INSTAGRAM_RE = new RegExp(
+  `${BOUNDARY}${SCHEME}(?:www\\.)?instagram\\.com/(?:p|reel|tv)/(?<code>[A-Za-z0-9_-]{1,32})(?=[^A-Za-z0-9_-]|$)(?:/)?(?:[?&#][^\\s]*)?`,
+  'gi'
+)
+
 const TWEET_ID_SHAPE = /^\d{2,19}$/
 
 /** Every match of a global regex, with `lastIndex` reset (regexes are module singletons). */
@@ -180,7 +185,7 @@ export function extractAllStatusUrls(line: string): string[] {
   const push = (value: string): void => {
     if (!found.includes(value)) found.push(value)
   }
-  const forms: RegExp[] = [STATUS_IN_TEXT_RE, WEB_RE, INTENT_RE, EMBED_RE, TCO_RE]
+  const forms: RegExp[] = [STATUS_IN_TEXT_RE, WEB_RE, INTENT_RE, EMBED_RE, TCO_RE, INSTAGRAM_RE]
   for (const re of forms) {
     for (const match of allMatches(re, line)) {
       push(match[0])
@@ -208,6 +213,16 @@ export function parseStatusUrl(text: string, opts: { allowBareId?: boolean } = {
   }
 
   const extracted = extractStatusUrl(trimmed)
+  const instagram = extracted === null ? null : firstMatch(INSTAGRAM_RE, extracted)
+  if (instagram !== null) {
+    const code = instagram.groups?.code as string
+    return {
+      tweetId: `ig_${code}`,
+      screenName: null,
+      canonicalUrl: `https://www.instagram.com/p/${code}/`
+    }
+  }
+
   if (extracted !== null) {
     const statusForm =
       firstMatch(STATUS_IN_TEXT_RE, extracted) ??
@@ -246,5 +261,13 @@ export function isAllowedMediaUrl(url: string): boolean {
   }
   if (parsed.protocol !== 'https:') return false
   const host = parsed.hostname.toLowerCase()
-  return host === 'twimg.com' || host.endsWith('.twimg.com')
+  return (
+    host === 'twimg.com' ||
+    host.endsWith('.twimg.com') ||
+    (host === 'oginstagram.com' && parsed.pathname.startsWith('/offload/')) ||
+    host === 'cdninstagram.com' ||
+    host.endsWith('.cdninstagram.com') ||
+    host === 'fbcdn.net' ||
+    host.endsWith('.fbcdn.net')
+  )
 }

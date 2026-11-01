@@ -24,7 +24,7 @@ Usage:
   shortz dl [<link|file>...] [options]
 
 Input:
-  <link|file>            x.com / twitter.com status links, t.co short links,
+  <link|file>            X status links, t.co short links, Instagram post links,
                          or a file containing one link per line
       --file <path>      Read links from a file ("-" reads stdin)
       --id <id>          Download one tweet id (repeatable)
@@ -37,7 +37,7 @@ Output:
       --layout <kind>    by-author | by-date | flat (default: by-author)
       --template <t>     File name template: {id}{date}{author}{index}{slug}
                          (default: {id})
-      --no-sidecars      Do not write <file>.mp4.meta.json
+      --no-sidecars      Do not write <file>.meta.json
 
 Behaviour:
       --dry-run          Analyze only: resolve, select, plan. Writes nothing.

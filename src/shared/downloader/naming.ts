@@ -40,7 +40,7 @@ export interface NamingTweet {
 }
 
 export interface PlannedPath {
-  /** Segments below the output root, always starting with the fixed `x` marker. */
+  /** Segments below the output root, starting with the platform marker. */
   dirSegments: string[]
   /** File name including `.mp4`. */
   fileName: string
@@ -56,6 +56,8 @@ export interface RenderPlannedPathArgs {
   filenameTemplate: string
   /** Characters already consumed by the output root plus its separator. */
   rootLength: number
+  platform?: 'x' | 'instagram'
+  extension?: '.mp4' | '.jpg' | '.png' | '.webp'
 }
 
 function pad2(value: number): string {
@@ -111,7 +113,9 @@ export function renderPlannedPath(args: RenderPlannedPathArgs): PlannedPath {
   const { tweet, mediaIndex, layout, filenameTemplate, rootLength } = args
   const parts = dateParts(tweet.createdAt)
   const slug = slugify(tweet.text)
-  const stemBudget = 120 - MEDIA_EXTENSION.length
+  const extension = args.extension ?? MEDIA_EXTENSION
+  const rootSegment = args.platform ?? ROOT_SEGMENT
+  const stemBudget = 120 - extension.length
 
   const build = (authorValue: string, slugValue: string, template: string): PlannedPath => {
     const tokens: Record<string, string> = {
@@ -127,23 +131,29 @@ export function renderPlannedPath(args: RenderPlannedPathArgs): PlannedPath {
     if (mediaIndex >= 2 && !template.includes('{index}')) stem = `${stem}_v${mediaIndex}`
     stem = stripTrailingJunk(stem)
     const safeStem = sanitizeSegment(stem, { maxLength: stemBudget })
-    const fileName = `${safeStem}${MEDIA_EXTENSION}`
+    const fileName = `${safeStem}${extension}`
 
     let dirSegments: string[]
     switch (layout) {
       case 'by-date':
-        dirSegments = [ROOT_SEGMENT, parts.yyyy, parts.mm]
+        dirSegments = [rootSegment, parts.yyyy, parts.mm]
         break
       case 'flat':
-        dirSegments = [ROOT_SEGMENT]
+        dirSegments = [rootSegment]
         break
       case 'by-author':
       default:
         dirSegments = [
-          ROOT_SEGMENT,
+          rootSegment,
           sanitizeSegment(authorValue.length > 0 ? authorValue : 'unknown')
         ]
         break
+    }
+    // Instagram carousel items belong together under the post's URL shortcode.
+    // The internal ig_ prefix namespaces state IDs and is not part of the URL.
+    if (args.platform === 'instagram') {
+      const shortcode = tweet.tweetId.startsWith('ig_') ? tweet.tweetId.slice(3) : tweet.tweetId
+      dirSegments.push(sanitizeSegment(shortcode))
     }
     return {
       dirSegments,

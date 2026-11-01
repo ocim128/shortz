@@ -227,3 +227,18 @@ describe('media allow-list (D-A9 / DA10)', () => {
     expect(isAllowedMediaUrl(url)).toBe(false)
   })
 })
+
+it('parses Instagram links and scopes their media hosts', () => {
+  expect(parseStatusUrl('https://www.instagram.com/p/DdwR5k6CKQM/?img_index=2')).toEqual({
+    tweetId: 'ig_DdwR5k6CKQM',
+    screenName: null,
+    canonicalUrl: 'https://www.instagram.com/p/DdwR5k6CKQM/'
+  })
+  expect(parseStatusUrl('instagram.com/reel/AbC_123/').tweetId).toBe('ig_AbC_123')
+  expect(codeOf(() => parseStatusUrl('https://instagram.com.evil.example/p/Test/'))).toBe(
+    'URL_UNRECOGNIZED'
+  )
+  expect(isAllowedMediaUrl('https://scontent.cdninstagram.com/image.jpg')).toBe(true)
+  expect(isAllowedMediaUrl('https://cdninstagram.com.evil.example/image.jpg')).toBe(false)
+  expect(isAllowedMediaUrl('http://scontent.cdninstagram.com/image.jpg')).toBe(false)
+})

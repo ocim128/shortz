@@ -9,7 +9,7 @@
 import type { DlErrorCode, DlSkipReason } from './types'
 
 const MESSAGES: Record<DlErrorCode, string> = {
-  URL_UNRECOGNIZED: "That doesn't look like an X post link.",
+  URL_UNRECOGNIZED: "That doesn't look like a supported X or Instagram post link.",
   TWEET_ID_INVALID: "That post id doesn't look right — check the link.",
   // AUDIT A1 / rev 3: the honest three-cause sentence. The syndication endpoint
   // cannot distinguish deleted from private from sensitive, so the copy must not
@@ -17,12 +17,12 @@ const MESSAGES: Record<DlErrorCode, string> = {
   // "deleted", and those report NOT_FOUND instead.
   NOT_EMBEDDABLE: "Can't embed this post — it may be deleted, private, or sensitive.",
   NOT_FOUND: 'Post not found — it was deleted or never existed.',
-  AUTH_REQUIRED: "This post needs a logged-in session — ShortZ doesn't sign in to X.",
-  NO_VIDEO: 'No video in this post.',
-  RATE_LIMITED: 'X is rate-limiting downloads — try again in a few minutes.',
+  AUTH_REQUIRED: 'This post requires a logged-in session or is not publicly available.',
+  NO_VIDEO: 'No downloadable media in this post.',
+  RATE_LIMITED: 'The platform is rate-limiting downloads — try again in a few minutes.',
   LINK_EXPIRED: 'The download link expired — retrying with a fresh one.',
-  UPSTREAM_ERROR: 'X returned an unexpected response — try again later.',
-  NETWORK: "Couldn't reach X — check your connection and try again.",
+  UPSTREAM_ERROR: 'The platform returned an unexpected response — try again later.',
+  NETWORK: "Couldn't reach the platform — check your connection and try again.",
   INTEGRITY_MISMATCH: "The download didn't match the expected size — restarting it.",
   DISK_FULL: 'Not enough free disk space for this download.',
   WRITE_ERROR: "Couldn't write the file to that folder.",

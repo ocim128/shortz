@@ -35,7 +35,8 @@ const RESOLVE_HOSTS = new Set([
   'publish.twitter.com',
   't.co',
   'x.com',
-  'twitter.com'
+  'twitter.com',
+  'oginstagram.com'
 ])
 
 export interface DlClient {
@@ -271,7 +272,13 @@ export function createDlClient(config: DlClientConfig): DlClient {
           method: 'GET',
           redirect: 'manual',
           credentials: 'omit',
-          headers: { accept: 'application/json', 'user-agent': userAgent },
+          headers: {
+            accept:
+              new URL(url).hostname === 'oginstagram.com'
+                ? 'application/activity+json'
+                : 'application/json',
+            'user-agent': userAgent
+          },
           signal
         }).catch((error: unknown) => mapTransportError(error, opts.signal)),
       opts.signal,
@@ -397,19 +404,51 @@ export function createDlClient(config: DlClientConfig): DlClient {
       if (ranged) headers.range = `bytes=${offset}-`
       if (ifRange !== null) headers['if-range'] = ifRange
 
-      const res = await withTimeout(
-        (signal) =>
-          fetchImpl(url, {
-            method: 'GET',
-            redirect: 'manual',
-            credentials: 'omit',
-            headers,
-            signal
-          }).catch((error: unknown) => mapTransportError(error, opts.signal)),
-        opts.signal,
-        MEDIA_HEADER_TIMEOUT_MS,
-        'no response headers within 5 s'
-      )
+      let mediaUrl = url
+      let res: Response
+      for (let redirects = 0; ; redirects += 1) {
+        res = await withTimeout(
+          (signal) =>
+            fetchImpl(mediaUrl, {
+              method: 'GET',
+              redirect: 'manual',
+              credentials: 'omit',
+              headers,
+              signal
+            }).catch((error: unknown) => mapTransportError(error, opts.signal)),
+          opts.signal,
+          MEDIA_HEADER_TIMEOUT_MS,
+          'no response headers within 5 s'
+        )
+        if (res.status < 300 || res.status >= 400) break
+        const location = res.headers.get('location')
+        discard(res)
+        if (location === null || redirects >= 3)
+          throw new DlError('UPSTREAM_ERROR', 'invalid media redirect')
+        let target: string
+        try {
+          target = new URL(location, mediaUrl).toString()
+        } catch {
+          throw new DlError('UPSTREAM_ERROR', 'invalid media redirect')
+        }
+        // Redirects are accepted only for Instagram proxy/CDN transfers; every hop
+        // must remain HTTPS and on an explicitly approved media host.
+        const origin = new URL(mediaUrl).hostname.toLowerCase()
+        if (
+          !(
+            origin === 'oginstagram.com' ||
+            origin === 'cdninstagram.com' ||
+            origin.endsWith('.cdninstagram.com') ||
+            origin === 'fbcdn.net' ||
+            origin.endsWith('.fbcdn.net')
+          ) ||
+          !isAllowedMediaUrl(target) ||
+          new URL(target).hostname.toLowerCase().endsWith('twimg.com')
+        ) {
+          throw new DlError('URL_UNRECOGNIZED', 'media redirect host not allowed')
+        }
+        mediaUrl = target
+      }
 
       if (res.status === 416) {
         const total = contentRangeTotal(res.headers.get('content-range'))

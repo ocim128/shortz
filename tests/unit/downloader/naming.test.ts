@@ -162,6 +162,27 @@ describe('renderPlannedPath — templates and layouts', () => {
     expect(plan({ layout: 'flat' }).dirSegments).toEqual(['x'])
   })
 
+  it('groups Instagram media by shortcode under each selected layout', () => {
+    const tweet = { ...TWEET, tweetId: 'ig_DdwR5k6CKQM' }
+    const args = { tweet, platform: 'instagram' as const, extension: '.jpg' as const }
+    expect(plan({ ...args, layout: 'flat' }).relativePath).toBe(
+      'instagram\\DdwR5k6CKQM\\ig_DdwR5k6CKQM.jpg'
+    )
+    expect(plan({ ...args, layout: 'by-author', mediaIndex: 2 }).relativePath).toBe(
+      'instagram\\someuser\\DdwR5k6CKQM\\ig_DdwR5k6CKQM_v2.jpg'
+    )
+    const byDate = plan({ ...args, layout: 'by-date' })
+    expect(byDate.dirSegments).toEqual(['instagram', '2024', expect.any(String), 'DdwR5k6CKQM'])
+  })
+
+  it('sanitizes a shortcode when it would be a reserved Windows folder', () => {
+    const tweet = { ...TWEET, tweetId: 'ig_CON' }
+    expect(plan({ tweet, platform: 'instagram', layout: 'flat' }).dirSegments).toEqual([
+      'instagram',
+      '_CON'
+    ])
+  })
+
   it('falls back to "unknown" when the author is null', () => {
     expect(plan({ tweet: { ...TWEET, author: null } }).dirSegments).toEqual(['x', 'unknown'])
   })

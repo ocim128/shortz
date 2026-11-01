@@ -3,6 +3,7 @@ import type { DlListEntry, Settings } from '../../../../preload/api'
 import type { DlLineProblemCode } from '../../../../shared/downloader/parse-run-input'
 import { hasBlockingProblem, parseRunInput } from '../../../../shared/downloader/parse-run-input'
 import { dlSkipText } from '../../../../shared/downloader/copy'
+import { isVideoExtension } from '../../../../shared/video-extensions'
 import { Icon } from '../../components/Icon'
 import { formatBytes } from '../../lib/format'
 import { isCommentLine, useDlStore, type DlRow, type DlRun } from '../../stores/dlStore'
@@ -11,7 +12,7 @@ import { toast } from '../../stores/toastStore'
 import { S } from '../../strings'
 
 /**
- * DownloaderScreen — paste X status links, watch them resolve and download,
+ * DownloaderScreen — paste post links, watch them resolve and download,
  * then send a finished file straight into the editor.
  *
  * The renderer previews with the same pure parser the core runs, sends every
@@ -254,6 +255,7 @@ export function DownloaderScreen({
         <section className="dl__input-pane">
           <h2 className="pane-title">{S.dlTitle}</h2>
           <p className="dl__intro">{S.dlIntro}</p>
+          <p className="field__hint">{S.dlInstagramNote}</p>
 
           <div className={`dl__editor${running ? ' is-running' : ''}`}>
             <pre className="dl__gutter" ref={gutterRef} aria-hidden="true">
@@ -444,7 +446,15 @@ const DlRowItem = memo(function DlRowItem({
   const percent = mediaPercent(row)
   const size = mediaBytes(row)
   const file = rowFile(row)
-  const firstFile = row.files?.[0] ?? null
+  const firstVideo =
+    row.files?.find((path) => isVideoExtension(path.split('.').pop() ?? '')) ?? null
+  const originalUrl =
+    parseRunInput(row.text)[0]?.url ??
+    (row.tweetId.startsWith('ig_')
+      ? `https://www.instagram.com/p/${row.tweetId.slice(3)}/`
+      : /^\d+$/.test(row.tweetId)
+        ? `https://x.com/i/status/${row.tweetId}`
+        : null)
   const notEmbeddable = row.errorCode === 'NOT_EMBEDDABLE' && fallbackOff
   const resolution = row.chosen?.find((one) => one.height !== null)?.height ?? null
 
@@ -489,9 +499,7 @@ const DlRowItem = memo(function DlRowItem({
             <span className="dl-row__progress-text">
               {percent !== null ? S.dlPercent(percent) : ''}
               {size > 0 ? ` · ${formatBytes(size)}` : ''}
-              {row.progress && row.progress.total
-                ? ` / ${formatBytes(row.progress.total)}`
-                : ''}
+              {row.progress && row.progress.total ? ` / ${formatBytes(row.progress.total)}` : ''}
               {row.media && row.media.length > 1
                 ? ` · ${S.dlMediaPosition(row.progress?.mediaIndex ?? 1, row.media.length)}`
                 : ''}
@@ -503,9 +511,7 @@ const DlRowItem = memo(function DlRowItem({
           (size > 0 || file !== null) && (
             <div className="dl-row__meta">
               {size > 0 && <span>{formatBytes(size)}</span>}
-              {row.media && row.media.length > 1 && (
-                <span>{S.dlMediaCount(row.media.length)}</span>
-              )}
+              {row.media && row.media.length > 1 && <span>{S.dlMediaCount(row.media.length)}</span>}
               {file && (
                 <span className="dl-row__file" title={file}>
                   {basenameOf(file)}
@@ -514,9 +520,7 @@ const DlRowItem = memo(function DlRowItem({
             </div>
           )}
 
-        {row.skipReason && (
-          <div className="dl-row__skip">{dlSkipText(row.skipReason)}</div>
-        )}
+        {row.skipReason && <div className="dl-row__skip">{dlSkipText(row.skipReason)}</div>}
 
         {row.error && (
           <div
@@ -543,12 +547,8 @@ const DlRowItem = memo(function DlRowItem({
       </div>
 
       <div className="dl-row__actions">
-        {firstFile !== null && (
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => onOpenAsProject(firstFile)}
-          >
+        {firstVideo !== null && (
+          <button type="button" className="btn btn-sm" onClick={() => onOpenAsProject(firstVideo)}>
             {S.dlRowNewProject}
           </button>
         )}
@@ -593,13 +593,13 @@ const DlRowItem = memo(function DlRowItem({
                 {S.dlRowCopyPath}
               </button>
             )}
-            {row.tweetId.length > 0 && (
+            {originalUrl && (
               <button
                 type="button"
                 role="menuitem"
                 onClick={() => {
                   onCloseMenu()
-                  void onCopy(`https://x.com/i/status/${row.tweetId}`, S.dlCopiedUrl)
+                  void onCopy(originalUrl, S.dlCopiedUrl)
                 }}
               >
                 <Icon name="external" size={14} />

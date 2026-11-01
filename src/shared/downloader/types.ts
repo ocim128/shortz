@@ -8,7 +8,7 @@
  * into a filtered list, so a malformed or duplicate line cannot shift rows.
  */
 
-export type ResolverName = 'syndication' | 'fxtwitter' | 'ytdlp'
+export type ResolverName = 'syndication' | 'fxtwitter' | 'ytdlp' | 'instagram'
 
 export interface TweetRef {
   tweetId: string

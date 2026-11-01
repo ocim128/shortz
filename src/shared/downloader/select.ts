@@ -105,7 +105,14 @@ function pickMaxHeight(candidates: Variant[], asset: MediaAsset, cap: number): V
  * (photo-only post, no progressive variant).
  */
 export function selectVariant(asset: MediaAsset, quality: DlQuality): Chosen | null {
-  if (asset.kind === 'photo') return null
+  if (asset.kind === 'photo') {
+    const candidates = asset.variants.filter(
+      (variant) =>
+        variant.url.length > 0 && variant.contentType?.toLowerCase().startsWith('image/') === true
+    )
+    if (candidates.length === 0) return null
+    return { index: asset.index, media: asset, variant: pickBest(candidates, asset) }
+  }
   const candidates = asset.variants.filter(
     (variant) => typeof variant.url === 'string' && variant.url.length > 0 && isProgressive(variant)
   )

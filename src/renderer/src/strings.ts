@@ -143,17 +143,19 @@ export const S = {
   errBatchRender: 'Batch render failed',
   batchProgressOf: (done: number, total: number) => `${done} / ${total}`,
 
-  // Downloader — one textarea line = one X post (twitter-downloader)
+  // Downloader — one textarea line = one post
   downloader: 'Downloader',
-  dlTitle: 'X LINKS',
+  dlTitle: 'POST LINKS',
   dlBack: 'Back',
-  dlIntro: "Paste X status links — one per line. '#' starts a comment.",
+  dlIntro: "Paste X or Instagram post links — one per line. '#' starts a comment.",
+  dlInstagramNote:
+    'Instagram downloads use the third-party oginstagram.com service, which receives the post link and your IP address. Only public posts are supported; availability can vary.',
   dlPlaceholder:
-    'https://x.com/someuser/status/1750123456789012352\nx.com/other/status/1750123456789012999\n# the funny squirrel one\nhttps://t.co/abcd1234',
+    'https://x.com/someuser/status/1750123456789012352\nhttps://www.instagram.com/p/DdwR5k6CKQM/\n# one post per line',
   dlLinkSummary: (links: number, problems: number) =>
     `${links} link${links === 1 ? '' : 's'} · ${problems} problem${problems === 1 ? '' : 's'}`,
   dlProblemLine: (n: number) => `line ${n}`,
-  dlProblemNoLink: 'No X post link on this line',
+  dlProblemNoLink: 'No supported post link on this line',
   dlProblemInvalidId: "That post id doesn't look right",
   dlProblemShortLink: 'Short link — will expand',
   dlProblemDuplicate: 'Same post as an earlier line',
@@ -208,7 +210,7 @@ export const S = {
   dlPercent: (pct: number) => `${pct}%`,
   dlEmptyTitle: 'Paste a few links to start',
   dlEmptyBody:
-    'ShortZ resolves each post, downloads the best video and saves it in your folder. Nothing is uploaded and no account is needed.',
+    'ShortZ resolves each post and saves available media in your download folder. Availability depends on the post and platform.',
   dlLegal:
     'Download only content you have the right to use. ShortZ stores files locally and never uploads anything.',
   dlFallbackHint:
@@ -253,7 +255,7 @@ export const S = {
   secAbout: 'About',
   secDownloads: 'Downloads',
   downloadsHint:
-    'Twitter/X links only. Files go to this folder; ShortZ keeps its index and poster cache in the app data folder.',
+    'X and Instagram post downloads go to this folder; ShortZ keeps its index and poster cache in the app data folder.',
   downloadsDirLabel: 'Download folder',
   downloadsBrowse: 'Browse…',
   downloadsTemplateLabel: 'Filename template',
