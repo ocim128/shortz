@@ -4,6 +4,7 @@ import {
   basenameOf,
   extensionOf,
   hookFieldKeyOf,
+  isBareStemLookup,
   isVideoPath,
   normalizeBatchPath,
   parseBatchText,
@@ -89,6 +90,25 @@ describe('batch line parsing', () => {
     expect(lines[0]!.hook).toBe('ONLY A HOOK')
   })
 
+  it('accepts a bare file name — no folder needed', () => {
+    const lines = parseBatchText(`2112680262353969521.mp4${BATCH_SEPARATOR}Dual Camera Hack`)
+    expect(lines[0]!.path).toBe('2112680262353969521.mp4')
+    expect(lines[0]!.hook).toBe('Dual Camera Hack')
+    expect(lines[0]!.problems).toEqual([])
+  })
+
+  it('accepts a bare post id and keeps the separator split', () => {
+    const lines = parseBatchText(`2112680262353969521${BATCH_SEPARATOR}Dual Camera Hack`)
+    expect(lines[0]!.path).toBe('2112680262353969521')
+    expect(lines[0]!.hook).toBe('Dual Camera Hack')
+    expect(lines[0]!.problems).toEqual([])
+  })
+
+  it('does not treat a line of prose as a bare file name', () => {
+    const lines = parseBatchText('just some words with no separator')
+    expect(lines[0]!.problems.map((p) => p.code)).toEqual(['unsupported-extension'])
+  })
+
   it('reports a non-video extension, with the offending extension named', () => {
     const lines = parseBatchText(`C:\\clips\\notes.txt${BATCH_SEPARATOR}HOOK`)
     expect(lines[0]!.problems).toEqual([{ code: 'unsupported-extension', detail: '.txt' }])
@@ -159,6 +179,15 @@ describe('batch path helpers', () => {
     expect(isVideoPath('a.txt')).toBe(false)
     expect(isVideoPath('a')).toBe(false)
     expect(isVideoPath('.mp4')).toBe(false)
+  })
+
+  it('flags bare ids as name lookups, not as broken paths', () => {
+    expect(isBareStemLookup('2112680262353969521')).toBe(true)
+    expect(isBareStemLookup('  2112680262353969521  ')).toBe(true)
+    expect(isBareStemLookup('2112680262353969521.mp4')).toBe(false)
+    expect(isBareStemLookup('C:\\clips\\noext')).toBe(false)
+    expect(isBareStemLookup('two words')).toBe(false)
+    expect(isBareStemLookup('')).toBe(false)
   })
 
   it('picks the first required input as the hook receiver', () => {

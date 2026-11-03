@@ -11,6 +11,9 @@
  *   point is the first `•` whose left side ends in a video extension, so a
  *   bullet typed inside a hook (or inside a folder name) cannot break the line.
  * - Explorer's "Copy as path" wraps the location in double quotes — stripped.
+ * - The location does not have to be a full path: a bare file name
+ *   (`2112680262353969521.mp4`) or a bare id (`2112680262353969521`) is
+ *   accepted and looked up by name at render time (src/main/batch-resolve.ts).
  * - Blank lines are ignored; every other line becomes one item.
  */
 
@@ -89,6 +92,26 @@ export function isVideoPath(filePath: string): boolean {
   return ext.length > 0 && (VIDEO_EXTENSIONS as readonly string[]).includes(ext)
 }
 
+/**
+ * A bare, separator-free token with no extension — an id such as
+ * `2112680262353969521`. Treated as a lookup key rather than a path: the main
+ * process matches it against `<id>.<video ext>` inside the download and output
+ * folders. Whitespace is rejected so a line of prose typed without a separator
+ * cannot pass as a file name.
+ */
+const BARE_STEM_RE = /^[^\s\\/]+$/
+
+export function isBareStemLookup(value: string): boolean {
+  const trimmed = value.trim()
+  if (!BARE_STEM_RE.test(trimmed)) return false
+  return extensionOf(trimmed).length === 0
+}
+
+/** True when the line's location can reach a file: a real path or a name lookup. */
+export function isResolvableSource(value: string): boolean {
+  return isVideoPath(value) || isBareStemLookup(value)
+}
+
 /** All indices of a (single-char) needle in a string. */
 function indicesOf(haystack: string, needle: string): number[] {
   const out: number[] = []
@@ -143,7 +166,7 @@ export function parseBatchText(text: string): BatchLine[] {
 
     if (filePath.length === 0) {
       problems.push({ code: 'missing-path' })
-    } else if (!isVideoPath(filePath)) {
+    } else if (!isResolvableSource(filePath)) {
       const ext = extensionOf(filePath)
       problems.push({
         code: 'unsupported-extension',

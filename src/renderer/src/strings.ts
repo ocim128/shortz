@@ -97,11 +97,13 @@ export const S = {
   batchTitle: 'BATCH EDIT',
   batchBack: 'Back',
   batchIntro:
-    'One line per video: the file location, then • then the hook text. Paste as many lines as you want — they render one after another.',
+    'One line per video: the file location, then • then the hook text. A bare file name or post id is enough — full paths are optional.',
   batchFormatExample: 'C:\\Users\\user\\Videos\\ShortZ\\tupai.mp4•TUPAI YG LUCU',
+  batchLookupHint:
+    'Short on time? Paste just the name: 2112680262353969521.mp4•HOOK — or the id alone, 2112680262353969521•HOOK. ShortZ finds it in your download and output folders.',
   batchInputLabel: 'Videos and hooks',
   batchInputPlaceholder:
-    'C:\\Users\\user\\Videos\\ShortZ\\tupai.mp4•TUPAI YG LUCU\nC:\\Users\\user\\Videos\\ShortZ\\kucing.mp4•KUCING YG MALAS',
+    'C:\\Users\\user\\Videos\\ShortZ\\tupai.mp4•TUPAI YG LUCU\n2112680262353969521.mp4•KUCING YG MALAS',
   batchLinesSummary: (ok: number, total: number) => `${ok} of ${total} lines ready`,
   batchMissingHooks: (n: number) => `${n} line${n === 1 ? '' : 's'} without a hook`,
   batchProblemLine: (n: number) => `line ${n}`,

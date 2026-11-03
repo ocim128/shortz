@@ -1,4 +1,3 @@
-import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { ulid } from 'ulid'
 import type {
@@ -9,6 +8,7 @@ import type {
   BatchRunSummary
 } from '../preload/api'
 import { buildOutputPath } from './output-path'
+import { BatchSourceResolver } from './batch-resolve'
 import { currentSettings, probeCachesDir, resourcesDir, dataDir } from './data'
 import { resolveFfmpegBinariesCached } from '../core/ffmpeg/resolve-bin'
 import { probeWithCache } from '../core/ffmpeg/probe'
@@ -118,6 +118,12 @@ export async function runBatch(request: BatchRunRequest): Promise<BatchRunSummar
     const template = await loadTemplateById(resourcesDir(), templateId)
     const hookKey = hookFieldKeyOf(template.inputs)
     const outputDir = request.outputDir ?? settings.output.dir
+    // Lines may carry a bare file name or post id instead of a full path; the
+    // resolver turns those into real files and caches the folder index for the
+    // whole run (src/main/batch-resolve.ts).
+    const resolver = new BatchSourceResolver({
+      roots: [settings.downloads.dir, outputDir]
+    })
     // 'auto' stays on software x264 for determinism; NVENC is the one hardware
     // path the v1 arg-builder supports.
     const preferred = settings.encoder.preferred
@@ -137,9 +143,7 @@ export async function runBatch(request: BatchRunRequest): Promise<BatchRunSummar
       try {
         emit(event(jobId, item, i, total, 'probing', { percent: 0 }))
 
-        const abs = path.resolve(item.path)
-        const stat = await fsp.stat(abs).catch(() => null)
-        if (!stat || !stat.isFile()) throw new Error(`File not found: ${abs}`)
+        const abs = await resolver.resolve(item.path)
 
         // 'source' fps is resolved per item — clips in one batch may differ.
         let fps: number | undefined = request.fps

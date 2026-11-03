@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -250,6 +250,42 @@ describe('runBatch — real render queue', () => {
     // Restore the shared pattern for any later test.
     settings.output.filenamePattern = '{name}_{seq}'
     await saveSettings(settings, SCRATCH)
+  }, 240_000)
+
+  it('renders a line that carries only the post id — no folder, no extension', async () => {
+    const downloads = path.join(SCRATCH, 'downloads')
+    const settings = defaultSettings()
+    settings.output.dir = OUT_DIR
+    settings.output.filenamePattern = '{name}_{seq}'
+    settings.encoder.crf = 23
+    settings.encoder.fps = 30
+    settings.downloads.dir = downloads
+    await saveSettings(settings, SCRATCH)
+
+    // The downloader's by-author layout, named after the post id.
+    const id = '2112680262353969521'
+    const target = path.join(downloads, 'x', 'Rainmaker1973', `${id}.mp4`)
+    await mkdir(path.dirname(target), { recursive: true })
+    await copyFile(CLIP_A, target)
+
+    const summary = await runBatch({
+      items: [{ id: 'line-0', path: id, hook: 'NO EXTENSION' }],
+      configId: CONFIG_ID,
+      configTrim: false,
+      outputDir: OUT_DIR
+    })
+
+    expect(summary.completed).toBe(1)
+    expect(summary.failed).toBe(0)
+    expect(await readdir(OUT_DIR)).toContain(`${id}_1.mp4`)
+
+    // Restore the shared settings for any later test.
+    const restored = defaultSettings()
+    restored.output.dir = OUT_DIR
+    restored.output.filenamePattern = '{name}_{seq}'
+    restored.encoder.crf = 23
+    restored.encoder.fps = 30
+    await saveSettings(restored, SCRATCH)
   }, 240_000)
 
   it('sanity: the fixtures this suite relies on exist', () => {

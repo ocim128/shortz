@@ -234,6 +234,7 @@ export function BatchScreen({ onBack }: BatchScreenProps): JSX.Element {
             </div>
           )}
 
+          <p className="field__hint">{S.batchLookupHint}</p>
           <p className="field__hint">
             Separator: {BATCH_SEPARATOR} · extensions:{' '}
             {VIDEO_EXTENSIONS.slice(0, 6).join(', ')}…
