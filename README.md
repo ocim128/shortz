@@ -25,3 +25,5 @@ Notes:
 **Status:** end-to-end functional — import → edit → preview (shared layout engine) → export/batch render through FFmpeg, plus a headless render CLI (`pnpm cli render project.json`).
 
 The Downloader accepts X post links and public Instagram post links, including Instagram photos and videos in carousels. Each Instagram post's files are grouped in a folder named for its shortcode, within the selected download layout. Instagram lookups use the third-party OGInstagram service, which receives the post link and your IP address; availability depends on that service and Instagram. Private or login-required posts are not supported.
+
+Use **Compress video** on the home screen to create a smaller H.264 MP4 next to a selected video. Choose a quality level; the original is kept and existing output files are never replaced. Results vary with the source, and an already compressed video may produce a larger file.

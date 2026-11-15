@@ -71,6 +71,7 @@ import {
   saveEditorConfig
 } from '../core/store/editor-configs'
 import { logInfo, logWarn } from '../core/log'
+import { compressVideo, type CompressionQuality } from '../core/ffmpeg/compress'
 
 /**
  * Typed IPC handlers — the real product wiring (docs/technical/project-structure.md
@@ -109,6 +110,7 @@ async function resolveBinariesWithSettings(): Promise<
 
 // One render at a time (the renderer's store models a single job).
 let activeAbort: AbortController | null = null
+let compressionAbort: AbortController | null = null
 
 /**
  * The cross-feature job slots (AUDIT A17). Both the export/batch path and the
@@ -246,6 +248,29 @@ async function runExport(p: Project, opts: ExportOptions): Promise<ExportResult>
 }
 
 export function registerIpcHandlers(): void {
+  handle('shortz:compressVideo', async (source: string, quality: CompressionQuality) => {
+    if (jobSlots.exportInFlight) throw new Error('Another video operation is already running')
+    jobSlots.exportInFlight = true
+    const controller = new AbortController()
+    compressionAbort = controller
+    try {
+      const binaries = await resolveBinariesWithSettings()
+      return await compressVideo({
+        source,
+        quality,
+        ffmpegPath: binaries.ffmpegPath,
+        ffprobePath: binaries.ffprobePath,
+        signal: controller.signal,
+        onProgress: (percent) => sendToRenderer('shortz:compression:progress', percent)
+      })
+    } finally {
+      compressionAbort = null
+      jobSlots.exportInFlight = false
+    }
+  })
+  handle('shortz:cancelCompression', async () => {
+    compressionAbort?.abort()
+  })
   // --- projects ---------------------------------------------------------------
 
   handle('shortz:createProject', async (sourcePath: string): Promise<Project> => {

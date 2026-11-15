@@ -53,6 +53,9 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 }
 
 const api: ShortzApi = {
+  compressVideo: (source, quality) => ipcRenderer.invoke('shortz:compressVideo', source, quality),
+  cancelCompression: () => ipcRenderer.invoke('shortz:cancelCompression'),
+  onCompressionProgress: (cb) => subscribe('shortz:compression:progress', cb),
   // projects
   createProject: (sourcePath) => ipcRenderer.invoke(CHANNEL.createProject, sourcePath),
   listProjects: () => ipcRenderer.invoke(CHANNEL.listProjects),

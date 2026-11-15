@@ -231,6 +231,12 @@ export interface FfmpegInfo {
 // ---------------------------------------------------------------------------
 
 export interface ShortzApi {
+  compressVideo(
+    source: string,
+    quality: 'high' | 'balanced' | 'small'
+  ): Promise<{ path: string; originalBytes: number; sizeBytes: number }>
+  cancelCompression(): Promise<void>
+  onCompressionProgress(cb: (percent: number) => void): Unsubscribe
   // projects
   createProject(sourcePath: string): Promise<Project>
   listProjects(): Promise<ProjectMeta[]>

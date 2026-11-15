@@ -10,6 +10,33 @@
   flex-direction: column;
 }
 
+.compress__content {
+  width: min(100%, 680px);
+  padding: 32px;
+}
+.compress__content select {
+  max-width: 320px;
+  display: block;
+  margin-top: 8px;
+}
+.compress__path {
+  overflow-wrap: anywhere;
+  color: var(--fg-1);
+}
+.compress__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+.compress__result {
+  margin-top: 24px;
+  padding: 16px;
+}
+.compress__content progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
 /* --- shared bits ---------------------------------------------------------- */
 
 .btn {

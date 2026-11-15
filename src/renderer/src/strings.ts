@@ -23,6 +23,20 @@ export const S = {
   homeThumbFailed: 'Thumbnail unavailable',
   homeBatch: 'Batch',
   homeDownloader: 'Downloader',
+  homeCompress: 'Compress video',
+  compressIntro:
+    'Make an MP4 smaller while keeping the original video. The compressed file is saved beside it.',
+  compressChoose: 'Choose video',
+  compressQuality: 'Quality',
+  compressHigh: 'High quality',
+  compressBalanced: 'Balanced',
+  compressSmall: 'Smaller file',
+  compressStart: 'Compress video',
+  compressRunning: 'Compressing…',
+  compressResult: 'Compression complete',
+  compressError: 'Compression failed',
+  compressSizeWarning:
+    'This video was already efficiently compressed; the new file is not smaller.',
 
   // Editor — top bar
   back: 'Back',
