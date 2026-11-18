@@ -38,6 +38,8 @@ export interface OutputPathInput {
   /** `{seq}` — 1-based batch position; single exports keep the documented "1". */
   seq?: number
   now?: Date
+  /** Output extension with the dot — exports stay '.mp4', TTS passes '.mp3'. */
+  ext?: string
 }
 
 export function buildOutputPath(input: OutputPathInput): string {
@@ -67,5 +69,5 @@ export function buildOutputPath(input: OutputPathInput): string {
   // device name (a project called "CON") that the sanitizer had prefixed.
   const finalName = stripped.length === 0 ? 'export' : sanitizeNamePart(stripped)
   const safeName = finalName.length === 0 ? 'export' : finalName
-  return path.join(input.dir, `${safeName}.mp4`)
+  return path.join(input.dir, `${safeName}${input.ext ?? '.mp4'}`)
 }

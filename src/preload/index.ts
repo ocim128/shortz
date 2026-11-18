@@ -56,6 +56,10 @@ const api: ShortzApi = {
   compressVideo: (source, quality) => ipcRenderer.invoke('shortz:compressVideo', source, quality),
   cancelCompression: () => ipcRenderer.invoke('shortz:cancelCompression'),
   onCompressionProgress: (cb) => subscribe('shortz:compression:progress', cb),
+  // speech
+  ttsSynthesize: (req) => ipcRenderer.invoke('shortz:ttsSynthesize', req),
+  ttsCancel: () => ipcRenderer.invoke('shortz:ttsCancel'),
+  ttsPreviewVoice: (voiceId) => ipcRenderer.invoke('shortz:ttsPreviewVoice', voiceId),
   // projects
   createProject: (sourcePath) => ipcRenderer.invoke(CHANNEL.createProject, sourcePath),
   listProjects: () => ipcRenderer.invoke(CHANNEL.listProjects),

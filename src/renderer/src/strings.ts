@@ -24,6 +24,7 @@ export const S = {
   homeBatch: 'Batch',
   homeDownloader: 'Downloader',
   homeCompress: 'Compress video',
+  homeSpeech: 'Speech',
   compressIntro:
     'Make an MP4 smaller while keeping the original video. The compressed file is saved beside it.',
   compressChoose: 'Choose video',
@@ -37,6 +38,25 @@ export const S = {
   compressError: 'Compression failed',
   compressSizeWarning:
     'This video was already efficiently compressed; the new file is not smaller.',
+
+  // Speech (text-to-speech)
+  ttsIntro:
+    'Turn text into a narrated MP3 with a survival-storyteller voice. Pick a voice, preview it, generate.',
+  ttsTextLabel: 'Text',
+  ttsTextPlaceholder: 'Write the narration here…',
+  ttsVoiceLabel: 'Voice',
+  ttsVoiceTag: (n: number) => `${n} voices — male, Indonesian, storyteller`,
+  ttsPreview: 'Preview',
+  ttsPreviewLoading: 'Loading sample…',
+  ttsPreviewFailed: 'Preview unavailable — check your connection',
+  ttsFilenameLabel: 'File name',
+  ttsFilenamePlaceholder: 'narration',
+  ttsGenerate: 'Generate speech',
+  ttsRunning: 'Generating…',
+  ttsCancel: 'Cancel',
+  ttsResult: 'Speech generated',
+  ttsError: 'Speech generation failed',
+  ttsCharsCount: (n: number, max: number) => `${n} / ${max} chars`,
 
   // Editor — top bar
   back: 'Back',

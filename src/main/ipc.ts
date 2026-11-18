@@ -72,6 +72,9 @@ import {
 } from '../core/store/editor-configs'
 import { logInfo, logWarn } from '../core/log'
 import { compressVideo, type CompressionQuality } from '../core/ffmpeg/compress'
+import { synthesizeSpeech } from '../core/tts/synthesize'
+import { findVoicePreset, PREVIEW_TEXT } from '../shared/tts/voices'
+import { uniqueOutputPath } from '../core/store/fs-utils'
 
 /**
  * Typed IPC handlers — the real product wiring (docs/technical/project-structure.md
@@ -111,6 +114,7 @@ async function resolveBinariesWithSettings(): Promise<
 // One render at a time (the renderer's store models a single job).
 let activeAbort: AbortController | null = null
 let compressionAbort: AbortController | null = null
+let ttsAbort: AbortController | null = null
 
 /**
  * The cross-feature job slots (AUDIT A17). Both the export/batch path and the
@@ -270,6 +274,71 @@ export function registerIpcHandlers(): void {
   })
   handle('shortz:cancelCompression', async () => {
     compressionAbort?.abort()
+  })
+
+  // --- speech (Edge TTS — network job, own single-flight slot) -----------------
+
+  handle(
+    'shortz:ttsSynthesize',
+    async (req: { text: string; voiceId: string; filename?: string }): Promise<{
+      path: string
+      url: string
+      bytes: number
+    }> => {
+      if (ttsAbort) throw new Error('A speech generation is already running — cancel it first')
+      const controller = new AbortController()
+      ttsAbort = controller
+      const preset = findVoicePreset(req.voiceId)
+      if (!preset) throw new Error(`Unknown voice: ${req.voiceId}`)
+      try {
+        const [settings, binaries] = await Promise.all([currentSettings(), resolveBinariesWithSettings()])
+        const name = (req.filename ?? '').trim() || 'narration'
+        const target = uniqueOutputPath(
+          buildOutputPath({
+            dir: settings.output.dir,
+            pattern: settings.output.filenamePattern,
+            name,
+            templateId: 'tts',
+            ext: '.mp3'
+          })
+        )
+        logInfo(`[tts] start — voice=${preset.id} (${preset.name}) chars=${req.text.length}`)
+        const result = await synthesizeSpeech({
+          text: req.text,
+          voiceId: req.voiceId,
+          outputPath: target,
+          ffmpegPath: binaries.ffmpegPath,
+          signal: controller.signal
+        })
+        logInfo(`[tts] done — voice=${preset.id} ${(result.bytes / 1e3).toFixed(0)} kB -> ${result.path}`)
+        return { ...result, url: mintMediaUrl(result.path) }
+      } finally {
+        ttsAbort = null
+      }
+    }
+  )
+
+  handle('shortz:ttsCancel', async (): Promise<void> => {
+    ttsAbort?.abort()
+  })
+
+  handle('shortz:ttsPreviewVoice', async (voiceId: string): Promise<string> => {
+    const preset = findVoicePreset(voiceId)
+    if (!preset) throw new Error(`Unknown voice: ${voiceId}`)
+    // Cache per voice in the data dir — the sample never changes, so every
+    // preview after the first is an instant local playback.
+    const dir = path.join(dataDir(), 'cache', 'tts-preview')
+    const file = path.join(dir, `${preset.id}.mp3`)
+    const stat = await fsp.stat(file).catch(() => null)
+    if (stat && stat.isFile() && stat.size > 0) return mintMediaUrl(file)
+    const binaries = await resolveBinariesWithSettings()
+    await synthesizeSpeech({
+      text: PREVIEW_TEXT,
+      voiceId,
+      outputPath: file,
+      ffmpegPath: binaries.ffmpegPath
+    })
+    return mintMediaUrl(file)
   })
   // --- projects ---------------------------------------------------------------
 

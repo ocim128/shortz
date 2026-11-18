@@ -4,6 +4,7 @@ import { BatchScreen } from './screens/Batch/BatchScreen'
 import { DownloaderScreen } from './screens/Downloader/DownloaderScreen'
 import { HomeScreen } from './screens/Home/HomeScreen'
 import { CompressScreen } from './screens/Compress/CompressScreen'
+import { SpeechScreen } from './screens/Speech/SpeechScreen'
 import { SettingsModal } from './components/SettingsModal'
 import { ToastStack } from './components/Toast'
 import { loadBundledFonts } from './preview/font-loader'
@@ -14,7 +15,7 @@ import { subscribeDlProgress } from './stores/dlStore'
 import { toast } from './stores/toastStore'
 import { S } from './strings'
 
-type Screen = 'home' | 'editor' | 'batch' | 'downloader' | 'compress'
+type Screen = 'home' | 'editor' | 'batch' | 'downloader' | 'compress' | 'speech'
 
 export function App(): JSX.Element {
   const active = useProjectStore((s) => s.active)
@@ -78,6 +79,8 @@ export function App(): JSX.Element {
         <EditorScreen />
       ) : screen === 'compress' ? (
         <CompressScreen onBack={() => setScreen('home')} />
+      ) : screen === 'speech' ? (
+        <SpeechScreen onBack={() => setScreen('home')} />
       ) : screen === 'batch' ? (
         <BatchScreen onBack={() => setScreen('home')} />
       ) : screen === 'downloader' ? (
@@ -92,6 +95,7 @@ export function App(): JSX.Element {
           onOpenBatch={() => setScreen('batch')}
           onOpenDownloader={() => setScreen('downloader')}
           onOpenCompress={() => setScreen('compress')}
+          onOpenSpeech={() => setScreen('speech')}
         />
       )}
       {settingsOpen && (

@@ -11,13 +11,15 @@ interface HomeScreenProps {
   onOpenBatch: () => void
   onOpenDownloader: () => void
   onOpenCompress: () => void
+  onOpenSpeech: () => void
 }
 
 export function HomeScreen({
   onOpenSettings,
   onOpenBatch,
   onOpenDownloader,
-  onOpenCompress
+  onOpenCompress,
+  onOpenSpeech
 }: HomeScreenProps): JSX.Element {
   const list = useProjectStore((s) => s.list)
   const [dragOver, setDragOver] = useState(false)
@@ -130,6 +132,10 @@ export function HomeScreen({
             {S.appName}
           </div>
           <div className="home__header-actions">
+            <button type="button" className="btn btn-ghost" onClick={onOpenSpeech}>
+              <Icon name="music" size={15} />
+              {S.homeSpeech}
+            </button>
             <button type="button" className="btn btn-ghost" onClick={onOpenCompress}>
               <Icon name="film" size={15} />
               {S.homeCompress}

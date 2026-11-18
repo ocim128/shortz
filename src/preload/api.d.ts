@@ -226,6 +226,21 @@ export interface FfmpegInfo {
   version: string | null
 }
 
+/** Speech request — voiceId resolves against shared/tts/voices.ts. */
+export interface TtsSynthesizeRequest {
+  text: string
+  voiceId: string
+  /** Optional output name; defaults to "narration". */
+  filename?: string
+}
+
+export interface TtsResult {
+  path: string
+  /** media:// URL for in-app playback of the fresh MP3. */
+  url: string
+  bytes: number
+}
+
 // ---------------------------------------------------------------------------
 // The bridge
 // ---------------------------------------------------------------------------
@@ -237,6 +252,11 @@ export interface ShortzApi {
   ): Promise<{ path: string; originalBytes: number; sizeBytes: number }>
   cancelCompression(): Promise<void>
   onCompressionProgress(cb: (percent: number) => void): Unsubscribe
+  // speech (Edge TTS)
+  ttsSynthesize(req: TtsSynthesizeRequest): Promise<TtsResult>
+  ttsCancel(): Promise<void>
+  /** media:// URL of the cached voice sample (synthesized on first ask). */
+  ttsPreviewVoice(voiceId: string): Promise<string>
   // projects
   createProject(sourcePath: string): Promise<Project>
   listProjects(): Promise<ProjectMeta[]>

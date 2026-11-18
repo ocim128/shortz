@@ -37,6 +37,83 @@
   accent-color: var(--accent);
 }
 
+/* --- speech (text-to-speech) ------------------------------------------------ */
+
+.speech__content .field__label {
+  display: block;
+  margin-top: 22px;
+}
+.speech__text {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}
+.speech__chars {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--fg-1);
+}
+.speech__chars.is-over {
+  color: var(--err);
+}
+.speech__voice-tag {
+  margin: 2px 0 10px;
+  font-size: 12px;
+  color: var(--fg-1);
+}
+.speech__voices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.speech__voice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  cursor: pointer;
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
+}
+.speech__voice:hover {
+  border-color: var(--border-hover);
+}
+.speech__voice.is-selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.speech__voice.is-error .btn {
+  color: var(--err);
+}
+.speech__voice input {
+  accent-color: var(--accent);
+}
+.speech__voice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.speech__voice-name {
+  font-weight: 600;
+}
+.speech__voice-desc {
+  font-size: 12px;
+  color: var(--fg-1);
+}
+.speech__filename {
+  max-width: 320px;
+}
+.speech__player {
+  width: 100%;
+  margin: 8px 0;
+}
+
 /* --- shared bits ---------------------------------------------------------- */
 
 .btn {

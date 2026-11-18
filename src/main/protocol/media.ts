@@ -31,6 +31,9 @@ const MIME_BY_EXT: Record<string, string> = {
   '.mpg': 'video/mpeg',
   '.mpeg': 'video/mpeg',
   '.ts': 'video/mp2t',
+  // TTS results + voice previews stream through the same handler (minted by
+  // the tts IPC handlers; getMediaUrl still validates clips strictly above).
+  '.mp3': 'audio/mpeg',
   // Project card thumbnails stream through the same handler (minted only via
   // shortz:getThumbUrl; getMediaUrl still validates clips strictly above).
   '.jpg': 'image/jpeg',
