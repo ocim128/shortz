@@ -7,8 +7,13 @@ import { loadSettings, resolveDataDir } from '../core/store/settings'
 import { stopAsrWorker } from '../core/tts/asr'
 import { createProvider, PROVIDER_IDS } from '../core/tts/provider'
 import { runNarrationPipeline, type NarrationArtifacts } from '../core/tts/pipeline'
+import { publishNarrationArtifacts } from '../core/tts/publish'
 import { DEFAULT_VOICE_ID, findVoicePreset, TTS_MAX_TEXT_LENGTH, VOICE_PRESETS } from '../shared/tts/voices'
 import { DEFAULT_VOICE_ID as EDGE_DEFAULT_VOICE_ID, findVoicePreset as findEdgeVoicePreset, VOICE_PRESETS as EDGE_VOICE_PRESETS } from '../shared/tts/legacy-edge-voices'
+import { DEFAULT_GEMINI_TTS_VOICE, GEMINI_TTS_VOICES, isGeminiCustomVoice } from '../core/tts/gemini-tts'
+import { resolveTtsEnvironment } from '../core/tts/environment'
+import { INVESTIGATOR_VOICE } from '../shared/tts/gemini'
+export { resolveTtsEnvironment } from '../core/tts/environment'
 
 const USAGE = `Usage:
   shortz tts (--text <text> | --text-file <utf8-file>) --output <narration.mp3> [--voice <id>]
@@ -27,7 +32,9 @@ Options:
       --text-file      Read the script from a UTF-8 file
       --text           Supply the script directly
       --no-master      Skip the broadcast mastering chain (default: on)
-      --provider <id>  Speech engine: ${PROVIDER_IDS.join(' | ')} (default: voxcpm)
+      --provider <id>  Speech engine: ${PROVIDER_IDS.join(' | ')} (default: gemini-tts)
+      --model <id>     Gemini TTS model (default: gemini-3.8-flash-tts)
+      --gemini-key-index <n>  Use a specific configured Gemini key (1-based)
       --asr-model <s>  Whisper verifier size (default: small)
       --list-voices    Show available voice IDs
   -h, --help          Show this help
@@ -37,6 +44,7 @@ Exit codes: 0 pass · 1 usage/runtime error · 2 narration failed QA (see report
 
 export async function runTtsCommand(args: string[]): Promise<number> {
   try {
+    const { providerDefault, geminiApiKeys } = await resolveTtsEnvironment()
     const { values } = parseArgs({
       args,
       options: {
@@ -45,7 +53,9 @@ export async function runTtsCommand(args: string[]): Promise<number> {
         output: { type: 'string', short: 'o' },
         voice: { type: 'string' },
         'no-master': { type: 'boolean' },
-        provider: { type: 'string', default: 'voxcpm' },
+        provider: { type: 'string', default: providerDefault },
+        model: { type: 'string' },
+        'gemini-key-index': { type: 'string' },
         'asr-model': { type: 'string', default: 'small' },
         'list-voices': { type: 'boolean' },
         help: { type: 'boolean', short: 'h' }
@@ -61,6 +71,11 @@ export async function runTtsCommand(args: string[]): Promise<number> {
       }
       if (values.provider === 'cloud') {
         console.log('Cloud voice is selected by ELEVENLABS_VOICE_ID.')
+        return 0
+      }
+      if (values.provider === 'gemini-tts') {
+        console.log(`${INVESTIGATOR_VOICE.id}\t${INVESTIGATOR_VOICE.name}\t${INVESTIGATOR_VOICE.description}`)
+        for (const voice of GEMINI_TTS_VOICES) console.log(voice)
         return 0
       }
       for (const voice of values.provider === 'edge' ? EDGE_VOICE_PRESETS : VOICE_PRESETS) {
@@ -79,11 +94,24 @@ export async function runTtsCommand(args: string[]): Promise<number> {
     if (!PROVIDER_IDS.includes(values.provider as (typeof PROVIDER_IDS)[number])) {
       throw new Error(`Unknown speech provider: ${values.provider}. Known: ${PROVIDER_IDS.join(', ')}`)
     }
-    const voiceId = values.provider === 'cloud' ? (values.voice ?? process.env.ELEVENLABS_VOICE_ID ?? '') : values.voice ?? (values.provider === 'edge' ? EDGE_DEFAULT_VOICE_ID : DEFAULT_VOICE_ID)
+    if (values.model && values.provider !== 'gemini-tts') throw new Error('--model is supported with --provider gemini-tts')
+    const voiceId = values.provider === 'cloud' ? (values.voice ?? process.env.ELEVENLABS_VOICE_ID ?? '') :
+      values.voice ?? (values.provider === 'gemini-tts' ? DEFAULT_GEMINI_TTS_VOICE : values.provider === 'edge' ? EDGE_DEFAULT_VOICE_ID : DEFAULT_VOICE_ID)
     if (values.provider === 'cloud' && (!process.env.ELEVENLABS_API_KEY || !voiceId)) {
       throw new Error('Cloud TTS requires ELEVENLABS_API_KEY and a voice ID (--voice or ELEVENLABS_VOICE_ID)')
     }
-    if (values.provider !== 'cloud' && !(values.provider === 'edge' ? findEdgeVoicePreset(voiceId) : findVoicePreset(voiceId))) {
+    if (values.provider === 'gemini-tts' && !isGeminiCustomVoice(voiceId) && !GEMINI_TTS_VOICES.includes(voiceId as (typeof GEMINI_TTS_VOICES)[number])) {
+      throw new Error(`Unknown Gemini TTS voice: ${voiceId}. Use --provider gemini-tts --list-voices.`)
+    }
+    if (values.provider === 'gemini-tts' && geminiApiKeys.length === 0) throw new Error('Gemini TTS requires GEMINI_API_KEY in .env, api.env, or the environment')
+    let selectedGeminiKeys = geminiApiKeys
+    if (values['gemini-key-index'] !== undefined) {
+      if (values.provider !== 'gemini-tts' || !/^[1-9]\d*$/.test(values['gemini-key-index'])) throw new Error('--gemini-key-index requires a positive Gemini key index')
+      const key = geminiApiKeys[Number(values['gemini-key-index']) - 1]
+      if (!key) throw new Error('The selected Gemini key index is not configured')
+      selectedGeminiKeys = [key]
+    }
+    if (values.provider !== 'cloud' && values.provider !== 'gemini-tts' && !(values.provider === 'edge' ? findEdgeVoicePreset(voiceId) : findVoicePreset(voiceId))) {
       throw new Error(`Unknown voice: ${voiceId}. Use --list-voices to see the presets.`)
     }
     const text = (textFile === undefined
@@ -100,7 +128,9 @@ export async function runTtsCommand(args: string[]): Promise<number> {
       path.resolve(values.output),
       !values['no-master'],
       values.provider,
-      values['asr-model']
+      values['asr-model'],
+      values.model,
+      selectedGeminiKeys
     )
   } catch (error) {
     console.error(`[tts] ${error instanceof Error ? error.message : String(error)}`)
@@ -114,7 +144,9 @@ async function generateNarration(
   output: string,
   master: boolean,
   providerId: string,
-  asrModel: string
+  asrModel: string,
+  model?: string,
+  geminiApiKeys?: string[]
 ): Promise<number> {
   const destination = await fs.lstat(output).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
@@ -133,7 +165,7 @@ async function generateNarration(
   const resources = path.resolve(__dirname, '..', '..', 'resources', 'tts')
   // Fails fast with a readable message for an unknown --provider value.
   const provider = createProvider(providerId, {
-    voxWorkerPath: path.join(resources, 'voxcpm_worker.py')
+    voxWorkerPath: path.join(resources, 'voxcpm_worker.py'), model, geminiApiKeys
   })
   const controller = new AbortController()
   const cancel = (): void => controller.abort()
@@ -154,6 +186,8 @@ async function generateNarration(
       onProgress: (info) => {
         if (info.phase === 'synthesizing' && info.chunk && info.totalChunks) {
           console.log(`[tts] chunk ${info.chunk}/${info.totalChunks}`)
+        } else if (info.phase === 'resuming' && info.chunk) {
+          console.log(`[tts] chunk ${info.chunk}: reused saved audio`)
         } else if (info.phase === 'mastering') {
           console.log('[tts] stitching and mastering')
         }
@@ -172,27 +206,7 @@ async function generateNarration(
 
   // Publish the staged artifacts without overwriting anything a concurrent
   // invocation may have created; roll back partial publishes.
-  const finalTimestamps = `${stem(output)}-timestamps.json`
-  const finalReport = `${stem(output)}-report.json`
-  const published: string[] = []
-  try {
-    for (const [staged, final] of [
-      [artifacts.mp3, output],
-      [artifacts.timestamps, finalTimestamps],
-      [artifacts.report, finalReport]
-    ] as const) {
-      await fs.link(staged, final)
-      published.push(final)
-    }
-  } catch (error) {
-    for (const file of published) await fs.unlink(file).catch(() => undefined)
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      throw new Error('Output already exists (created during generation)')
-    }
-    throw error
-  } finally {
-    await artifacts.cleanup()
-  }
+  const { timestamps: finalTimestamps, report: finalReport } = await publishNarrationArtifacts(artifacts, output)
 
   console.log(output)
   console.log(finalTimestamps)

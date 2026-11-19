@@ -43,6 +43,16 @@ describe('planTrim', () => {
 })
 
 describe('chunkProcessArgs', () => {
+  it('does not denoise, pace, or alter tag level for Gemini audio', () => {
+    const args = chunkProcessArgs({ source: 'in.wav', output: 'out.wav',
+      trim: planTrim([{ word: 'Halo', start: 0.1, end: 0.9 }], 1.2),
+      pacing: 0.97, levelDb: -3, profile: 'gemini-tts' })
+    const filter = args[args.indexOf('-af') + 1]!
+    expect(filter).not.toContain('afftdn')
+    expect(filter).not.toContain('atempo')
+    expect(filter).not.toContain('volume=')
+    expect(filter).toContain('afade=')
+  })
   it('trims, denoises hiss, fades both edges in output time, and resamples', () => {
     const args = chunkProcessArgs({
       source: 'c0-a0.wav',

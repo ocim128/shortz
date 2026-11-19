@@ -41,7 +41,7 @@ export const S = {
 
   // Speech (text-to-speech)
   ttsIntro:
-    'Turn text into a narrated MP3. Pick an AI narrator and preview it; the first use downloads the speech model and may take a while.',
+    'Turn text into a narrated MP3. Investigator uses Gemini online; other voices use the local speech runtime.',
   ttsTextLabel: 'Text',
   ttsTextPlaceholder: 'Write the narration here…',
   ttsVoiceLabel: 'Voice',
@@ -53,9 +53,12 @@ export const S = {
   ttsFilenameLabel: 'File name or full output path',
   ttsFilenamePlaceholder: 'narration',
   ttsGenerate: 'Generate speech',
-  ttsRunning: 'Generating speech locally; this can take a few minutes…',
+  ttsRunning: 'Generating and checking speech; this can take a few minutes…',
   ttsCancel: 'Cancel',
   ttsResult: 'Speech generated',
+  ttsReviewRequired: 'Speech generated — review required',
+  ttsReviewDetails: 'Automatic verification found a possible mismatch. Listen and review the report before using this audio.',
+  ttsRevealReport: 'Show verification report',
   ttsError: 'Speech generation failed',
   ttsCharsCount: (n: number, max: number) => `${n} / ${max} chars`,
 

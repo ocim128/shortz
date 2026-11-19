@@ -247,9 +247,11 @@ await test('Speech scrolls to the last voice and generation controls in a short 
       const b = button.getBoundingClientRect()
       return { scrollTop: pane.scrollTop, overflow: getComputedStyle(pane).overflowY,
         visible: b.top >= p.top && b.bottom <= p.bottom,
+        selectedVoice: document.querySelector('input[name="tts-voice"]:checked')?.value,
         voices: document.querySelectorAll('input[name="tts-voice"]').length }
     })()`)
     assert(result.voices >= 10, 'expected the expanded voice list')
+    assert(result.selectedVoice === 'voice_486ejtx78ywn', `Investigator should be selected: ${result.selectedVoice}`)
     assert(result.overflow === 'auto' && result.scrollTop > 0 && result.visible, `generation controls not reachable by scrolling: ${JSON.stringify(result)}`)
   } finally {
     await evaluate(`document.querySelector('.batch__topbar button')?.click()`)

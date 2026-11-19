@@ -239,6 +239,9 @@ export interface TtsResult {
   /** media:// URL for in-app playback of the fresh MP3. */
   url: string
   bytes: number
+  /** Present for verified narration; false means the output needs review. */
+  verified?: boolean
+  reportPath?: string
 }
 
 // ---------------------------------------------------------------------------

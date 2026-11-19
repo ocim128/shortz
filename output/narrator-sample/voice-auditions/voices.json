@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "script": "Pertama, kunci semua pintu, lalu matikan mesin, lampu, dan radio. Beberapa detik kemudian, seseorang berhenti di samping mobilmu, dan bayangannya menutupi jendela. Air tinggal setengah botol, baterai enam puluh persen, sementara jeritan di luar perlahan menghilang.",
+  "model": "gemini-3.8-flash-tts",
+  "voices": [
+    {
+      "slug": "survivor",
+      "name": "ShortZ Survivor",
+      "prompt": "A mature Indonesian man around 40, with a grounded low-mid voice, subtly weathered texture, confident calm and crisp natural Bahasa Indonesia.",
+      "voiceId": "voice_mkakmjffbgq8",
+      "keyIndex": 1,
+      "createdAt": "2026-11-19T14:12:09.200Z"
+    },
+    {
+      "slug": "investigator",
+      "name": "ShortZ Investigator",
+      "prompt": "A mature Indonesian male investigator with a clear mid-low voice, measured authority and quiet curiosity, speaking natural Bahasa Indonesia with precise articulation.",
+      "voiceId": "voice_486ejtx78ywn",
+      "keyIndex": 1,
+      "createdAt": "2026-11-19T14:12:24.099Z"
+    },
+    {
+      "slug": "storyteller",
+      "name": "ShortZ Storyteller",
+      "prompt": "A mature Indonesian male storyteller with a warm, intimate low-mid voice, thoughtful presence and natural conversational Bahasa Indonesia, clearly articulated.",
+      "voiceId": "voice_lfws1x3wqhtq",
+      "keyIndex": 1,
+      "createdAt": "2026-11-19T14:12:51.090Z"
+    }
+  ]
+}

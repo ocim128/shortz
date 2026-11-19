@@ -47,6 +47,12 @@ const LOUDNESS_SKIP_TOLERANCE_LU = 0.7
 /** Per-chunk vocoder-hiss cleanup, applied before level/fade shaping. */
 export const CHUNK_DENOISE_FILTER = 'afftdn=nr=12:nf=-28:tn=1'
 
+/** Gemini supplies clean, styled audio; preserve its pacing and dynamics. */
+export const GEMINI_MASTER_FILTER =
+  'highpass=f=85,equalizer=f=140:t=q:w=1.2:g=1,' +
+  'equalizer=f=450:t=q:w=1.5:g=-1,equalizer=f=3200:t=q:w=1.2:g=1,' +
+  'loudnorm=I=-14:LRA=6:TP=-1.5,aformat=sample_fmts=s16'
+
 export interface TrimPlan {
   /** Where to cut the raw synthesis (seconds into the file). */
   startSec: number
@@ -122,14 +128,15 @@ export function chunkProcessArgs(input: {
   pacing: number
   /** Tag loudness shaping, e.g. +0.5 hook / −1.5 twist. */
   levelDb?: number
+  profile?: 'gemini-tts'
 }): string[] {
-  const pacedDuration = input.trim.durationSec / input.pacing
+  const pacedDuration = input.trim.durationSec / (input.profile === 'gemini-tts' ? 1 : input.pacing)
   const fadeOutStart = Math.max(0, pacedDuration - EDGE_FADE_SEC)
   const filters = [
     // Subtle slow-down only (≤3%); audible speed-ups distort timbre.
-    ...(input.pacing !== 1 ? [`atempo=${input.pacing.toFixed(4)}`] : []),
-    CHUNK_DENOISE_FILTER,
-    ...(input.levelDb ? [`volume=${input.levelDb.toFixed(1)}dB`] : []),
+    ...(input.profile !== 'gemini-tts' && input.pacing !== 1 ? [`atempo=${input.pacing.toFixed(4)}`] : []),
+    ...(input.profile === 'gemini-tts' ? [] : [CHUNK_DENOISE_FILTER]),
+    ...(input.profile !== 'gemini-tts' && input.levelDb ? [`volume=${input.levelDb.toFixed(1)}dB`] : []),
     `afade=t=in:st=0:d=${EDGE_FADE_SEC}`,
     `afade=t=out:st=${fadeOutStart.toFixed(4)}:d=${EDGE_FADE_SEC}`,
     `aresample=${STITCH_RATE_HZ}`
@@ -206,6 +213,7 @@ export async function processChunkWav(options: {
   trim: TrimPlan
   pacing: number
   levelDb?: number
+  profile?: 'gemini-tts'
   signal?: AbortSignal
 }): Promise<void> {
   await run(
@@ -247,6 +255,7 @@ export async function stitchNarration(options: {
   master: boolean
   totalDurationSec: number
   signal?: AbortSignal
+  profile?: 'gemini-tts'
 }): Promise<{ masterFilter: string | null }> {
   const listFile = path.join(
     path.dirname(options.output),
@@ -263,6 +272,14 @@ export async function stitchNarration(options: {
         options.signal
       )
       return { masterFilter: null }
+    }
+
+    if (options.profile === 'gemini-tts') {
+      await run(options.ffmpegPath,
+        ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-af', GEMINI_MASTER_FILTER,
+          '-ar', String(STITCH_RATE_HZ), '-ac', '1', '-c:a', 'libmp3lame', '-q:a', '2', options.output],
+        Math.max(1, options.totalDurationSec + 5), 'Narration mastering', options.signal)
+      return { masterFilter: GEMINI_MASTER_FILTER }
     }
 
     // Master pass 1: chain (no loudnorm) → measure. If integrated loudness

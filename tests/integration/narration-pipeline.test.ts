@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runNarrationPipeline } from '../../src/core/tts/pipeline'
 import { createVoxProvider, type TtsProvider, type TtsProviderChunkRequest, type TtsProviderContext } from '../../src/core/tts/provider'
+import { createGeminiTtsProvider } from '../../src/core/tts/gemini-tts'
 import { stopAsrWorker } from '../../src/core/tts/asr'
 import { stopVoxWorker } from '../../src/core/tts/voxcpm'
 import { resolveFfmpegBinariesCached } from '../../src/core/ffmpeg/resolve-bin'
@@ -348,6 +349,81 @@ describe('narration pipeline', () => {
         expect(report.chunks[0]!.attempts[0]!.rawMismatches).toEqual([])
         expect(report.chunks[0]!.attempts[0]!.mismatches).toContainEqual({ expected: 'turun', heard: 'turu' })
       } finally { await result.cleanup() }
+    } finally { await removeScratchDir(dir) }
+  }, 60_000)
+
+  it.each([false, true])('aligns the finished Gemini MP3 and reports final mismatch=%s', async (finalMismatch) => {
+    const dir = await makeScratchDir('narration-gemini')
+    try {
+      const { ffmpegPath } = await resolveFfmpegBinariesCached()
+      const asrWorker = path.join(dir, 'asr.cjs')
+      await writeFile(asrWorker, `
+        const path = require('node:path');
+        require('node:readline').createInterface({input: process.stdin}).on('line', line => {
+          const r = JSON.parse(line), base = path.basename(r.wav);
+          const final = base.endsWith('.mp3');
+          const text = final ? ${JSON.stringify(finalMismatch ? 'Hujan turun. Kami pergi.' : 'Hujan turun. Kami bertahan.')} : base.includes('1-a') ? 'Kami bertahan.' : 'Hujan turun.';
+          const words = text.split(/\\s+/).map((word, i) => ({ word, start: 0.1 + i * 0.4, end: 0.4 + i * 0.4 }));
+          process.stdout.write(JSON.stringify({id: r.id, ok: true, transcript: text, words, durationSec: final ? 2 : 1}) + '\\n');
+        });`)
+      const seen: TtsProviderChunkRequest[] = []
+      const provider: TtsProvider = { id: 'gemini-tts', model: 'gemini-3.8-flash-tts', stop() {},
+        async synthesizeChunk(request) { seen.push(request); await writeFile(request.outputWav, silentWav(1)) } }
+      const result = await runNarrationPipeline({ script: '[hook]Hujan turun. [twist]Kami bertahan.', voiceId: 'Charon',
+        outputMp3: path.join(dir, 'out.mp3'), ffmpegPath, provider,
+        asrWorkerPath: asrWorker, asrPythonPath: process.execPath, master: true })
+      try {
+        const report = JSON.parse(await readFile(result.report, 'utf8')) as {
+          masterFilter: string; finalAlignment: { transcript: string; passed: boolean }
+        }
+        const timestamps = JSON.parse(await readFile(result.timestamps, 'utf8')) as { words: Array<{ word: string; start: number }> }
+        expect(seen.map((request) => request.tag)).toEqual(['hook', 'twist'])
+        expect(report.masterFilter).toContain('loudnorm=I=-14:LRA=6')
+        expect(report.masterFilter).not.toContain('afftdn')
+        expect(report.finalAlignment.passed).toBe(!finalMismatch)
+        expect(result.passed).toBe(!finalMismatch)
+        expect(timestamps.words.map((word) => word.word)).toEqual(['Hujan', 'turun.', 'Kami', finalMismatch ? 'pergi.' : 'bertahan.'])
+        expect(timestamps.words[2]!.start).toBe(0.9)
+      } finally { await result.cleanup() }
+    } finally { await removeScratchDir(dir) }
+  }, 60_000)
+
+  it('resumes saved Gemini chunks after quota exhaustion and clears the cache on publication', async () => {
+    const dir = await makeScratchDir('gemini-resume')
+    try {
+      const { ffmpegPath } = await resolveFfmpegBinariesCached()
+      const asrWorker = path.join(dir, 'asr.cjs')
+      await writeFile(asrWorker, `
+        const path = require('node:path');
+        require('node:readline').createInterface({input: process.stdin}).on('line', line => {
+          const r = JSON.parse(line), base = path.basename(r.wav);
+          const final = base.endsWith('.mp3');
+          const text = final ? 'Hujan turun. Kami bertahan.' : base.includes('1-a') ? 'Kami bertahan.' : 'Hujan turun.';
+          const words = text.split(/\\s+/).map((word, i) => ({ word, start: 0.1 + i * 0.4, end: 0.4 + i * 0.4 }));
+          process.stdout.write(JSON.stringify({id: r.id, ok: true, transcript: text, words, durationSec: final ? 2 : 1}) + '\\n');
+        });`)
+      const success = () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: {
+        mimeType: 'audio/wav', data: silentWav(1).toString('base64')
+      } }] } }] }), { status: 200 })
+      const firstFetch = vi.fn().mockImplementationOnce(async () => success())
+        .mockImplementation(async () => new Response('', { status: 429, headers: { 'retry-after': '3600' } }))
+      const secondFetch = vi.fn(async () => success())
+      const options = { script: '[hook]Hujan turun. [twist]Kami bertahan.', voiceId: 'Charon',
+        outputMp3: path.join(dir, 'out.mp3'), ffmpegPath, asrWorkerPath: asrWorker,
+        asrPythonPath: process.execPath, master: false }
+      await expect(runNarrationPipeline({ ...options,
+        provider: createGeminiTtsProvider({ apiKey: 'fake', fetchImpl: firstFetch as typeof fetch }) }))
+        .rejects.toThrow('rate limit')
+      const cacheRoot = path.join(dir, '.shortz-tts-cache')
+      expect(await readdir(cacheRoot)).toHaveLength(1)
+      const resumed: number[] = []
+      const result = await runNarrationPipeline({ ...options,
+        provider: createGeminiTtsProvider({ apiKey: 'fake', fetchImpl: secondFetch as typeof fetch }),
+        onProgress: (info) => { if (info.phase === 'resuming' && info.chunk) resumed.push(info.chunk) } })
+      expect(secondFetch).toHaveBeenCalledTimes(1)
+      expect(resumed).toEqual([1])
+      await result.cleanup()
+      expect(await readdir(cacheRoot)).toEqual([])
     } finally { await removeScratchDir(dir) }
   }, 60_000)
 

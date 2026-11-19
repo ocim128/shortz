@@ -1,10 +1,11 @@
 import { promises as fs } from 'node:fs'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { transcribeChunk, type AsrResult } from './asr'
 import { parseNarrationScript, type NarrationChunk } from './chunks'
 import { DEFAULT_DELIVERY, DELIVERY_TAGS, findVoicePreset, type DeliveryTag } from '../../shared/tts/voices'
 import { findVoicePreset as findEdgeVoicePreset } from '../../shared/tts/legacy-edge-voices'
-import { checkAttempt, summarizeVerification, type ChunkVerification } from './verify'
+import { checkAttempt, summarizeVerification, wordMismatches, type ChunkVerification } from './verify'
 import {
   gapMsAfter,
   measureAudioMetrics,
@@ -85,6 +86,11 @@ export interface NarrationReport {
   warningChunks: number
   failedChunks: number
   plannedDurationSec: number
+  finalAlignment?: {
+    transcript: string
+    mismatches: Array<{ expected: string | null; heard: string | null }>
+    passed: boolean
+  }
   audioQuality: AudioMetrics & {
     targets: { integratedLufs: number; loudnessRangeLu: [number, number] }
   }
@@ -127,8 +133,8 @@ export interface NarrationArtifacts {
   passed: boolean
   durationSec: number
   audioQuality: AudioMetrics
-  /** Removes the scratch dir. Call after publishing (or on failure). */
-  cleanup: () => Promise<void>
+  /** Removes scratch files and, unless preserved, the per-output resume cache. */
+  cleanup: (options?: { preserveCache?: boolean }) => Promise<void>
 }
 
 const RETRY_ATTEMPTS = 3
@@ -156,8 +162,14 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
   if (chunks.length === 0) throw new Error('The script contains no narration text')
 
   const workDir = await fs.mkdtemp(path.join(path.dirname(input.outputMp3), '.shortz-narration-'))
-  const cleanup = async (): Promise<void> => {
+  const geminiCacheDir = provider.id === 'gemini-tts'
+    ? path.join(path.dirname(input.outputMp3), '.shortz-tts-cache', createHash('sha256').update(path.resolve(input.outputMp3)).digest('hex'))
+    : undefined
+  const cleanup = async (options?: { preserveCache?: boolean }): Promise<void> => {
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined)
+    if (geminiCacheDir && !options?.preserveCache) {
+      await fs.rm(geminiCacheDir, { recursive: true, force: true }).catch(() => undefined)
+    }
   }
   // Everything is staged inside the scratch dir; the caller publishes, so a
   // cancelled or failed run never leaves a partial output behind.
@@ -175,12 +187,13 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
         input.signal?.throwIfAborted()
         const wav = path.join(workDir, `c${i}-a${attempt}.wav`)
         await provider.synthesizeChunk(
-          { text: chunk.text, chunkIndex: i, attempt, outputWav: wav },
+          { text: chunk.text, tag: chunk.tag, chunkIndex: i, attempt, outputWav: wav },
           {
             voiceId: input.voiceId,
             ffmpegPath: input.ffmpegPath,
             ...(input.referenceCacheDir ? { referenceCacheDir: input.referenceCacheDir } : {}),
             ...(input.pythonPath ? { pythonPath: input.pythonPath } : {}),
+            ...(geminiCacheDir ? { geminiCacheDir, onGeminiCacheHit: () => input.onProgress?.({ phase: 'resuming', chunk: i + 1, totalChunks: chunks.length }) } : {}),
             signal: input.signal
           }
         )
@@ -193,7 +206,8 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
         const out = path.join(workDir, `p${i}-a${attempt}.wav`)
         const trim = planTrim(asr.words, asr.durationSec, undefined, attempt * 40)
         await processChunkWav({ ffmpegPath: input.ffmpegPath, source: wav, output: out, trim,
-          pacing: delivery.pacing, levelDb: delivery.levelDb, signal: input.signal })
+          pacing: delivery.pacing, levelDb: delivery.levelDb, signal: input.signal,
+          ...(provider.id === 'gemini-tts' ? { profile: 'gemini-tts' as const } : {}) })
         const finalAsr = await transcribeChunk(out, {
           workerPath: input.asrWorkerPath,
           ...(input.asrPythonPath ? { pythonPath: input.asrPythonPath } : {}),
@@ -272,12 +286,23 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
       output: stagedMp3,
       master,
       totalDurationSec: timeline,
+      ...(provider.id === 'gemini-tts' ? { profile: 'gemini-tts' as const } : {}),
       signal: input.signal
     })
     const audioQuality = await measureAudioMetrics(input.ffmpegPath, stagedMp3, input.signal)
 
-    const timestamps = buildTimestamps(input.voiceId, master, accepted, chunkStarts, chunkDurations, timeline, sfx)
-    const report = buildReport(input, provider, masterFilter, accepted, timeline, audioQuality)
+    // Re-align the completed Gemini MP3 so timestamps describe the final encode.
+    const finalAsr = provider.id === 'gemini-tts' ? await transcribeChunk(stagedMp3, {
+      workerPath: input.asrWorkerPath,
+      ...(input.asrPythonPath ? { pythonPath: input.asrPythonPath } : {}),
+      ...(input.asrModel ? { model: input.asrModel } : {}), signal: input.signal
+    }) : undefined
+    const mismatches = finalAsr ? wordMismatches(chunks.map((chunk) => chunk.text).join(' '), finalAsr.transcript) : undefined
+    const finalAlignment = finalAsr && mismatches ? {
+      transcript: finalAsr.transcript, mismatches, passed: mismatches.length === 0 && finalAsr.words.length > 0
+    } : undefined
+    const timestamps = buildTimestamps(input.voiceId, master, accepted, chunkStarts, chunkDurations, timeline, sfx, finalAsr)
+    const report = buildReport(input, provider, masterFilter, accepted, timeline, audioQuality, finalAlignment)
 
     const paths = artifactPaths(stagedMp3)
     await atomicWriteFile(paths.timestamps, `${JSON.stringify(timestamps, null, 2)}\n`)
@@ -293,7 +318,7 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
     }
   } catch (error) {
     provider.stop()
-    await cleanup()
+    await cleanup({ preserveCache: true })
     throw error
   }
 }
@@ -305,7 +330,8 @@ function buildTimestamps(
   chunkStarts: number[],
   chunkDurations: number[],
   timeline: number,
-  sfx: Array<{ name: string; beforeChunk: number }>
+  sfx: Array<{ name: string; beforeChunk: number }>,
+  finalAsr?: AsrResult
 ): NarrationTimestamps {
   const words: NarrationTimestamps['words'] = []
   const chunkEntries: NarrationTimestamps['chunks'] = []
@@ -321,7 +347,7 @@ function buildTimestamps(
       retries: a.verification.retries,
       status: a.verification.status
     })
-    for (const w of a.winnerAsr.words) {
+    for (const w of finalAsr ? [] : a.winnerAsr.words) {
       words.push({
         word: w.word,
         start: round3(start + Math.min(chunkDurations[i]!, Math.max(0, w.start))),
@@ -330,6 +356,20 @@ function buildTimestamps(
       })
     }
   })
+  if (finalAsr) {
+    for (const w of finalAsr.words) {
+      const midpoint = (w.start + w.end) / 2
+      let nearest = 0
+      let minDistance = Infinity
+      for (let i = 0; i < accepted.length; i++) {
+        const start = chunkStarts[i]!
+        const end = start + chunkDurations[i]!
+        const distance = midpoint < start ? start - midpoint : midpoint > end ? midpoint - end : 0
+        if (distance < minDistance) { nearest = i; minDistance = distance }
+      }
+      words.push({ word: w.word, start: round3(w.start), end: round3(w.end), chunk: accepted[nearest]!.chunk.index })
+    }
+  }
   return { version: 1, voiceId, durationSec: round3(timeline), master, chunks: chunkEntries, words,
     sfx: sfx.map((marker) => ({ name: marker.name, time: round3(chunkStarts[marker.beforeChunk] ?? timeline) })) }
 }
@@ -340,7 +380,8 @@ function buildReport(
   masterFilter: string | null,
   accepted: AcceptedChunk[],
   timeline: number,
-  audioQuality: AudioMetrics
+  audioQuality: AudioMetrics,
+  finalAlignment?: NarrationReport['finalAlignment']
 ): NarrationReport {
   const chunkEntries = accepted.map((a) => ({
     index: a.chunk.index,
@@ -382,12 +423,13 @@ function buildReport(
     masterFilter,
     asrModel: input.asrModel ?? 'small',
     generatedAt: new Date().toISOString(),
-    passed: failed === 0,
+    passed: failed === 0 && (finalAlignment?.passed ?? true),
     totalChunks: chunkEntries.length,
     verifiedChunks: verified,
     warningChunks: warnings,
     failedChunks: failed,
     plannedDurationSec: round3(timeline),
+    ...(finalAlignment ? { finalAlignment } : {}),
     audioQuality: {
       ...audioQuality,
       targets: { integratedLufs: -14, loudnessRangeLu: [5, 7] }

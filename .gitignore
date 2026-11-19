@@ -11,6 +11,14 @@ out/
 # logs / caches
 *.log
 .cache/
+.shortz-tts-cache/
+
+# Local credentials
+.env
+.env.*
+!.env.example
+api.env
+api.env.*
 
 # editor / OS
 .vscode/

@@ -73,7 +73,13 @@ import {
 import { logInfo, logWarn } from '../core/log'
 import { compressVideo, type CompressionQuality } from '../core/ffmpeg/compress'
 import { synthesizeVoxSpeech } from '../core/tts/voxcpm'
-import { findVoicePreset, PREVIEW_TEXT } from '../shared/tts/voices'
+import { createGeminiTtsProvider } from '../core/tts/gemini-tts'
+import { runNarrationPipeline } from '../core/tts/pipeline'
+import { publishNarrationArtifacts } from '../core/tts/publish'
+import { resolveTtsEnvironment } from '../core/tts/environment'
+import { stopAsrWorker } from '../core/tts/asr'
+import { findVoicePreset, PREVIEW_TEXT, TTS_MAX_TEXT_LENGTH } from '../shared/tts/voices'
+import { INVESTIGATOR_VOICE_ID } from '../shared/tts/gemini'
 import { uniqueOutputPath } from '../core/store/fs-utils'
 
 /**
@@ -276,11 +282,14 @@ export function registerIpcHandlers(): void {
     compressionAbort?.abort()
   })
 
-  // --- speech (local VoxCPM worker) -------------------------------------------
+  // --- speech ----------------------------------------------------------------
 
   const voxWorker = (): string => app.isPackaged
     ? path.join(process.resourcesPath, 'tts', 'voxcpm_worker.py')
     : path.join(app.getAppPath(), 'resources', 'tts', 'voxcpm_worker.py')
+  const ttsResource = (name: string): string => app.isPackaged
+    ? path.join(process.resourcesPath, 'tts', name)
+    : path.join(app.getAppPath(), 'resources', 'tts', name)
 
   handle(
     'shortz:ttsSynthesize',
@@ -288,13 +297,19 @@ export function registerIpcHandlers(): void {
       path: string
       url: string
       bytes: number
+      verified?: boolean
+      reportPath?: string
     }> => {
       if (ttsAbort) throw new Error('A speech generation is already running — cancel it first')
       const controller = new AbortController()
       ttsAbort = controller
       try {
-        const preset = findVoicePreset(req.voiceId)
-        if (!preset) throw new Error(`Unknown voice: ${req.voiceId}`)
+        if (typeof req.text !== 'string' || !req.text.trim() || req.text.trim().length > TTS_MAX_TEXT_LENGTH) {
+          throw new Error(`Speech text must contain 1–${TTS_MAX_TEXT_LENGTH} characters`)
+        }
+        const isInvestigator = req.voiceId === INVESTIGATOR_VOICE_ID
+        const preset = isInvestigator ? undefined : findVoicePreset(req.voiceId)
+        if (!isInvestigator && !preset) throw new Error(`Unknown voice: ${req.voiceId}`)
         const [settings, binaries] = await Promise.all([currentSettings(), resolveBinariesWithSettings()])
         const name = (req.filename ?? '').trim() || 'narration'
         const target = uniqueOutputPath(
@@ -304,7 +319,27 @@ export function registerIpcHandlers(): void {
             name
           })
         )
-        logInfo(`[tts] start — voice=${preset.id} (${preset.name}) chars=${req.text.length}`)
+        if (isInvestigator) {
+          const configDir = app.isPackaged ? dataDir() : app.getAppPath()
+          const { geminiApiKeys } = await resolveTtsEnvironment(path.join(configDir, '.env'), process.env, path.join(configDir, 'api.env'))
+          if (!geminiApiKeys.length) throw new Error(`Investigator requires GEMINI_API_KEY in api.env or .env in ${configDir}`)
+          await fsp.mkdir(path.dirname(target), { recursive: true })
+          let artifacts
+          try {
+            artifacts = await runNarrationPipeline({ script: req.text, voiceId: INVESTIGATOR_VOICE_ID,
+              outputMp3: target, ffmpegPath: binaries.ffmpegPath,
+              provider: createGeminiTtsProvider({ apiKeys: geminiApiKeys }),
+              asrWorkerPath: ttsResource('asr_worker.py'), signal: controller.signal })
+          } finally {
+            stopAsrWorker()
+          }
+          const published = await publishNarrationArtifacts(artifacts, target)
+          const stat = await fsp.stat(target)
+          logInfo(`[tts] done — voice=Investigator verified=${artifacts.passed} ${(stat.size / 1e3).toFixed(0)} kB -> ${target}`)
+          return { path: target, url: mintMediaUrl(target), bytes: stat.size,
+            verified: artifacts.passed, reportPath: published.report }
+        }
+        logInfo(`[tts] start — voice=${preset!.id} (${preset!.name}) chars=${req.text.length}`)
         const result = await synthesizeVoxSpeech({
           text: req.text,
           voiceId: req.voiceId,
@@ -314,7 +349,7 @@ export function registerIpcHandlers(): void {
           referenceCacheDir: path.join(dataDir(), 'cache', 'tts-voxcpm-references'),
           signal: controller.signal
         })
-        logInfo(`[tts] done — voice=${preset.id} ${(result.bytes / 1e3).toFixed(0)} kB -> ${result.path}`)
+        logInfo(`[tts] done — voice=${preset!.id} ${(result.bytes / 1e3).toFixed(0)} kB -> ${result.path}`)
         return { ...result, url: mintMediaUrl(result.path) }
       } finally {
         ttsAbort = null
@@ -327,6 +362,12 @@ export function registerIpcHandlers(): void {
   })
 
   handle('shortz:ttsPreviewVoice', async (voiceId: string): Promise<string> => {
+    if (voiceId === INVESTIGATOR_VOICE_ID) {
+      const file = ttsResource('investigator-preview.mp3')
+      const stat = await fsp.stat(file).catch(() => null)
+      if (!stat?.isFile() || !stat.size) throw new Error('The Investigator preview is unavailable')
+      return mintMediaUrl(file)
+    }
     const preset = findVoicePreset(voiceId)
     if (!preset) throw new Error(`Unknown voice: ${voiceId}`)
     // Cache per voice in the data dir — the sample never changes, so every

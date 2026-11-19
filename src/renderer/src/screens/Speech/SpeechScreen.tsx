@@ -4,10 +4,12 @@ import { Icon } from '../../components/Icon'
 import { formatBytes } from '../../lib/format'
 import { S } from '../../strings'
 import {
-  DEFAULT_VOICE_ID,
   TTS_MAX_TEXT_LENGTH,
   VOICE_PRESETS
 } from '../../../../shared/tts/voices'
+import { DEFAULT_GEMINI_TTS_VOICE, INVESTIGATOR_VOICE } from '../../../../shared/tts/gemini'
+
+const SPEECH_VOICES = [INVESTIGATOR_VOICE, ...VOICE_PRESETS]
 
 type PreviewState = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -19,7 +21,7 @@ function defaultFilename(text: string): string {
 
 export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
   const [text, setText] = useState('')
-  const [voiceId, setVoiceId] = useState(DEFAULT_VOICE_ID)
+  const [voiceId, setVoiceId] = useState<string>(DEFAULT_GEMINI_TTS_VOICE)
   const [filename, setFilename] = useState('')
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<TtsResult | null>(null)
@@ -141,9 +143,9 @@ export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
         </p>
 
         <span className="field__label">{S.ttsVoiceLabel}</span>
-        <p className="speech__voice-tag">{S.ttsVoiceTag(VOICE_PRESETS.length)}</p>
+        <p className="speech__voice-tag">{S.ttsVoiceTag(SPEECH_VOICES.length)}</p>
         <div className="speech__voices" role="radiogroup" aria-label={S.ttsVoiceLabel}>
-          {VOICE_PRESETS.map((v) => {
+          {SPEECH_VOICES.map((v) => {
             const selected = v.id === voiceId
             const state = previewState[v.id] ?? 'idle'
             return (
@@ -227,7 +229,8 @@ export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
         )}
         {result && (
           <div role="status" className="card compress__result">
-            <strong>{S.ttsResult}</strong>
+            <strong>{result.verified === false ? S.ttsReviewRequired : S.ttsResult}</strong>
+            {result.verified === false && <p>{S.ttsReviewDetails}</p>}
             <p>{formatBytes(result.bytes)}</p>
             <audio controls preload="none" src={result.url} className="speech__player" />
             <p className="compress__path" title={result.path}>
@@ -240,6 +243,11 @@ export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
             >
               {S.batchRevealOutput}
             </button>
+            {result.reportPath && (
+              <button type="button" className="btn" onClick={() => void window.shortz.revealInExplorer(result.reportPath!)}>
+                {S.ttsRevealReport}
+              </button>
+            )}
           </div>
         )}
       </main>

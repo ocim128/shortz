@@ -5,6 +5,8 @@ import { synthesizeVoxChunk, voxReferencePath, stopVoxWorker } from './voxcpm'
 import { runFfmpeg } from '../ffmpeg/runner'
 import { findVoicePreset } from '../../shared/tts/voices'
 import { findVoicePreset as findLegacyVoicePreset } from '../../shared/tts/legacy-edge-voices'
+import { createGeminiTtsProvider } from './gemini-tts'
+import type { DeliveryTagId } from '../../shared/tts/voices'
 
 /**
  * The synthesis seam of the narration pipeline (chunking, ASR verification,
@@ -17,6 +19,8 @@ import { findVoicePreset as findLegacyVoicePreset } from '../../shared/tts/legac
 export interface TtsProviderChunkRequest {
   /** Clean chunk text — delivery tags already stripped. */
   text: string
+  /** Delivery section active for this chunk. */
+  tag?: DeliveryTagId | null
   chunkIndex: number
   /** 0-based retry index; providers may shift their seed on retries. */
   attempt: number
@@ -28,6 +32,9 @@ export interface TtsProviderContext {
   voiceId: string
   ffmpegPath: string
   referenceCacheDir?: string
+  /** Optional per-output resume cache for Gemini synthesis. */
+  geminiCacheDir?: string
+  onGeminiCacheHit?: () => void
   pythonPath?: string
   signal?: AbortSignal
 }
@@ -149,13 +156,13 @@ export function createCloudProvider(options?: { fetchImpl?: typeof fetch }): Tts
   }
 }
 
-export const PROVIDER_IDS = ['voxcpm', 'edge', 'cloud'] as const
+export const PROVIDER_IDS = ['voxcpm', 'edge', 'cloud', 'gemini-tts'] as const
 export type TtsProviderId = (typeof PROVIDER_IDS)[number]
 
 /** Resolve a `--provider` value; `workerPath` applies to voxcpm only. */
 export function createProvider(
   id: string,
-  options?: { voxWorkerPath?: string }
+  options?: { voxWorkerPath?: string; model?: string; geminiApiKeys?: string[] }
 ): TtsProvider {
   switch (id) {
     case 'voxcpm':
@@ -164,6 +171,8 @@ export function createProvider(
       return createEdgeProvider()
     case 'cloud':
       return createCloudProvider()
+    case 'gemini-tts':
+      return createGeminiTtsProvider({ model: options?.model, apiKeys: options?.geminiApiKeys })
     default:
       throw new Error(`Unknown speech provider: ${id}. Known: ${PROVIDER_IDS.join(', ')}`)
   }
