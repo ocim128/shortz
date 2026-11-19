@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "voiceId": "jejak",
+  "durationSec": 10.966,
+  "master": true,
+  "chunks": [
+    {
+      "index": 0,
+      "tag": "hook",
+      "text": "Hujan turun sepanjang malam, dan jalan pulang perlahan menghilang.",
+      "start": 0,
+      "end": 3.545,
+      "retries": 1,
+      "status": "verified"
+    },
+    {
+      "index": 1,
+      "tag": "tactical",
+      "text": "Pertama, kami berlindung dan menunggu sampai hujan reda.",
+      "start": 3.805,
+      "end": 7.57,
+      "retries": 1,
+      "status": "verified"
+    },
+    {
+      "index": 2,
+      "tag": "twist",
+      "text": "Lalu terdengar langkah kaki mendekat dari balik pepohonan.",
+      "start": 8.02,
+      "end": 10.966,
+      "retries": 2,
+      "status": "verified"
+    }
+  ],
+  "words": [
+    {
+      "word": "hujan",
+      "start": 0,
+      "end": 0.36,
+      "chunk": 0
+    },
+    {
+      "word": "turun",
+      "start": 0.36,
+      "end": 0.68,
+      "chunk": 0
+    },
+    {
+      "word": "sepanjang",
+      "start": 0.68,
+      "end": 1.06,
+      "chunk": 0
+    },
+    {
+      "word": "malam",
+      "start": 1.06,
+      "end": 1.78,
+      "chunk": 0
+    },
+    {
+      "word": "dan",
+      "start": 1.78,
+      "end": 1.96,
+      "chunk": 0
+    },
+    {
+      "word": "jalan",
+      "start": 1.96,
+      "end": 2.28,
+      "chunk": 0
+    },
+    {
+      "word": "pulang",
+      "start": 2.28,
+      "end": 2.62,
+      "chunk": 0
+    },
+    {
+      "word": "perlahan",
+      "start": 2.62,
+      "end": 3.06,
+      "chunk": 0
+    },
+    {
+      "word": "menghilang.",
+      "start": 3.06,
+      "end": 3.52,
+      "chunk": 0
+    },
+    {
+      "word": "Pertama,",
+      "start": 3.805,
+      "end": 4.305,
+      "chunk": 1
+    },
+    {
+      "word": "kami",
+      "start": 4.905,
+      "end": 5.445,
+      "chunk": 1
+    },
+    {
+      "word": "berlindung",
+      "start": 5.445,
+      "end": 5.945,
+      "chunk": 1
+    },
+    {
+      "word": "dan",
+      "start": 5.945,
+      "end": 6.125,
+      "chunk": 1
+    },
+    {
+      "word": "menunggu",
+      "start": 6.125,
+      "end": 6.565,
+      "chunk": 1
+    },
+    {
+      "word": "sampai",
+      "start": 6.565,
+      "end": 6.785,
+      "chunk": 1
+    },
+    {
+      "word": "hujan",
+      "start": 6.785,
+      "end": 7.145,
+      "chunk": 1
+    },
+    {
+      "word": "reda.",
+      "start": 7.145,
+      "end": 7.545,
+      "chunk": 1
+    },
+    {
+      "word": "lalu",
+      "start": 8.02,
+      "end": 8.287,
+      "chunk": 2
+    },
+    {
+      "word": "terdengar",
+      "start": 8.287,
+      "end": 8.74,
+      "chunk": 2
+    },
+    {
+      "word": "langkah",
+      "start": 8.74,
+      "end": 9.048,
+      "chunk": 2
+    },
+    {
+      "word": "kaki",
+      "start": 9.048,
+      "end": 9.357,
+      "chunk": 2
+    },
+    {
+      "word": "mendekat",
+      "start": 9.357,
+      "end": 9.871,
+      "chunk": 2
+    },
+    {
+      "word": "dari",
+      "start": 9.871,
+      "end": 10.035,
+      "chunk": 2
+    },
+    {
+      "word": "balik",
+      "start": 10.035,
+      "end": 10.364,
+      "chunk": 2
+    },
+    {
+      "word": "pepohonan",
+      "start": 10.364,
+      "end": 10.94,
+      "chunk": 2
+    }
+  ]
+}

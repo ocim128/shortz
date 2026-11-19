@@ -1,29 +1,32 @@
 """Keep faster-whisper loaded and serve JSON-line transcription requests.
 
-One request per line: {"id": <n>, "wav": <path>} -> {"id": <n>, "ok": true,
-"transcript": str, "words": [{"word", "start", "end"}], "durationSec": float}
+One request per line: {"id": <n>, "wav": <path>, "model"?: "small"} ->
+{"id": <n>, "ok": true, "transcript": str, "words": [...], "durationSec": f}
 or {"id": <n>, "ok": false, "error": str}. Promoted from the verified repair
 scripts in tmp/ (transcribe-voice.py, repair-verified.py): Indonesian,
 beam_size 5, no VAD, word timestamps for caption timing.
 
-Import failures are reported per-request (ok: false) instead of killing the
-process, so the caller can surface a readable setup message.
+The model size is configurable per request (default "small" — markedly more
+accurate than "base" on Indonesian) and models are cached per size, so mixed
+sizes don't reload. Import/load failures are reported per-request (ok: false)
+instead of killing the process, so the caller can surface a readable setup
+message.
 """
 import json
 import sys
 import traceback
 
-MODEL_SIZE = 'base'
+DEFAULT_MODEL_SIZE = 'small'
 CPU_THREADS = 4
 
 
-def load_model():
+def load_model(size):
     import numpy as np
     import soundfile as sf
     from scipy.signal import resample_poly
     from faster_whisper import WhisperModel
 
-    model = WhisperModel(MODEL_SIZE, device='cpu', compute_type='int8', cpu_threads=CPU_THREADS)
+    model = WhisperModel(size, device='cpu', compute_type='int8', cpu_threads=CPU_THREADS)
     return np, sf, resample_poly, model
 
 
@@ -54,22 +57,27 @@ def transcribe(np, sf, resample_poly, model, wav_path):
 
 
 def main():
-    np = sf = resample_poly = model = None
-    load_error = None
-    try:
-        np, sf, resample_poly, model = load_model()
-    except Exception:
-        load_error = traceback.format_exc()[-2000:]
+    models = {}
+
+    def get_model(size):
+        """Load once per size; a failed load is not cached (retry allowed)."""
+        if size not in models:
+            try:
+                models[size] = load_model(size)
+            except Exception:
+                raise RuntimeError(
+                    f'Could not load the "{size}" verifier model. Install it with: '
+                    '"<ShortZ voxcpm python>" -m pip install faster-whisper\n'
+                    + traceback.format_exc()[-1200:])
+        return models[size]
 
     for line in sys.stdin:
         request_id = None
         try:
             request = json.loads(line)
             request_id = request.get('id')
-            if model is None:
-                raise RuntimeError(
-                    'The speech runtime is missing the verifier. Install it with: '
-                    '"<ShortZ voxcpm python>" -m pip install faster-whisper\n' + (load_error or ''))
+            size = request.get('model') or DEFAULT_MODEL_SIZE
+            np, sf, resample_poly, model = get_model(size)
             result = transcribe(np, sf, resample_poly, model, request['wav'])
             response = {'id': request_id, 'ok': True, **result}
         except Exception:

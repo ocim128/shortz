@@ -3,9 +3,11 @@ import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runNarrationPipeline } from '../../src/core/tts/pipeline'
+import { createVoxProvider, type TtsProvider, type TtsProviderChunkRequest, type TtsProviderContext } from '../../src/core/tts/provider'
 import { stopAsrWorker } from '../../src/core/tts/asr'
 import { stopVoxWorker } from '../../src/core/tts/voxcpm'
 import { resolveFfmpegBinariesCached } from '../../src/core/ffmpeg/resolve-bin'
+import { conditionedWavDuration, measureAudioMetrics } from '../../src/core/tts/postprocess'
 import { makeScratchDir, removeScratchDir } from '../helpers/env'
 
 /**
@@ -20,6 +22,24 @@ const SCRIPT = [
   '[twist]Yang mengetuk duduk di belakangmu.'
 ].join('\n\n')
 
+function silentWav(seconds: number, sampleRate = 16000): Buffer {
+  const samples = Math.max(1, Math.round(seconds * sampleRate))
+  const wav = Buffer.alloc(44 + samples * 2)
+  wav.write('RIFF')
+  wav.writeUInt32LE(wav.length - 8, 4)
+  wav.write('WAVEfmt ', 8)
+  wav.writeUInt32LE(16, 16)
+  wav.writeUInt16LE(1, 20)
+  wav.writeUInt16LE(1, 22)
+  wav.writeUInt32LE(sampleRate, 24)
+  wav.writeUInt32LE(sampleRate * 2, 28)
+  wav.writeUInt16LE(2, 32)
+  wav.writeUInt16LE(16, 34)
+  wav.write('data', 36)
+  wav.writeUInt32LE(samples * 2, 40)
+  return wav
+}
+
 describe('narration pipeline', () => {
   afterEach(() => {
     stopAsrWorker()
@@ -33,7 +53,7 @@ describe('narration pipeline', () => {
 
       // --- fake vox worker: writes a real WAV sized to the text, records
       // every request, and drops the text next to the file for the ASR fake.
-      const voxWorker = path.join(dir, 'vox.cjs')
+      const voxWorker = path.join(dir, 'voxcpm_worker.py')
       const voxLog = path.join(dir, 'vox-log.jsonl')
       await writeFile(
         voxWorker,
@@ -51,6 +71,11 @@ describe('narration pipeline', () => {
           wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28);
           wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36);
           wav.writeUInt32LE(samples * 2, 40);
+          // A square wave (NOT silence): loudnorm must have real energy to
+          // pull to the -14 LUFS target, and afftdn needs a noise-like floor.
+          for (let i = 0; i < samples; i++) {
+            wav.writeInt16LE(i % 2 ? -4000 : 4000, 44 + i * 2);
+          }
           fs.writeFileSync(request.output, wav);
           process.stdout.write(JSON.stringify({ id: request.id, ok: true }) + '\\n');
         });`
@@ -59,6 +84,7 @@ describe('narration pipeline', () => {
       // --- fake ASR worker: first two calls flunk (garbage + clipped onset),
       // everything after returns the sidecar text with clean timing at ~130wpm.
       const asrWorker = path.join(dir, 'asr.cjs')
+      const asrLog = path.join(dir, 'asr-log.jsonl')
       await writeFile(
         asrWorker,
         `
@@ -67,6 +93,7 @@ describe('narration pipeline', () => {
         require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
           const request = JSON.parse(line);
           calls += 1;
+          fs.appendFileSync(${JSON.stringify(asrLog)}, JSON.stringify(request) + '\\n');
           let response;
           try {
             if (calls <= 2) {
@@ -95,10 +122,10 @@ describe('narration pipeline', () => {
         voiceId: 'jejak',
         outputMp3: output,
         ffmpegPath,
-        voxWorkerPath: voxWorker,
         asrWorkerPath: asrWorker,
-        pythonPath: process.execPath,
+        asrModel: 'small',
         asrPythonPath: process.execPath,
+        pythonPath: process.execPath,
         referenceCacheDir: path.join(dir, 'refs'),
         master: true
       })
@@ -117,8 +144,11 @@ describe('narration pipeline', () => {
         totalChunks: number
         failedChunks: number
         warningChunks: number
-        chunks: Array<{ retries: number; status: string; attempts: Array<{ seed: number; passed: boolean }> }>
+        provider: string
+        asrModel: string
+        audioQuality: { integratedLufs: number; loudnessRangeLu: number; noiseFloorDbfs: number | null; targets: { integratedLufs: number; loudnessRangeLu: number[] } }
         masterFilter: string
+        chunks: Array<{ retries: number; status: string; attempts: Array<{ seed: number; passed: boolean }> }>
       }
 
       // 3 chunks: hook / tactical / twist.
@@ -131,11 +161,41 @@ describe('narration pipeline', () => {
       // Chunk 1 flunked twice (garbage ASR), verified on the third take.
       expect(report.chunks[0]?.retries).toBe(2)
       expect(report.chunks[0]?.attempts.map((a) => a.passed)).toEqual([false, false, true])
-      expect(report.chunks[0]?.attempts.map((a) => a.seed)).toEqual([707, 808, 909])
+      expect(report.chunks[0]?.attempts.map((a) => a.seed)).toEqual([0, 1, 2])
       expect(report.chunks.slice(1).every((c) => c.retries === 0)).toBe(true)
       expect(report.passed).toBe(true)
       expect(report.failedChunks).toBe(0)
-      expect(report.masterFilter).toContain('loudnorm=I=-14:TP=-1.0:LRA=7')
+      expect(report.provider).toBe('voxcpm')
+      expect(report.asrModel).toBe('small')
+      // Peak-only compressor + limiter own the loudness ceiling; loudnorm's
+      // dynamic mode is banned (it flattened narration to LRA 2.6 live).
+      expect(report.masterFilter).toContain('acompressor=threshold=-4dB:ratio=2.2:attack=10:release=80')
+      expect(report.masterFilter).toContain('alimiter=limit=0.851')
+      expect(report.masterFilter).not.toContain('loudnorm')
+
+      // Measured audio quality: real loudnorm lands on the TikTok target.
+      // (LRA is just "measured, present" here — constant synthetic tone has
+      // no dynamics by construction; the live episode asserts the 5–7 band.)
+      expect(report.audioQuality.integratedLufs).toBeGreaterThan(-16)
+      expect(report.audioQuality.integratedLufs).toBeLessThan(-12)
+      expect(report.audioQuality.loudnessRangeLu).toBeGreaterThanOrEqual(0)
+      expect(report.audioQuality.targets).toEqual({ integratedLufs: -14, loudnessRangeLu: [5, 7] })
+
+      // The vox worker saw ONE reference and ONE prompt for every chunk and
+      // retry — speaker identity and accent cannot drift between chunks.
+      const voxRequests = (await readFile(voxLog, 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as {
+        text: string; prompt: string; seed: number; reference: string; ffmpeg_path: string
+      })
+      expect(new Set(voxRequests.map((r) => r.reference)).size).toBe(1)
+      expect(new Set(voxRequests.map((r) => r.prompt)).size).toBe(1)
+      expect(voxRequests.every((r) => !r.text.includes('['))).toBe(true)
+      expect(voxRequests.every((r) => typeof r.ffmpeg_path === 'string' && r.ffmpeg_path.length > 0)).toBe(true)
+      // Retry seeds shift subtly from the fixed voice seed (707 for jejak).
+      expect(voxRequests.map((r) => r.seed)).toEqual([707, 808, 909, 707, 707])
+
+      // The verifier was asked for the small model.
+      const asrRequests = (await readFile(asrLog, 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as { model: string })
+      expect(asrRequests.every((r) => r.model === 'small')).toBe(true)
 
       // Timestamps: monotonic chunk timeline, words inside their chunks.
       for (let i = 1; i < timestamps.chunks.length; i += 1) {
@@ -145,23 +205,12 @@ describe('narration pipeline', () => {
       const twistWords = timestamps.words.filter((w) => w.chunk === 2)
       expect(twistWords.length).toBeGreaterThan(0)
       expect(twistWords[0]!.start).toBeGreaterThanOrEqual(timestamps.chunks[2]!.start)
-      // The pre-reveal beat: ≥500ms of silence before the twist chunk.
+      // Deliberate rhythm: 450ms pre-twist beat; tight hook→tactical transition.
       const preTwistGap = timestamps.chunks[2]!.start - timestamps.chunks[1]!.end
-      expect(preTwistGap).toBeGreaterThanOrEqual(0.5)
-
-      // The vox worker saw tag-shaped prompts and distinct reference clips.
-      const voxRequests = (await readFile(voxLog, 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as {
-        text: string; prompt: string; seed: number; reference: string
-      })
-      const hookReq = voxRequests.find((r) => r.text.startsWith('Kalau kaca'))!
-      const tacticalReq = voxRequests.find((r) => r.text.startsWith('Pertama'))!
-      const twistReq = voxRequests.find((r) => r.text.startsWith('Yang mengetuk'))!
-      expect(hookReq.prompt).toContain('Urgent, firm')
-      expect(tacticalReq.prompt).toContain('Calm, authoritative')
-      expect(twistReq.prompt).toContain('Slower, darker')
-      expect(new Set([hookReq.reference, tacticalReq.reference, twistReq.reference]).size).toBe(3)
-      // Chunk texts reach the worker with tags already stripped.
-      expect(voxRequests.every((r) => !r.text.includes('['))).toBe(true)
+      expect(preTwistGap).toBeGreaterThanOrEqual(0.44)
+      const firstGap = timestamps.chunks[1]!.start - timestamps.chunks[0]!.end
+      expect(firstGap).toBeGreaterThanOrEqual(0.25)
+      expect(firstGap).toBeLessThanOrEqual(0.3)
 
       // The mastered MP3 matches the planned stitched duration closely.
       const probed = execFileSync(ffprobePath, [
@@ -174,6 +223,95 @@ describe('narration pipeline', () => {
       await removeScratchDir(dir)
     }
   }, 120_000)
+
+  it.each([
+    { id: 'stub', voiceId: 'jejak' },
+    { id: 'edge', voiceId: 'rimba' }
+  ])('runs with the $id provider and its voice', async ({ id, voiceId }) => {
+    const dir = await makeScratchDir('narration-provider')
+    try {
+      const { ffmpegPath } = await resolveFfmpegBinariesCached()
+      const asrWorker = path.join(dir, 'asr.cjs')
+      await writeFile(
+        asrWorker,
+        `
+        const fs = require('node:fs');
+        require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+          const request = JSON.parse(line);
+          const text = fs.readFileSync(request.wav + '.txt', 'utf8').trim();
+          const tokens = text.split(/\\s+/).filter(Boolean);
+          const per = 0.46;
+          const words = tokens.map((word, i) => ({ word, start: 0.1 + i * per, end: 0.1 + i * per + per * 0.9 }));
+          process.stdout.write(JSON.stringify({
+            id: request.id, ok: true, transcript: text, words,
+            durationSec: 0.1 + tokens.length * per + 0.2
+          }) + '\\n');
+        });`
+      )
+
+      // A drop-in alternative engine: writes the chunk, records what it got.
+      const seen: Array<{ text: string; attempt: number; chunkIndex: number }> = []
+      const stub: TtsProvider = {
+        id,
+        async synthesizeChunk(request: TtsProviderChunkRequest, _context: TtsProviderContext) {
+          seen.push({ text: request.text, attempt: request.attempt, chunkIndex: request.chunkIndex })
+          const sidecar = `${request.outputWav}.txt`
+          await writeFile(sidecar, request.text)
+          await writeFile(request.outputWav, silentWav(Math.max(1, request.text.split(/\s+/).length * 0.46)))
+        },
+        stop() { /* nothing to release */ }
+      }
+
+      const output = path.join(dir, 'narration.mp3')
+      const result = await runNarrationPipeline({
+        // Paragraph break forces two chunks — proves per-chunk provider calls.
+        script: 'Hujan turun.\n\nKami bertahan.',
+        voiceId,
+        outputMp3: output,
+        ffmpegPath,
+        provider: stub,
+        asrWorkerPath: asrWorker,
+        asrPythonPath: process.execPath,
+        master: false
+      })
+      expect(seen.length).toBe(2)
+      expect(seen[0]?.chunkIndex).toBe(0)
+      expect(seen[1]?.chunkIndex).toBe(1)
+      // Read the staged artifacts BEFORE cleanup — cleanup removes the scratch dir.
+      const report = JSON.parse(await readFile(result.report, 'utf8')) as { provider: string; passed: boolean }
+      expect(report.provider).toBe(id)
+      // Word timings exist for the stub provider too — captions stay provider-agnostic.
+      const timestamps = JSON.parse(await readFile(result.timestamps, 'utf8')) as { words: unknown[] }
+      expect(timestamps.words.length).toBeGreaterThan(0)
+      const timing = JSON.parse(await readFile(result.timestamps, 'utf8')) as { chunks: Array<{ start: number; end: number }> }
+      const actualFirstDuration = await conditionedWavDuration(path.join(path.dirname(result.mp3), 'p0.wav'))
+      expect(timing.chunks[0]!.end - timing.chunks[0]!.start).toBeCloseTo(actualFirstDuration, 3)
+      await result.cleanup()
+    } finally {
+      await removeScratchDir(dir)
+    }
+  }, 60_000)
+
+  it('measures separate audio windows and respects cancellation', async () => {
+    const dir = await makeScratchDir('narration-metrics')
+    try {
+      const { ffmpegPath } = await resolveFfmpegBinariesCached()
+      const wav = silentWav(12, 48000)
+      for (let i = 0; i < 12 * 48000; i++) {
+        const amplitude = i < 4 * 48000 ? 10000 : i < 8 * 48000 ? 100 : 0
+        wav.writeInt16LE(i % 2 ? amplitude : -amplitude, 44 + i * 2)
+      }
+      const file = path.join(dir, 'levels.wav')
+      await writeFile(file, wav)
+      const metrics = await measureAudioMetrics(ffmpegPath, file)
+      expect(metrics.noiseFloorDbfs).toBeCloseTo(-50.3, 0)
+      const controller = new AbortController()
+      controller.abort()
+      await expect(measureAudioMetrics(ffmpegPath, file, controller.signal)).rejects.toThrow('cancelled')
+    } finally {
+      await removeScratchDir(dir)
+    }
+  }, 60_000)
 
   it('marks the report failed (not crashed) when every retry flunks a chunk', async () => {
     const dir = await makeScratchDir('narration-fail')
@@ -216,10 +354,10 @@ describe('narration pipeline', () => {
         voiceId: 'jejak',
         outputMp3: output,
         ffmpegPath,
-        voxWorkerPath: voxWorker,
+        provider: createVoxProvider({ workerPath: voxWorker }),
         asrWorkerPath: asrWorker,
-        pythonPath: process.execPath,
         asrPythonPath: process.execPath,
+        pythonPath: process.execPath,
         master: false
       })
       expect(result.passed).toBe(false)

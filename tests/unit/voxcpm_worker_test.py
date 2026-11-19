@@ -21,6 +21,10 @@ spec.loader.exec_module(worker)
 
 
 class TagStrippingTests(unittest.TestCase):
+    def test_preserves_paragraph_breaks(self):
+        text = worker.strip_delivery_tags('Satu. [hook]\n\nDua.')
+        self.assertEqual(worker.chunks(text), ['Satu.', 'Dua.'])
+
     def test_delivery_tags_never_reach_the_model(self):
         self.assertEqual(
             worker.strip_delivery_tags('[hook]Kalau kaca dikut. [tactical]Pertama, kunci.'),
@@ -51,6 +55,67 @@ class TagStrippingTests(unittest.TestCase):
         self.assertNotIn('[', generated)
         self.assertIn('Kalau kaca dikut.', generated)
         self.assertIn('Dia di belakangmu.', generated)
+
+
+@unittest.skipIf(np is None, 'numpy is required for reference tests')
+class ReferenceDenoiseTests(unittest.TestCase):
+    """The single shared reference must be pre-cleaned so VoxCPM never clones
+    room noise into every chunk (the hiss-under-speech failure)."""
+
+    def make_worker(self):
+        instance = worker.SpeechWorker()
+        instance.model = SimpleNamespace(
+            tts_model=SimpleNamespace(sample_rate=1000),
+            generate=lambda **_kwargs: np.full(1500, 0.1, dtype=np.float32)
+        )
+        instance.np = np
+        instance.torch = SimpleNamespace(manual_seed=lambda _seed: None, inference_mode=nullcontext)
+        instance.sf = SimpleNamespace(
+            # The reference must read as MISSING so the worker generates one —
+            # that generation path is where the denoise step lives.
+            info=lambda _path: (_ for _ in ()).throw(RuntimeError('missing reference')),
+            write=lambda _path, data, _rate: None
+        )
+        return instance
+
+    def test_reference_is_denoised_once_with_ffmpeg_when_available(self):
+        import tempfile
+        instance = self.make_worker()
+        calls = []
+
+        def fake_run(argv, **_kwargs):
+            calls.append(argv)
+            Path(argv[-1]).write_bytes(b'denoised wav bytes' * 4)  # >44B header guard
+            return SimpleNamespace(returncode=0, stderr='')
+
+        with tempfile.TemporaryDirectory() as tmp:
+            reference = Path(tmp) / 'reference.wav'
+            with patch.object(worker.subprocess, 'run', side_effect=fake_run):
+                instance.synthesize({
+                    'text': 'Halo.', 'prompt': 'narrator', 'seed': 5,
+                    'reference': str(reference), 'output': str(Path(tmp) / 'out.wav'),
+                    'ffmpeg_path': 'ffmpeg.exe'})
+            self.assertEqual(reference.read_bytes(), b'denoised wav bytes' * 4)
+        argv = calls[0]
+        self.assertIn('afftdn=nf=-25,highpass=f=85', argv)
+        self.assertIn('highpass', ' '.join(argv))
+
+    def test_reference_falls_back_to_raw_without_ffmpeg(self):
+        import tempfile
+        instance = self.make_worker()
+
+        def fake_write(path, data, _rate):
+            Path(path).write_bytes(b'raw wav bytes' * 4)
+
+        instance.sf.write = fake_write
+        with tempfile.TemporaryDirectory() as tmp:
+            reference = Path(tmp) / 'reference.wav'
+            with patch.object(worker.subprocess, 'run') as run:
+                instance.synthesize({
+                    'text': 'Halo.', 'prompt': 'narrator', 'seed': 5,
+                    'reference': str(reference), 'output': str(Path(tmp) / 'out.wav')})
+            run.assert_not_called()
+            self.assertEqual(reference.read_bytes(), b'raw wav bytes' * 4)
 
 
 class ChunkTests(unittest.TestCase):

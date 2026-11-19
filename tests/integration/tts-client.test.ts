@@ -52,8 +52,8 @@ class FakeSocket implements EdgeSocket {
     this.listeners.clear()
     return this
   }
-  emit(event: string, ...args: never[]): void {
-    for (const cb of this.listeners.get(event) ?? []) cb(...args)
+  emit(event: string, ...args: unknown[]): void {
+    for (const cb of this.listeners.get(event) ?? []) cb(...args as never[])
   }
 
   emitOpen(): void {
@@ -132,16 +132,16 @@ describe('edge tts client', () => {
     const { fakes, factory } = harness()
     const promise = synthesizeEdgeTts({ ssml: '<speak>hai</speak>', socketFactory: factory })
     await registered()
-    fakes[0].complete(Buffer.from('mp3'))
+    fakes[0]!.complete(Buffer.from('mp3'))
     await promise
 
-    expect(fakes[0].url.startsWith('wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?')).toBe(true)
-    expect(fakes[0].url).toContain('Sec-MS-GEC=')
-    expect(fakes[0].url).toContain('Sec-MS-GEC-Version=2-')
-    expect(fakes[0].url).toContain('TrustedClientToken=')
-    expect(fakes[0].url).toContain('ConnectionId=')
-    expect(fakes[0].headers.Origin).toContain('chrome-extension://')
-    expect(fakes[0].headers['User-Agent']).toContain('Edg/')
+    expect(fakes[0]!.url.startsWith('wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?')).toBe(true)
+    expect(fakes[0]!.url).toContain('Sec-MS-GEC=')
+    expect(fakes[0]!.url).toContain('Sec-MS-GEC-Version=2-')
+    expect(fakes[0]!.url).toContain('TrustedClientToken=')
+    expect(fakes[0]!.url).toContain('ConnectionId=')
+    expect(fakes[0]!.headers.Origin).toContain('chrome-extension://')
+    expect(fakes[0]!.headers['User-Agent']).toContain('Edg/')
   })
 
   it('sends speech.config then the ssml, and stitches audio frames', async () => {
@@ -151,20 +151,20 @@ describe('edge tts client', () => {
       socketFactory: factory
     })
     await registered()
-    fakes[0].emitOpen()
+    fakes[0]!.emitOpen()
     await registered()
-    expect(fakes[0].sent.length).toBe(2)
-    expect(fakes[0].sent[0]).toContain('Path:speech.config')
-    expect(fakes[0].sent[0]).toContain('audio-24khz-48kbitrate-mono-mp3')
-    expect(fakes[0].sent[1]).toContain('Path:ssml')
-    expect(fakes[0].sent[1]).toContain('bernanapas')
+    expect(fakes[0]!.sent.length).toBe(2)
+    expect(fakes[0]!.sent[0]).toContain('Path:speech.config')
+    expect(fakes[0]!.sent[0]).toContain('audio-24khz-48kbitrate-mono-mp3')
+    expect(fakes[0]!.sent[1]).toContain('Path:ssml')
+    expect(fakes[0]!.sent[1]).toContain('bernanapas')
     // The request id is the reference library's 32-hex shape.
-    expect(fakes[0].sent[1]).toMatch(/X-RequestId:[0-9a-f]{32}\r\n/)
+    expect(fakes[0]!.sent[1]).toMatch(/X-RequestId:[0-9a-f]{32}\r\n/)
 
-    fakes[0].emitAudio(Buffer.from('mp3-a'))
-    fakes[0].emitAudio(Buffer.from('mp3-b'))
-    fakes[0].emitText('audio.metadata') // noise: not turn.end
-    fakes[0].emitText('turn.end')
+    fakes[0]!.emitAudio(Buffer.from('mp3-a'))
+    fakes[0]!.emitAudio(Buffer.from('mp3-b'))
+    fakes[0]!.emitText('audio.metadata') // noise: not turn.end
+    fakes[0]!.emitText('turn.end')
     const result = await promise
     expect(result.audio.toString()).toBe('mp3-amp3-b')
     expect(result.bytes).toBe(10)
@@ -174,9 +174,9 @@ describe('edge tts client', () => {
     const { fakes, factory } = harness()
     const promise = synthesizeEdgeTts({ ssml: '<speak/>', socketFactory: factory })
     await registered()
-    fakes[0].emitOpen()
+    fakes[0]!.emitOpen()
     await registered()
-    fakes[0].emitText('turn.end')
+    fakes[0]!.emitText('turn.end')
     await expect(promise).rejects.toThrow('no audio')
   })
 
@@ -184,7 +184,7 @@ describe('edge tts client', () => {
     const { fakes, factory } = harness()
     const promise = synthesizeEdgeTts({ ssml: '<speak/>', socketFactory: factory })
     await registered()
-    fakes[0].emitClose(1000)
+    fakes[0]!.emitClose(1000)
     await expect(promise).rejects.toThrow('closed before the audio finished')
   })
 
@@ -192,14 +192,14 @@ describe('edge tts client', () => {
     const { fakes, factory } = harness()
     const promise = synthesizeEdgeTts({ ssml: '<speak>hai</speak>', socketFactory: factory })
     await registered()
-    fakes[0].emitUnexpectedResponse({
+    fakes[0]!.emitUnexpectedResponse({
       statusCode: 403,
       headers: { date: 'Wed, 18 Nov 2026 10:00:00 GMT' }
     })
     await registered()
     expect(fakes.length).toBe(2) // one retry, not a loop
-    expect(fakes[0].terminated).toBe(true)
-    fakes[1].complete(Buffer.from('ok'))
+    expect(fakes[0]!.terminated).toBe(true)
+    fakes[1]!.complete(Buffer.from('ok'))
     const result = await promise
     expect(result.audio.toString()).toBe('ok')
   })
@@ -208,7 +208,7 @@ describe('edge tts client', () => {
     const { fakes, factory } = harness()
     const promise = synthesizeEdgeTts({ ssml: '<speak/>', socketFactory: factory })
     await registered()
-    fakes[0].emitUnexpectedResponse({ statusCode: 503, headers: {} })
+    fakes[0]!.emitUnexpectedResponse({ statusCode: 503, headers: {} })
     await expect(promise).rejects.toThrow('handshake failed (503)')
     expect(fakes.length).toBe(1)
   })
@@ -224,7 +224,7 @@ describe('edge tts client', () => {
     await registered()
     controller.abort()
     await expect(promise).rejects.toThrow(TtsCancelledError)
-    expect(fakes[0].terminated).toBe(true)
+    expect(fakes[0]!.terminated).toBe(true)
   })
 })
 
@@ -263,7 +263,7 @@ describe('synthesizeSpeech orchestration', () => {
       })
       await registered()
       expect(fakes.length).toBe(1)
-      fakes[0].complete(Buffer.from('mp3-bytes'))
+      fakes[0]!.complete(Buffer.from('mp3-bytes'))
       const result = await promise
       expect(result.path).toBe(out)
       expect((await readFile(out)).toString()).toBe('mp3-bytes')
@@ -287,17 +287,17 @@ describe('synthesizeSpeech orchestration', () => {
       })
       await untilSocket(fakes, 1)
       // Open triggers the speech.config + ssml sends; assert before the turn ends.
-      fakes[0].emitOpen()
+      fakes[0]!.emitOpen()
       await registered()
       // Sentence 1: SSML carries the preset voice + prosody, no breaks.
-      expect(fakes[0].sent[1]).toContain('id-ID-ArdiNeural')
-      expect(fakes[0].sent[1]).toContain('rate="-10%"')
-      expect(fakes[0].sent[1]).not.toContain('<break')
-      fakes[0].emitAudio(realMp3)
-      fakes[0].emitText('turn.end')
+      expect(fakes[0]!.sent[1]).toContain('id-ID-ArdiNeural')
+      expect(fakes[0]!.sent[1]).toContain('rate="-10%"')
+      expect(fakes[0]!.sent[1]).not.toContain('<break')
+      fakes[0]!.emitAudio(realMp3)
+      fakes[0]!.emitText('turn.end')
       await untilSocket(fakes, 2)
       expect(fakes.length).toBe(2) // one socket per sentence
-      fakes[1].complete(realMp3)
+      fakes[1]!.complete(realMp3)
       const result = await promise
       expect(result.path).toBe(out)
       // Re-encoded by ffmpeg: a valid MP3 (ID3 tag or MPEG frame sync).

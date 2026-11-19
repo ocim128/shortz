@@ -1,31 +1,34 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { synthesizeVoxChunk, voxReferencePath } from './voxcpm'
 import { transcribeChunk, type AsrResult } from './asr'
 import { splitIntoChunks, type NarrationChunk } from './chunks'
-import {
-  DEFAULT_DELIVERY,
-  DELIVERY_TAGS,
-  findVoicePreset
-} from '../../shared/tts/voices'
+import { DEFAULT_DELIVERY, DELIVERY_TAGS, findVoicePreset, type DeliveryTag } from '../../shared/tts/voices'
+import { findVoicePreset as findEdgeVoicePreset } from '../../shared/tts/legacy-edge-voices'
 import { checkAttempt, summarizeVerification, type ChunkVerification } from './verify'
 import {
   gapMsAfter,
-  MASTER_FILTER,
+  measureAudioMetrics,
   processChunkWav,
+  conditionedWavDuration,
   planTrim,
   renderGapSilence,
   stitchNarration,
   wordTimeInChunk,
+  type AudioMetrics,
   type TrimPlan
 } from './postprocess'
 import { atomicWriteFile } from '../store/fs-utils'
+import { createVoxProvider, type TtsProvider } from './provider'
 
 /**
- * The verified narration pipeline (CLI production mode): chunked synthesis →
+ * The verified narration pipeline (provider-agnostic): chunked synthesis →
  * per-chunk ASR verification with targeted retries → click-free stitching
  * with deliberate silence → broadcast mastering. Writes the MP3 plus the
  * timestamps and QA report artifacts Dimensi-Niskala consumes per episode.
+ *
+ * All synthesis goes through the TtsProvider seam (src/core/tts/provider.ts):
+ * every chunk of an episode conditions on the provider's ONE voice identity,
+ * and delivery energies are applied purely in post (level/pacing/gaps).
  */
 
 export interface NarrationPipelineInput {
@@ -34,11 +37,15 @@ export interface NarrationPipelineInput {
   /** Final mastered MP3 (e.g. narration.mp3). */
   outputMp3: string
   ffmpegPath: string
-  voxWorkerPath: string
+  /** Synthesis provider (default: local VoxCPM). */
+  provider?: TtsProvider
+  /** Verifier worker + runtime. */
   asrWorkerPath: string
-  pythonPath?: string
   asrPythonPath?: string
+  /** Whisper model size (default "small" in the verifier). */
+  asrModel?: string
   referenceCacheDir?: string
+  pythonPath?: string
   /** Run the broadcast mastering chain (default true). */
   master?: boolean
   signal?: AbortSignal
@@ -67,8 +74,10 @@ export interface NarrationReport {
   version: 1
   voiceId: string
   voiceName: string
+  provider: string
   master: boolean
   masterFilter: string | null
+  asrModel: string
   generatedAt: string
   passed: boolean
   totalChunks: number
@@ -76,6 +85,9 @@ export interface NarrationReport {
   warningChunks: number
   failedChunks: number
   plannedDurationSec: number
+  audioQuality: AudioMetrics & {
+    targets: { integratedLufs: number; loudnessRangeLu: [number, number] }
+  }
   chunks: Array<{
     index: number
     tag: string | null
@@ -83,13 +95,16 @@ export interface NarrationReport {
     retries: number
     status: ChunkVerification['status']
     bestSimilarity: number
+    bestWordRatio: number
     attempts: Array<{
       seed: number
+      wordRatio: number
       similarity: number
       wpm: number
       expectedWpm: number
       passed: boolean
       reasons: string[]
+      warnings: string[]
     }>
   }>
 }
@@ -103,12 +118,12 @@ export interface NarrationArtifacts {
   report: string
   passed: boolean
   durationSec: number
+  audioQuality: AudioMetrics
   /** Removes the scratch dir. Call after publishing (or on failure). */
   cleanup: () => Promise<void>
 }
 
 const RETRY_ATTEMPTS = 3
-const SEED_STRIDE = 101 // matches the repair scripts' proven shift
 
 function artifactPaths(outputMp3: string): { timestamps: string; report: string } {
   const ext = path.extname(outputMp3)
@@ -118,7 +133,7 @@ function artifactPaths(outputMp3: string): { timestamps: string; report: string 
 
 interface AcceptedChunk {
   chunk: NarrationChunk
-  pacing: number
+  delivery: DeliveryTag
   verification: ChunkVerification
   winnerWav: string
   winnerAsr: AsrResult
@@ -126,8 +141,9 @@ interface AcceptedChunk {
 }
 
 export async function runNarrationPipeline(input: NarrationPipelineInput): Promise<NarrationArtifacts> {
-  const preset = findVoicePreset(input.voiceId)
-  if (!preset) throw new Error(`Unknown voice: ${input.voiceId}`)
+  const provider = input.provider ?? createVoxProvider({ workerPath: path.join(path.dirname(input.asrWorkerPath), 'voxcpm_worker.py') })
+  if (provider.id === 'voxcpm' && !findVoicePreset(input.voiceId)) throw new Error(`Unknown voice: ${input.voiceId}`)
+  if (provider.id === 'edge' && !findEdgeVoicePreset(input.voiceId)) throw new Error(`Unknown Edge voice: ${input.voiceId}`)
   const master = input.master !== false
   const chunks = splitIntoChunks(input.script)
   if (chunks.length === 0) throw new Error('The script contains no narration text')
@@ -139,33 +155,35 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
   // Everything is staged inside the scratch dir; the caller publishes, so a
   // cancelled or failed run never leaves a partial output behind.
   const stagedMp3 = path.join(workDir, path.basename(input.outputMp3))
-  const python = input.pythonPath
-  const asrPython = input.asrPythonPath
   try {
     // --- per-chunk synthesis + ASR verification + targeted retry -------------
     const accepted: AcceptedChunk[] = []
     for (const [i, chunk] of chunks.entries()) {
       input.onProgress?.({ phase: 'synthesizing', chunk: i + 1, totalChunks: chunks.length })
       const delivery = chunk.tag ? DELIVERY_TAGS[chunk.tag] : DEFAULT_DELIVERY
-      const prompt = delivery.energyPrompt ? `${preset.prompt} ${delivery.energyPrompt}` : preset.prompt
-      const reference = voxReferencePath(prompt, preset.seed, input.referenceCacheDir)
 
       const attempts: ReturnType<typeof checkAttempt>[] = []
       const attemptData: Array<{ wav: string; asr: AsrResult }> = []
       for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt += 1) {
         input.signal?.throwIfAborted()
-        const seed = preset.seed + attempt * SEED_STRIDE
         const wav = path.join(workDir, `c${i}-a${attempt}.wav`)
-        await synthesizeVoxChunk(
-          { text: chunk.text, prompt, seed, output: wav, reference },
-          { pythonPath: python, workerPath: input.voxWorkerPath, signal: input.signal }
+        await provider.synthesizeChunk(
+          { text: chunk.text, chunkIndex: i, attempt, outputWav: wav },
+          {
+            voiceId: input.voiceId,
+            ffmpegPath: input.ffmpegPath,
+            ...(input.referenceCacheDir ? { referenceCacheDir: input.referenceCacheDir } : {}),
+            ...(input.pythonPath ? { pythonPath: input.pythonPath } : {}),
+            signal: input.signal
+          }
         )
         const asr = await transcribeChunk(wav, {
-          pythonPath: asrPython,
           workerPath: input.asrWorkerPath,
+          ...(input.asrPythonPath ? { pythonPath: input.asrPythonPath } : {}),
+          ...(input.asrModel ? { model: input.asrModel } : {}),
           signal: input.signal
         })
-        attempts.push(checkAttempt({ expected: chunk.text, seed, asr }))
+        attempts.push(checkAttempt({ expected: chunk.text, seed: attempt, asr }))
         attemptData.push({ wav, asr })
         if (attempts[attempts.length - 1]!.passed) break
       }
@@ -176,15 +194,16 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
       const used = attemptData[verification.accepted]!
       accepted.push({
         chunk,
-        pacing: delivery.pacing,
+        delivery,
         verification,
         winnerWav: used.wav,
         winnerAsr: used.asr,
         trim: planTrim(used.asr.words, used.asr.durationSec)
       })
     }
+    provider.stop()
 
-    // --- condition chunks (trim + fades + pacing) ----------------------------
+    // --- condition chunks (trim + denoise + level + fades) -------------------
     const conditionedFiles: string[] = []
     const chunkDurations: number[] = []
     for (const [i, a] of accepted.entries()) {
@@ -195,11 +214,12 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
         source: a.winnerWav,
         output: out,
         trim: a.trim,
-        pacing: a.pacing,
+        pacing: a.delivery.pacing,
+        levelDb: a.delivery.levelDb,
         signal: input.signal
       })
       conditionedFiles.push(out)
-      chunkDurations.push(a.trim.durationSec / a.pacing)
+      chunkDurations.push(await conditionedWavDuration(out))
     }
 
     // --- deliberate silence gaps ---------------------------------------------
@@ -230,9 +250,9 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
       }
     }
 
-    // --- stitch (+ master) and write the artifacts ----------------------------
+    // --- stitch (+ master), measure, and write the artifacts ------------------
     input.onProgress?.({ phase: 'mastering', totalChunks: accepted.length })
-    await stitchNarration({
+    const { masterFilter } = await stitchNarration({
       ffmpegPath: input.ffmpegPath,
       files: stitchFiles,
       output: stagedMp3,
@@ -240,9 +260,10 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
       totalDurationSec: timeline,
       signal: input.signal
     })
+    const audioQuality = await measureAudioMetrics(input.ffmpegPath, stagedMp3, input.signal)
 
     const timestamps = buildTimestamps(input.voiceId, master, accepted, chunkStarts, chunkDurations, timeline)
-    const report = buildReport(preset.id, preset.name, master, accepted, timeline)
+    const report = buildReport(input, provider, masterFilter, accepted, timeline, audioQuality)
 
     const paths = artifactPaths(stagedMp3)
     await atomicWriteFile(paths.timestamps, `${JSON.stringify(timestamps, null, 2)}\n`)
@@ -253,9 +274,11 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
       report: paths.report,
       passed: report.passed,
       durationSec: timeline,
+      audioQuality,
       cleanup
     }
   } catch (error) {
+    provider.stop()
     await cleanup()
     throw error
   }
@@ -286,8 +309,8 @@ function buildTimestamps(
     for (const w of a.winnerAsr.words) {
       words.push({
         word: w.word,
-        start: round3(start + wordTimeInChunk(w.start, a.trim, a.pacing)),
-        end: round3(start + wordTimeInChunk(w.end, a.trim, a.pacing)),
+        start: round3(start + wordTimeInChunk(w.start, a.trim, a.trim.durationSec / chunkDurations[i]!)),
+        end: round3(start + wordTimeInChunk(w.end, a.trim, a.trim.durationSec / chunkDurations[i]!)),
         chunk: a.chunk.index
       })
     }
@@ -296,11 +319,12 @@ function buildTimestamps(
 }
 
 function buildReport(
-  voiceId: string,
-  voiceName: string,
-  master: boolean,
+  input: NarrationPipelineInput,
+  provider: TtsProvider,
+  masterFilter: string | null,
   accepted: AcceptedChunk[],
-  timeline: number
+  timeline: number,
+  audioQuality: AudioMetrics
 ): NarrationReport {
   const chunkEntries = accepted.map((a) => ({
     index: a.chunk.index,
@@ -326,10 +350,12 @@ function buildReport(
   const failed = chunkEntries.filter((c) => c.status === 'failed').length
   return {
     version: 1,
-    voiceId,
-    voiceName,
-    master,
-    masterFilter: master ? MASTER_FILTER : null,
+    voiceId: input.voiceId,
+    voiceName: (provider.id === 'edge' ? findEdgeVoicePreset(input.voiceId) : findVoicePreset(input.voiceId))?.name ?? input.voiceId,
+    provider: provider.id,
+    master: masterFilter !== null,
+    masterFilter,
+    asrModel: input.asrModel ?? 'small',
     generatedAt: new Date().toISOString(),
     passed: failed === 0,
     totalChunks: chunkEntries.length,
@@ -337,6 +363,10 @@ function buildReport(
     warningChunks: warnings,
     failedChunks: failed,
     plannedDurationSec: round3(timeline),
+    audioQuality: {
+      ...audioQuality,
+      targets: { integratedLufs: -14, loudnessRangeLu: [5, 7] }
+    },
     chunks: chunkEntries
   }
 }

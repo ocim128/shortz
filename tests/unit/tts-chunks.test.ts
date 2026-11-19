@@ -16,6 +16,11 @@ describe('stripDeliveryTags', () => {
   it('is a no-op for untagged scripts', () => {
     expect(stripDeliveryTags('Hujan turun.')).toBe('Hujan turun.')
   })
+
+  it('preserves paragraph breaks after tags', () => {
+    expect(stripDeliveryTags('Satu. [hook]\n\nDua.')).toBe('Satu. \n\nDua.')
+    expect(splitIntoChunks('Satu. [hook]\n\nDua.').map((c) => c.text)).toEqual(['Satu.', 'Dua.'])
+  })
 })
 
 describe('splitIntoChunks — tags', () => {
@@ -104,6 +109,12 @@ describe('splitLongSentence — clause safety', () => {
     const parts = splitLongSentence(word, 120)
     expect(parts.join('')).toBe(word)
     expect(parts.every((p) => p.length <= 120)).toBe(true)
+  })
+
+  it('does not include punctuation just beyond the limit', () => {
+    const parts = splitLongSentence('abcdefghij, next', 10)
+    expect(parts.every((p) => p.length <= 10)).toBe(true)
+    expect(parts.join('')).toBe('abcdefghij, next')
   })
 })
 

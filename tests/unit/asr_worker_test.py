@@ -56,6 +56,31 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(response['ok'])
         self.assertIn('pip install faster-whisper', response['error'])
 
+    @unittest.skipIf(np is None, 'numpy is required for model-size tests')
+    def test_model_size_is_configurable_per_request_and_cached(self):
+        np_stub, sf_stub, resample, model, _read = make_stubs('Hujan.', [('Hujan', 0.1, 0.5)])
+        sizes = []
+
+        def recording_load(size):
+            sizes.append(size)
+            return np_stub, sf_stub, resample, model
+
+        lines = '\n'.join([
+            json.dumps({'id': 1, 'wav': 'a.wav'}),                      # default
+            json.dumps({'id': 2, 'wav': 'b.wav'}),                      # cached 'small'
+            json.dumps({'id': 3, 'wav': 'c.wav', 'model': 'base'}),     # explicit size
+        ])
+        with patch.object(worker.sys, 'stdin', io.StringIO(lines)), \
+             patch.object(worker.sys, 'stdout', io.StringIO()) as stdout, \
+             patch.object(worker, 'load_model', side_effect=recording_load):
+            self.assertEqual(worker.main(), 0)
+        responses = [json.loads(line) for line in stdout.getvalue().strip().split('\n')]
+        self.assertTrue(all(r['ok'] for r in responses))
+        # Default is small (not base) for Indonesian accuracy.
+        self.assertEqual(sizes, ['small', 'base'])
+        # One load per size, not per request.
+        self.assertEqual(len(sizes), 2)
+
     @unittest.skipIf(np is None, 'numpy is required for transcription stubs')
     def test_transcribes_id_with_beam_five_and_maps_word_times(self):
         np_stub, sf_stub, resample, model, read_files = make_stubs(

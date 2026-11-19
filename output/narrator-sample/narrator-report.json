@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "voiceId": "jejak",
+  "voiceName": "Jejak",
+  "provider": "voxcpm",
+  "master": true,
+  "masterFilter": "highpass=f=85,afftdn=nr=12:nf=-28:tn=1,equalizer=f=140:t=q:w=1.2:g=2.5,equalizer=f=450:t=q:w=1.5:g=-2.5,equalizer=f=3200:t=q:w=1.2:g=1.5,acompressor=threshold=-4dB:ratio=2.2:attack=10:release=80,alimiter=limit=0.851:level=disabled",
+  "asrModel": "small",
+  "generatedAt": "2026-11-19T12:00:48.106Z",
+  "passed": true,
+  "totalChunks": 3,
+  "verifiedChunks": 3,
+  "warningChunks": 0,
+  "failedChunks": 0,
+  "plannedDurationSec": 10.966,
+  "audioQuality": {
+    "integratedLufs": -14.4,
+    "loudnessRangeLu": 3.7,
+    "noiseFloorDbfs": -16,
+    "targets": {
+      "integratedLufs": -14,
+      "loudnessRangeLu": [
+        5,
+        7
+      ]
+    }
+  },
+  "chunks": [
+    {
+      "index": 0,
+      "tag": "hook",
+      "text": "Hujan turun sepanjang malam, dan jalan pulang perlahan menghilang.",
+      "retries": 1,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.778,
+          "similarity": 0.945,
+          "wpm": 161,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.78): heard \"punya turun sepanjang malam dan jalan pulang pelahan menghilang\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 147,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "tag": "tactical",
+      "text": "Pertama, kami berlindung dan menunggu sampai hujan reda.",
+      "retries": 1,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.875,
+          "similarity": 0.981,
+          "wpm": 143,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.88): heard \"bertama kami berlindung dan menunggu sampai hujan reda\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 125,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "tag": "twist",
+      "text": "Lalu terdengar langkah kaki mendekat dari balik pepohonan.",
+      "retries": 2,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 167,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "167 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 167,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "167 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 158,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    }
+  ]
+}

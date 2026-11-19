@@ -38,49 +38,47 @@ export type DeliveryTagId = 'hook' | 'tactical' | 'twist'
 
 export interface DeliveryTag {
   id: DeliveryTagId
-  /** Appended to the preset prompt so each tag gets its own reference clip. */
-  energyPrompt: string
-  /** Pitch-preserving playback multiplier applied to the chunk (atempo). */
+  /**
+   * Pitch-preserving playback multiplier. ≤1.0 only — speed-ups read as
+   * robotic timbre shifts between chunks, so the hook gets its urgency from
+   * level and gap timing instead.
+   */
   pacing: number
+  /** Chunk loudness shaping (dB), applied per chunk before the master. */
+  levelDb: number
 }
 
 /**
- * Three vocal energies of the SAME narrator. Each tag maps to its own
- * generated reference clip (same preset seed, tag-shaped prompt), so the
- * voice stays one person while the delivery changes. Scripts embed the tag
- * inline — it applies from its position until the next tag or the end.
+ * Delivery energies applied purely in post (level + pacing + gaps). Chunks
+ * all condition on the ONE reference clip with the ONE prompt, so speaker
+ * identity and Indonesian accent cannot drift between chunks.
+ *
+ * The hook↔twist contrast spans 4.5 dB on purpose: a consistent single-voice
+ * TTS narrator caps the program's loudness range near 4 LU otherwise, and the
+ * broadcast target is LRA 5–7 (the urgent-punch vs quiet-reveal contrast IS
+ * the dynamics). +0.5/−1.5 dB was tried live and measured LRA 2.6.
  */
 export const DELIVERY_TAGS: Record<DeliveryTagId, DeliveryTag> = {
-  hook: {
-    id: 'hook',
-    energyPrompt: 'Urgent, firm delivery, grabbing attention from the first word.',
-    pacing: 1.04
-  },
-  tactical: {
-    id: 'tactical',
-    energyPrompt: 'Calm, authoritative delivery, instructing clearly and precisely.',
-    pacing: 1.0
-  },
-  twist: {
-    id: 'twist',
-    energyPrompt: 'Slower, darker, close-mic delivery, quiet menace in the final reveal.',
-    pacing: 0.92
-  }
+  hook: { id: 'hook', pacing: 1.0, levelDb: 1.5 },
+  tactical: { id: 'tactical', pacing: 1.0, levelDb: 0 },
+  twist: { id: 'twist', pacing: 0.97, levelDb: -3 }
 }
 
-/** Untagged narration: the preset's own energy, no pacing change. */
+/** Untagged narration: the preset's own delivery, no shaping. */
 export const DEFAULT_DELIVERY: DeliveryTag = {
   id: 'tactical',
-  energyPrompt: '',
-  pacing: 1.0
+  pacing: 1.0,
+  levelDb: 0
 }
 
 /** Deliberate silence between chunks (ms) — the narration's rhythm section. */
 export const NARRATION_GAP_MS = {
+  /** Tight hook pacing. */
+  hook: 100,
   /** Plain sentence break. */
-  sentence: 140,
+  sentence: 160,
   /** New numbered step or a [tactical] transition. */
-  step: 280,
+  step: 260,
   /** The pre-reveal beat right before a [twist] chunk. */
-  twistBeat: 500
+  twistBeat: 450
 } as const

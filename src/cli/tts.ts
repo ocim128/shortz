@@ -4,27 +4,31 @@ import { parseArgs } from 'node:util'
 import { resolveFfmpegBinariesCached } from '../core/ffmpeg/resolve-bin'
 import { stripBom } from '../core/store/fs-utils'
 import { loadSettings, resolveDataDir } from '../core/store/settings'
-import { stopVoxWorker } from '../core/tts/voxcpm'
 import { stopAsrWorker } from '../core/tts/asr'
+import { createProvider, PROVIDER_IDS } from '../core/tts/provider'
 import { runNarrationPipeline, type NarrationArtifacts } from '../core/tts/pipeline'
 import { DEFAULT_VOICE_ID, findVoicePreset, TTS_MAX_TEXT_LENGTH, VOICE_PRESETS } from '../shared/tts/voices'
+import { DEFAULT_VOICE_ID as EDGE_DEFAULT_VOICE_ID, findVoicePreset as findEdgeVoicePreset, VOICE_PRESETS as EDGE_VOICE_PRESETS } from '../shared/tts/legacy-edge-voices'
 
 const USAGE = `Usage:
   shortz tts (--text <text> | --text-file <utf8-file>) --output <narration.mp3> [--voice <id>]
   shortz tts --list-voices
 
 The verified narration pipeline. Delivery tags [hook] [tactical] [twist] may be
-embedded in the script; each tag switches the narrator's energy until the next
-tag. Writes next to the MP3:
+embedded in the script; each tag shapes pacing/gaps/level until the next tag.
+Writes next to the MP3:
   <stem>-timestamps.json  chunk + word timings on the stitched audio
-  <stem>-report.json      per-chunk QA (ASR verification, retries, failures)
+  <stem>-report.json      per-chunk QA (ASR verification, retries, failures,
+                          measured LUFS / LRA / noise floor)
 
 Options:
   -o, --output <file>   MP3 path. Refuses an existing destination.
-      --voice <id>     Voice preset (default: ${DEFAULT_VOICE_ID})
+      --voice <id>     Voice preset (default: ${DEFAULT_VOICE_ID} for voxcpm, ${EDGE_DEFAULT_VOICE_ID} for edge)
       --text-file      Read the script from a UTF-8 file
       --text           Supply the script directly
       --no-master      Skip the broadcast mastering chain (default: on)
+      --provider <id>  Speech engine: ${PROVIDER_IDS.join(' | ')} (default: voxcpm)
+      --asr-model <s>  Whisper verifier size (default: small)
       --list-voices    Show available voice IDs
   -h, --help          Show this help
 
@@ -39,8 +43,10 @@ export async function runTtsCommand(args: string[]): Promise<number> {
         text: { type: 'string' },
         'text-file': { type: 'string' },
         output: { type: 'string', short: 'o' },
-        voice: { type: 'string', default: DEFAULT_VOICE_ID },
+        voice: { type: 'string' },
         'no-master': { type: 'boolean' },
+        provider: { type: 'string', default: 'voxcpm' },
+        'asr-model': { type: 'string', default: 'small' },
         'list-voices': { type: 'boolean' },
         help: { type: 'boolean', short: 'h' }
       }
@@ -50,7 +56,10 @@ export async function runTtsCommand(args: string[]): Promise<number> {
       return 0
     }
     if (values['list-voices']) {
-      for (const voice of VOICE_PRESETS) {
+      if (!PROVIDER_IDS.includes(values.provider as (typeof PROVIDER_IDS)[number])) {
+        throw new Error(`Unknown speech provider: ${values.provider}. Known: ${PROVIDER_IDS.join(', ')}`)
+      }
+      for (const voice of values.provider === 'edge' ? EDGE_VOICE_PRESETS : VOICE_PRESETS) {
         console.log(`${voice.id}\t${voice.name}\t${voice.description}`)
       }
       return 0
@@ -63,8 +72,11 @@ export async function runTtsCommand(args: string[]): Promise<number> {
     if (!values.output || path.extname(values.output).toLowerCase() !== '.mp3') {
       throw new Error('--output must be an .mp3 path')
     }
-    const voiceId = values.voice
-    if (!findVoicePreset(voiceId)) {
+    if (!PROVIDER_IDS.includes(values.provider as (typeof PROVIDER_IDS)[number])) {
+      throw new Error(`Unknown speech provider: ${values.provider}. Known: ${PROVIDER_IDS.join(', ')}`)
+    }
+    const voiceId = values.voice ?? (values.provider === 'edge' ? EDGE_DEFAULT_VOICE_ID : DEFAULT_VOICE_ID)
+    if (!(values.provider === 'edge' ? findEdgeVoicePreset(voiceId) : findVoicePreset(voiceId))) {
       throw new Error(`Unknown voice: ${voiceId}. Use --list-voices to see the presets.`)
     }
     const text = (textFile === undefined
@@ -75,7 +87,14 @@ export async function runTtsCommand(args: string[]): Promise<number> {
       throw new Error(`Speech text must contain 1–${TTS_MAX_TEXT_LENGTH} characters`)
     }
 
-    return await generateNarration(text, voiceId, path.resolve(values.output), !values['no-master'])
+    return await generateNarration(
+      text,
+      voiceId,
+      path.resolve(values.output),
+      !values['no-master'],
+      values.provider,
+      values['asr-model']
+    )
   } catch (error) {
     console.error(`[tts] ${error instanceof Error ? error.message : String(error)}`)
     return 1
@@ -86,7 +105,9 @@ async function generateNarration(
   text: string,
   voiceId: string,
   output: string,
-  master: boolean
+  master: boolean,
+  providerId: string,
+  asrModel: string
 ): Promise<number> {
   const destination = await fs.lstat(output).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
@@ -103,6 +124,10 @@ async function generateNarration(
   const outputDir = path.dirname(output)
   await fs.mkdir(outputDir, { recursive: true })
   const resources = path.resolve(__dirname, '..', '..', 'resources', 'tts')
+  // Fails fast with a readable message for an unknown --provider value.
+  const provider = createProvider(providerId, {
+    voxWorkerPath: path.join(resources, 'voxcpm_worker.py')
+  })
   const controller = new AbortController()
   const cancel = (): void => controller.abort()
   process.once('SIGINT', cancel)
@@ -113,8 +138,9 @@ async function generateNarration(
       voiceId,
       outputMp3: output,
       ffmpegPath,
-      voxWorkerPath: path.join(resources, 'voxcpm_worker.py'),
+      provider,
       asrWorkerPath: path.join(resources, 'asr_worker.py'),
+      asrModel,
       referenceCacheDir: path.join(dataDir, 'cache', 'tts-voxcpm-references'),
       master,
       signal: controller.signal,
@@ -135,7 +161,6 @@ async function generateNarration(
   } finally {
     process.removeListener('SIGINT', cancel)
     stopAsrWorker()
-    stopVoxWorker()
   }
 
   // Publish the staged artifacts without overwriting anything a concurrent
@@ -165,6 +190,13 @@ async function generateNarration(
   console.log(output)
   console.log(finalTimestamps)
   console.log(finalReport)
+  const q = artifacts.audioQuality
+  if (q.integratedLufs !== null) {
+    console.log(
+      `[tts] loudness ${q.integratedLufs.toFixed(1)} LUFS · LRA ${q.loudnessRangeLu?.toFixed(1) ?? '?'} · ` +
+        `noise floor ${q.noiseFloorDbfs?.toFixed(1) ?? '?'} dBFS`
+    )
+  }
   if (!artifacts.passed) {
     console.error(
       '[tts] narration FAILED verification — review the report before using this audio'

@@ -38,30 +38,34 @@ py -3.12 -m venv "$env:LOCALAPPDATA\ShortZ\voxcpm"
 & "$env:LOCALAPPDATA\ShortZ\voxcpm\Scripts\python.exe" -m pip install voxcpm==2.0.3 faster-whisper
 ```
 
-The runtime and model require several gigabytes. The first preview or generation downloads model weights from Hugging Face and can take a while; later runs use the local cache. ShortZ keeps the model loaded for two minutes after a request and caches each designed reference voice, so subsequent generations are faster. The voices are AI-generated designs and pronunciation, accent, and consistency can vary. To use a different environment, set `SHORTZ_VOXCPM_PYTHON` to its Python executable before starting ShortZ. `faster-whisper` powers the CLI's per-chunk ASR verification (same runtime); without it the desktop app still works, but `shortz tts` refuses to run. Run `pnpm exec tsx scripts/tts-smoke.ts` to test the installed model.
+The runtime and model require several gigabytes. The first preview or generation downloads model weights from Hugging Face and can take a while; later runs use the local cache. ShortZ keeps the model loaded for two minutes after a request and caches each designed reference voice (pre-cleaned once with ffmpeg denoising, so no room noise is cloned into your narration), so subsequent generations are faster. The voices are AI-generated designs and pronunciation, accent, and consistency can vary. To use a different environment, set `SHORTZ_VOXCPM_PYTHON` to its Python executable before starting ShortZ. `faster-whisper` powers the CLI's per-chunk ASR verification (same runtime); without it the desktop app still works, but `shortz tts` refuses to run. Run `pnpm exec tsx scripts/tts-smoke.ts` to test the installed model.
 
 In Speech, enter a file name to save in the configured output folder, or enter a full path to choose a specific folder and file name. Existing files are never overwritten.
 
 ### Generate narration from the CLI
 
-The CLI is the production narration pipeline: it synthesizes the script in chunks, verifies every chunk with local speech recognition (Word Error Rate, speaking-pace window, stutter check — up to three takes per chunk with a shifted seed), stitches the passing takes with deliberate silence gaps, and masters the result to TikTok loudness (−14 LUFS). It prints the finished file paths and refuses to overwrite an existing output.
+The CLI synthesizes the script in chunks using the selected voice, verifies every chunk with local speech recognition (word accuracy, speaking-pace window, stutter check — up to three takes per chunk), cleans each chunk, stitches the takes with deliberate silence gaps, and masters the result toward −14 LUFS with gentle dynamics. VoxCPM uses one shared reference clip per preset and shifts the seed on retries. The CLI prints the finished file paths and measured loudness, and refuses to overwrite an existing output.
 
 ```powershell
 pnpm cli tts --list-voices
 pnpm cli tts --voice jejak --text-file "C:/path/to/narasi.txt" --output "C:/path/to/narasi.mp3"
+pnpm cli tts --provider edge --list-voices
+pnpm cli tts --provider edge --voice rimba --text-file "C:/path/to/narasi.txt" --output "C:/path/to/narasi.mp3"
 ```
 
-Embed delivery tags in the script to switch the narrator's energy mid-episode — each tag gets its own reference voice clip of the same narrator and its own pacing:
+Embed delivery tags in the script to shape the episode's rhythm — each tag adjusts level, pacing (≤3% slow-down only, never a speed-up), and the silence around it, while the voice itself stays one consistent narrator:
 
-- `[hook]` — urgent and firm (1.04× pacing), for the opening hook
-- `[tactical]` — calm and authoritative (1.00×), for numbered survival steps
-- `[twist]` — slower, darker, close-mic (0.92×), for the final reveal
+- `[hook]` — +1.5 dB, tight 100 ms gaps, for the opening hook
+- `[tactical]` — neutral level, 160–260 ms structured gaps, for numbered survival steps
+- `[twist]` — −3 dB, subtle 0.97× pacing, 450 ms pre-reveal pause, for the final reveal
 
-A tag applies from its position until the next tag or the end of the script. Silence gaps are chosen from the script's own structure: 280 ms at numbered steps and `[tactical]` transitions, 500 ms before a `[twist]` chunk, 140 ms at plain sentence breaks.
+A tag applies from its position until the next tag or the end of the script. Silence gaps follow the script's own structure automatically.
+
+Voice presets are specific to each provider. The default is `penjelajah` for VoxCPM and `rimba` for Edge; use `--provider edge --list-voices` to see the Edge presets. Edge uses an online speech service; verification still runs locally.
 
 Each run writes two artifacts next to the MP3 (same stem):
 
 - `<stem>-timestamps.json` — chunk and word timings on the final stitched audio, for caption sync
-- `<stem>-report.json` — per-chunk QA: verification attempts, similarity/WPM scores, retries, failures
+- `<stem>-report.json` — per-chunk QA (verification attempts, word/WPM scores, retries, failures) plus the measured `integratedLufs`, `loudnessRangeLu`, and estimated `noiseFloorDbfs` against their targets
 
-Exit codes: `0` the narration passed verification · `1` usage or runtime error · `2` the audio was generated but at least one chunk failed verification — review `*-report.json` before using it. `--no-master` skips the mastering chain (for A/B comparisons).
+Exit codes: `0` the narration passed verification · `1` usage or runtime error · `2` the audio was generated but at least one chunk failed verification — review `*-report.json` before using it. `--no-master` skips the mastering chain (for A/B comparisons); `--provider` selects the synthesis engine (voxcpm | edge) without changing the pipeline contract.

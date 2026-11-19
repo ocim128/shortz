@@ -24,7 +24,7 @@ export interface NarrationChunk {
   tag: DeliveryTagId | null
 }
 
-const TAG_RE = /\[(hook|tactical|twist)\]\s*/gi
+const TAG_RE = /\[(hook|tactical|twist)\][ \t]*/gi
 
 /** Remove delivery tags and collapse the whitespace they leave behind. */
 export function stripDeliveryTags(script: string): string {
@@ -98,7 +98,7 @@ export function splitLongSentence(sentence: string, limit = CHUNK_CHAR_LIMIT): s
   const parts: string[] = []
   let rest = sentence
   while (rest.length > limit) {
-    const window = rest.slice(0, limit + 1)
+    const window = rest.slice(0, limit)
     let cut = -1
     for (let i = window.length - 1; i >= 0; i -= 1) {
       const ch = window[i]

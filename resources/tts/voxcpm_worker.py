@@ -3,11 +3,12 @@ import contextlib
 import json
 import os
 import re
+import subprocess
 import sys
 import traceback
 from pathlib import Path
 
-DELIVERY_TAG_RE = re.compile(r'\[(?:hook|tactical|twist)\]\s*', re.IGNORECASE)
+DELIVERY_TAG_RE = re.compile(r'\[(?:hook|tactical|twist)\][ \t]*', re.IGNORECASE)
 
 
 def strip_delivery_tags(text):
@@ -16,7 +17,7 @@ def strip_delivery_tags(text):
     The pipeline strips tags before sending, but an older still-running app
     instance could forward raw script text — the worker defends in depth.
     """
-    return re.sub(r'\s+', ' ', DELIVERY_TAG_RE.sub(' ', text)).strip()
+    return re.sub(r'[ \t]+', ' ', DELIVERY_TAG_RE.sub(' ', text)).strip()
 
 
 def chunks(text, limit=120):
@@ -104,11 +105,26 @@ class SpeechWorker:
             # Write next to the final file so interrupted writes never become cache hits.
             reference.parent.mkdir(parents=True, exist_ok=True)
             temporary = reference.with_name(f'.{reference.name}.{os.getpid()}.tmp.wav')
+            denoised = reference.with_name(f'.{reference.name}.{os.getpid()}.denoised.wav')
             try:
                 sf.write(str(temporary), voice, sample_rate)
+                # Pre-clean the reference once so VoxCPM never clones room noise
+                # or vocoder hiss into every chunk of the episode.
+                ffmpeg_path = request.get('ffmpeg_path')
+                if ffmpeg_path:
+                    run = subprocess.run(
+                        [ffmpeg_path, '-v', 'error', '-y', '-i', str(temporary),
+                         '-af', 'afftdn=nf=-25,highpass=f=85',
+                         '-ar', str(sample_rate), '-ac', '1', str(denoised)],
+                        capture_output=True, text=True)
+                    if run.returncode == 0 and denoised.exists() and denoised.stat().st_size > 44:
+                        os.replace(denoised, temporary)
+                    else:
+                        print(f'Reference denoise skipped: {run.stderr[-300:]}', file=sys.stderr)
                 os.replace(temporary, reference)
             finally:
                 temporary.unlink(missing_ok=True)
+                denoised.unlink(missing_ok=True)
 
         audio = []
         for index, part in enumerate(chunks(text)):

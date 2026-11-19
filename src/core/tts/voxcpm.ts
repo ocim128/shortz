@@ -133,7 +133,7 @@ export function voxReferencePath(prompt: string, seed: number, cacheDir?: string
 
 /** One raw synthesis call on the kept-alive worker (pipeline chunk use). */
 export async function synthesizeVoxChunk(
-  request: { text: string; prompt: string; seed: number; output: string; reference: string },
+  request: { text: string; prompt: string; seed: number; output: string; reference: string; ffmpeg_path?: string },
   options: { pythonPath?: string; workerPath: string; signal?: AbortSignal }
 ): Promise<void> {
   await runWorker(options.pythonPath ?? defaultVoxPythonPath(), options.workerPath, request, options.signal)
@@ -164,7 +164,10 @@ export async function synthesizeVoxSpeech(input: VoxSynthesisInput): Promise<{ p
     const wav = path.join(dir, 'speech.wav')
     const mp3 = path.join(dir, 'speech.mp3')
     await runWorker(input.pythonPath ?? defaultVoxPythonPath(), input.workerPath,
-      { text, prompt: preset.prompt, seed: preset.seed, output: wav, reference }, input.signal)
+      // ffmpeg_path lets the worker pre-clean the cached reference once, so
+      // the desktop one-shot and the CLI pipeline share the same clean voice.
+      { text, prompt: preset.prompt, seed: preset.seed, output: wav, reference, ffmpeg_path: input.ffmpegPath },
+      input.signal)
     const audioFile = await fs.stat(wav).catch(() => undefined)
     if (!audioFile?.isFile() || audioFile.size === 0) {
       throw new Error('Speech generation did not produce an audio file. Restart ShortZ and try again.')
