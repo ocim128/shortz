@@ -1,0 +1,190 @@
+import type { DeliveryTagId } from '../../shared/tts/voices'
+
+/**
+ * Script → narration chunks (pure — unit-tested). Promotes the chunking that
+ * lived inside voxcpm_worker.py plus the delivery-tag grammar:
+ *
+ *  - `[hook]` / `[tactical]` / `[twist]` tags apply from their position until
+ *    the next tag or the end; they are stripped before synthesis and before
+ *    ASR comparison.
+ *  - Chunks are whole sentences (batched while they fit the model limit).
+ *  - An over-long sentence is NEVER split mid-clause: it splits at clause
+ *    boundaries (comma / ; / : / dash / Indonesian conjunction), and only an
+ *    absurd run-on without any boundary falls back to word splits.
+ */
+
+/** VoxCPM2's practical per-generation text limit (matches the worker). */
+export const CHUNK_CHAR_LIMIT = 120
+
+export interface NarrationChunk {
+  index: number
+  /** Clean text — tags already stripped, whitespace normalized. */
+  text: string
+  /** Active delivery tag, or null for untagged narration. */
+  tag: DeliveryTagId | null
+}
+
+const TAG_RE = /\[(hook|tactical|twist)\]\s*/gi
+
+/** Remove delivery tags and collapse the whitespace they leave behind. */
+export function stripDeliveryTags(script: string): string {
+  return script
+    .replace(TAG_RE, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .trim()
+}
+
+/** A run of narration under one active tag (tag boundaries cut the run). */
+interface Run {
+  text: string
+  tag: DeliveryTagId | null
+}
+
+/**
+ * Walk the script linearly, tracking the active tag across paragraphs. Tag
+ * positions come from one matchAll pass (a global regex's lastIndex must
+ * never be probed across shifting slices).
+ */
+function runs(script: string): Run[] {
+  const tags = new Map<number, { end: number; tag: DeliveryTagId }>()
+  for (const m of script.matchAll(TAG_RE)) {
+    tags.set(m.index ?? 0, {
+      end: (m.index ?? 0) + m[0].length,
+      tag: (m[1] as string).toLowerCase() as DeliveryTagId
+    })
+  }
+  const out: Run[] = []
+  let tag: DeliveryTagId | null = null
+  let buffer = ''
+  const flush = (): void => {
+    const text = buffer.replace(/\s+/g, ' ').trim()
+    if (text) out.push({ text, tag })
+    buffer = ''
+  }
+  let i = 0
+  while (i < script.length) {
+    const mark = tags.get(i)
+    if (mark) {
+      flush() // a tag transition starts a new run
+      tag = mark.tag
+      i = mark.end
+      continue
+    }
+    if (script[i] === '\n') {
+      const para = /^\n[ \t\r]*\n/.exec(script.slice(i))
+      if (para) {
+        flush() // a paragraph break is a deliberate script beat
+        i += para[0].length
+        continue
+      }
+      buffer += ' '
+      i += 1
+      continue
+    }
+    buffer += script[i]
+    i += 1
+  }
+  flush()
+  return out
+}
+
+/**
+ * Split one over-long sentence at clause boundaries. The largest
+ * boundary-bounded prefix within the limit wins, so clauses stay whole;
+ * conjunction boundaries split BEFORE the conjunction word.
+ */
+export function splitLongSentence(sentence: string, limit = CHUNK_CHAR_LIMIT): string[] {
+  if (sentence.length <= limit) return [sentence]
+  const parts: string[] = []
+  let rest = sentence
+  while (rest.length > limit) {
+    const window = rest.slice(0, limit + 1)
+    let cut = -1
+    for (let i = window.length - 1; i >= 0; i -= 1) {
+      const ch = window[i]
+      if (ch === ',' || ch === ';' || ch === ':' || ch === '—') {
+        cut = i + 1
+        break
+      }
+    }
+    if (cut <= 0) {
+      const conjRe = /\s(yang|dan|tetapi|tapi|karena|atau|sehingga|lalu|kemudian|saat|ketika|sedangkan|hingga|sampai)\s/g
+      let m: RegExpExecArray | null
+      while ((m = conjRe.exec(window)) !== null) {
+        cut = m.index + 1 // before the conjunction, after the preceding space
+      }
+    }
+    if (cut <= 0) {
+      // Last resort: word boundary; a run-on word with no space hard-splits.
+      cut = rest.lastIndexOf(' ', limit)
+      if (cut <= 0) {
+        parts.push(rest.slice(0, limit))
+        rest = rest.slice(limit)
+        continue
+      }
+    }
+    parts.push(rest.slice(0, cut).trim())
+    rest = rest.slice(cut).trim()
+  }
+  if (rest.length > 0) parts.push(rest)
+  return parts.filter((p) => p.length > 0)
+}
+
+function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?…])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+}
+
+/** Sentence batching within one run (the worker's proven grouping). */
+function chunkRun(run: Run, limit: number): string[] {
+  const out: string[] = []
+  let current = ''
+  const emit = (): void => {
+    const clean = current.trim()
+    if (clean) out.push(clean)
+    current = ''
+  }
+  for (const sentence of splitSentences(run.text)) {
+    if (sentence.length > limit) {
+      emit()
+      for (const piece of splitLongSentence(sentence, limit)) {
+        if (current && current.length + piece.length + 1 > limit) emit()
+        current = current ? `${current} ${piece}` : piece
+      }
+      continue
+    }
+    if (current && current.length + sentence.length + 1 > limit) emit()
+    current = current ? `${current} ${sentence}` : sentence
+  }
+  emit()
+  return out
+}
+
+/** Script → ordered narration chunks (indices assigned in reading order). */
+export function splitIntoChunks(script: string, limit = CHUNK_CHAR_LIMIT): NarrationChunk[] {
+  const chunks: NarrationChunk[] = []
+  for (const run of runs(script)) {
+    for (const text of chunkRun(run, limit)) {
+      chunks.push({ index: chunks.length, text, tag: run.tag })
+    }
+  }
+  return chunks
+}
+
+const ORDINALS = [
+  'pertama', 'kedua', 'ketiga', 'keempat', 'kelima', 'keenam', 'ketujuh',
+  'kedelapan', 'kesembilan', 'kesepuluh'
+] as const
+
+/**
+ * A new numbered step ("Pertama, …" / "Kedua …" / "1. …") — these transitions
+ * get the longer step gap in the stitch.
+ */
+export function startsNumberedStep(text: string): boolean {
+  const lower = text.toLowerCase().replace(/^["'“]+/, '')
+  if (/^\d+[.)]\s/.test(lower)) return true
+  const first = (lower.split(/[\s,]+/)[0] ?? '').replace(/[^a-z]/g, '')
+  return (ORDINALS as readonly string[]).includes(first)
+}

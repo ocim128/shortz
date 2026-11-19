@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
 import { findVoicePreset, TTS_MAX_TEXT_LENGTH } from '../../shared/tts/voices'
+import { stripDeliveryTags } from './chunks'
 import { atomicWriteFile } from '../store/fs-utils'
 import { killProcessTree, runFfmpeg } from '../ffmpeg/runner'
 
@@ -119,6 +120,25 @@ export function stopVoxWorker(): void {
   worker?.stop()
 }
 
+/** Reference-clip cache key for a (prompt, seed) voice design. */
+export function voxReferencePath(prompt: string, seed: number, cacheDir?: string): string {
+  const referenceKey = createHash('sha256')
+    .update(JSON.stringify(['voxcpm2-reference-v1', prompt, seed]))
+    .digest('hex')
+  return path.join(
+    cacheDir ?? path.join(os.tmpdir(), 'shortz-voxcpm-references'),
+    `${referenceKey}.wav`
+  )
+}
+
+/** One raw synthesis call on the kept-alive worker (pipeline chunk use). */
+export async function synthesizeVoxChunk(
+  request: { text: string; prompt: string; seed: number; output: string; reference: string },
+  options: { pythonPath?: string; workerPath: string; signal?: AbortSignal }
+): Promise<void> {
+  await runWorker(options.pythonPath ?? defaultVoxPythonPath(), options.workerPath, request, options.signal)
+}
+
 async function runWorker(python: string, script: string, request: object, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) throw new Error('Speech generation cancelled')
   if (worker && (worker.python !== python || worker.script !== script)) {
@@ -129,7 +149,9 @@ async function runWorker(python: string, script: string, request: object, signal
 }
 
 export async function synthesizeVoxSpeech(input: VoxSynthesisInput): Promise<{ path: string; bytes: number }> {
-  const text = input.text.trim()
+  // The quick path (desktop preview / plain CLI text) never speaks delivery
+  // tags — the verified pipeline is where their energy switching happens.
+  const text = stripDeliveryTags(input.text).trim()
   if (!text) throw new Error('Enter some text to convert to speech')
   if (text.length > TTS_MAX_TEXT_LENGTH) throw new Error(`Text is too long (${text.length} chars; max ${TTS_MAX_TEXT_LENGTH})`)
   const preset = findVoicePreset(input.voiceId)
@@ -143,6 +165,10 @@ export async function synthesizeVoxSpeech(input: VoxSynthesisInput): Promise<{ p
     const mp3 = path.join(dir, 'speech.mp3')
     await runWorker(input.pythonPath ?? defaultVoxPythonPath(), input.workerPath,
       { text, prompt: preset.prompt, seed: preset.seed, output: wav, reference }, input.signal)
+    const audioFile = await fs.stat(wav).catch(() => undefined)
+    if (!audioFile?.isFile() || audioFile.size === 0) {
+      throw new Error('Speech generation did not produce an audio file. Restart ShortZ and try again.')
+    }
     const result = await runFfmpeg({
       ffmpegPath: input.ffmpegPath,
       args: ['-y', '-i', wav, '-c:a', 'libmp3lame', '-q:a', '3', mp3],

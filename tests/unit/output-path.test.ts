@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { buildOutputPath, sanitizeNamePart } from '../../src/main/output-path'
+import { buildOutputPath, buildSpeechOutputPath, sanitizeNamePart } from '../../src/main/output-path'
 
 const NOW = new Date(2026, 9, 18, 9, 35, 0) // 2026-10-18 09:35 local
 
@@ -75,5 +75,24 @@ describe('output path tokens', () => {
   it('trims the sanitized name so patterns do not leave dangling separators', () => {
     expect(sanitizeNamePart('  clip  ')).toBe('clip')
     expect(sanitizeNamePart('a/b')).toBe('a_b')
+  })
+})
+
+describe('speech output paths', () => {
+  it.skipIf(process.platform !== 'win32')('preserves a long absolute Windows path exactly', () => {
+    const target = 'C:\\Users\\user\\Documents\\Repo\\tiktok-repost\\tiktok-video\\Survival-Fantasy-Content\\episodes\\001-kemacetan-terakhir\\kemacetan.mp3'
+    expect(buildSpeechOutputPath({ dir: 'C:\\Users\\user\\Videos\\ShortZ', pattern: '{name}', name: target }))
+      .toBe(target)
+  })
+
+  it('uses an absolute path directly without duplicating the extension', () => {
+    const target = path.resolve('episode', 'kemacetan4.mp3')
+    expect(buildSpeechOutputPath({ dir: 'output', pattern: '{name}_{yyyyMMdd}', name: target })).toBe(target)
+    expect(buildSpeechOutputPath({ dir: 'output', pattern: '{name}', name: target.slice(0, -4) })).toBe(target)
+  })
+
+  it('applies the output pattern to a filename without duplicating .mp3', () => {
+    expect(buildSpeechOutputPath({ dir: 'output', pattern: '{name}_tts', name: 'kemacetan4.mp3' }))
+      .toBe(path.join('output', 'kemacetan4_tts.mp3'))
   })
 })

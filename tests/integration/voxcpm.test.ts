@@ -55,6 +55,62 @@ describe('local speech pipeline', () => {
     await expect(synthesizeVoxSpeech({ text: 'Halo', voiceId: 'rimba', outputPath: 'unused', ffmpegPath: 'unused', workerPath: 'unused' })).rejects.toThrow('Unknown voice')
   })
 
+  it('strips delivery tags before the script reaches the worker', async () => {
+    const dir = await makeScratchDir('vox-tags')
+    try {
+      const worker = path.join(dir, 'worker.cjs')
+      const captured = path.join(dir, 'request.json')
+      await writeFile(worker, `
+        const fs = require('node:fs');
+        require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+          const request = JSON.parse(line);
+          fs.appendFileSync(${JSON.stringify(captured)}, JSON.stringify({ text: request.text }) + '\\n');
+          const samples = 2400;
+          const wav = Buffer.alloc(44 + samples * 2);
+          wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
+          wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+          wav.writeUInt32LE(24000, 24); wav.writeUInt32LE(48000, 28);
+          wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36);
+          wav.writeUInt32LE(samples * 2, 40); fs.writeFileSync(request.output, wav);
+          process.stdout.write(JSON.stringify({ id: request.id, ok: true }) + '\\n');
+        });`)
+      const { ffmpegPath } = await resolveFfmpegBinariesCached()
+      await synthesizeVoxSpeech({
+        text: '[hook]Kalau kaca dikut. [twist]Dia di belakangmu.',
+        voiceId: 'penjelajah',
+        outputPath: path.join(dir, 'tagged.mp3'),
+        ffmpegPath,
+        workerPath: worker,
+        pythonPath: process.execPath,
+        referenceCacheDir: dir
+      })
+      const requests = (await readFile(captured, 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as { text: string })
+      const sent = requests.map((r) => r.text).join(' ')
+      expect(sent).not.toContain('[hook]')
+      expect(sent).not.toContain('[twist]')
+      expect(sent).toContain('Kalau kaca dikut.')
+    } finally {
+      await removeScratchDir(dir)
+    }
+  })
+
+  it('reports when a worker claims success without producing audio', async () => {
+    const dir = await makeScratchDir('vox-missing-audio')
+    try {
+      const worker = path.join(dir, 'worker.cjs')
+      await writeFile(worker, `
+        require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+          process.stdout.write(JSON.stringify({ id: JSON.parse(line).id, ok: true }) + '\\n')
+        })`)
+      await expect(synthesizeVoxSpeech({
+        text: 'Halo.', voiceId: 'penjelajah', outputPath: path.join(dir, 'output.mp3'),
+        ffmpegPath: 'unused', workerPath: worker, pythonPath: process.execPath
+      })).rejects.toThrow('did not produce an audio file')
+    } finally {
+      await removeScratchDir(dir)
+    }
+  })
+
   it('cancels a running worker without leaving an output file', async () => {
     const dir = await makeScratchDir('vox-cancel')
     try {

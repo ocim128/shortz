@@ -16,7 +16,7 @@ import type {
   Settings,
   TemplateMeta
 } from '../preload/api'
-import { buildOutputPath } from './output-path'
+import { buildOutputPath, buildSpeechOutputPath } from './output-path'
 import { cancelBatchRun, runBatch, setBatchEmitter } from './batch'
 import { registerDownloaderIpc } from './downloader'
 import { getMediaUrlForFile, mintMediaUrl } from './protocol/media'
@@ -298,12 +298,10 @@ export function registerIpcHandlers(): void {
         const [settings, binaries] = await Promise.all([currentSettings(), resolveBinariesWithSettings()])
         const name = (req.filename ?? '').trim() || 'narration'
         const target = uniqueOutputPath(
-          buildOutputPath({
+          buildSpeechOutputPath({
             dir: settings.output.dir,
             pattern: settings.output.filenamePattern,
-            name,
-            templateId: 'tts',
-            ext: '.mp3'
+            name
           })
         )
         logInfo(`[tts] start — voice=${preset.id} (${preset.name}) chars=${req.text.length}`)

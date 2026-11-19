@@ -71,3 +71,15 @@ export function buildOutputPath(input: OutputPathInput): string {
   const safeName = finalName.length === 0 ? 'export' : finalName
   return path.join(input.dir, `${safeName}${input.ext ?? '.mp4'}`)
 }
+
+/** Resolve a speech filename or an explicitly supplied absolute MP3 path. */
+export function buildSpeechOutputPath(input: { dir: string; pattern: string; name: string }): string {
+  const name = input.name.trim() || 'narration'
+  if (path.isAbsolute(name)) {
+    if (/[\\/]$/.test(name)) throw new Error('Enter a file name after the output folder')
+    const target = path.normalize(name)
+    return /\.mp3$/i.test(target) ? target : `${target}.mp3`
+  }
+  const stem = name.replace(/\.mp3$/i, '').trim() || 'narration'
+  return buildOutputPath({ dir: input.dir, pattern: input.pattern, name: stem, templateId: 'tts', ext: '.mp3' })
+}

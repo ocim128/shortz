@@ -50,7 +50,7 @@ export const S = {
   ttsPreviewPause: 'Pause',
   ttsPreviewLoading: 'Generating sample…',
   ttsPreviewFailed: 'Preview failed — try again',
-  ttsFilenameLabel: 'File name',
+  ttsFilenameLabel: 'File name or full output path',
   ttsFilenamePlaceholder: 'narration',
   ttsGenerate: 'Generate speech',
   ttsRunning: 'Generating speech locally; this can take a few minutes…',

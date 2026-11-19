@@ -31,3 +31,56 @@ export function findVoicePreset(id: string): TtsVoicePreset | undefined {
 
 export const PREVIEW_TEXT = 'Malam itu, hujan turun tanpa henti. Persediaan kami hampir habis. Saat suara itu terdengar dari balik pepohonan, aku sadar kami tidak sendirian.'
 export const TTS_MAX_TEXT_LENGTH = 10_000
+
+// --- inline delivery tags (Dimensi-Niskala narration energies) ----------------
+
+export type DeliveryTagId = 'hook' | 'tactical' | 'twist'
+
+export interface DeliveryTag {
+  id: DeliveryTagId
+  /** Appended to the preset prompt so each tag gets its own reference clip. */
+  energyPrompt: string
+  /** Pitch-preserving playback multiplier applied to the chunk (atempo). */
+  pacing: number
+}
+
+/**
+ * Three vocal energies of the SAME narrator. Each tag maps to its own
+ * generated reference clip (same preset seed, tag-shaped prompt), so the
+ * voice stays one person while the delivery changes. Scripts embed the tag
+ * inline — it applies from its position until the next tag or the end.
+ */
+export const DELIVERY_TAGS: Record<DeliveryTagId, DeliveryTag> = {
+  hook: {
+    id: 'hook',
+    energyPrompt: 'Urgent, firm delivery, grabbing attention from the first word.',
+    pacing: 1.04
+  },
+  tactical: {
+    id: 'tactical',
+    energyPrompt: 'Calm, authoritative delivery, instructing clearly and precisely.',
+    pacing: 1.0
+  },
+  twist: {
+    id: 'twist',
+    energyPrompt: 'Slower, darker, close-mic delivery, quiet menace in the final reveal.',
+    pacing: 0.92
+  }
+}
+
+/** Untagged narration: the preset's own energy, no pacing change. */
+export const DEFAULT_DELIVERY: DeliveryTag = {
+  id: 'tactical',
+  energyPrompt: '',
+  pacing: 1.0
+}
+
+/** Deliberate silence between chunks (ms) — the narration's rhythm section. */
+export const NARRATION_GAP_MS = {
+  /** Plain sentence break. */
+  sentence: 140,
+  /** New numbered step or a [tactical] transition. */
+  step: 280,
+  /** The pre-reveal beat right before a [twist] chunk. */
+  twistBeat: 500
+} as const

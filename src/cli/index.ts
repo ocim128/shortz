@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { runDlCommand } from './dl'
+import { runTtsCommand } from './tts'
 import { loadProjectDocument, ProjectFileError } from '../core/store/projects'
 import { loadTemplateById } from '../core/store/templates'
 import {
@@ -18,6 +19,7 @@ const USAGE = `ShortZ CLI (headless pipeline)
 Usage:
   shortz render <project.json> [-o <out.mp4>] [options]
   shortz dl [<link|file>...] [options]      Twitter/X downloader (see: shortz dl --help)
+  shortz tts [options]                    Generate narration MP3 (see: shortz tts --help)
 
 Render options:
   -o, --output <file>     Output file (default: <name>_<yyyyMMdd>_<HHmm>.mp4 in cwd)
@@ -242,6 +244,10 @@ async function runRender(options: CliOptions): Promise<number> {
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
+  if (argv[0] === 'tts') {
+    return runTtsCommand(argv.slice(1))
+  }
+
   // The downloader owns its own flag grammar (src/cli/dl.ts) — one dispatch, no
   // flag-sharing between two unrelated pipelines.
   if (argv[0] === 'dl') {

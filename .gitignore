@@ -20,3 +20,7 @@ Thumbs.db
 
 # temporary agent prompts / scratch notes (not part of the plan)
 tmp/
+
+# python
+__pycache__/
+*.pyc
