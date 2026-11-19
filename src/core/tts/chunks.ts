@@ -14,7 +14,7 @@ import type { DeliveryTagId } from '../../shared/tts/voices'
  */
 
 /** VoxCPM2's practical per-generation text limit (matches the worker). */
-export const CHUNK_CHAR_LIMIT = 120
+export const CHUNK_CHAR_LIMIT = 300
 
 export interface NarrationChunk {
   index: number
@@ -25,11 +25,14 @@ export interface NarrationChunk {
 }
 
 const TAG_RE = /\[(hook|tactical|twist)\][ \t]*/gi
+const SFX_RE = /\[sfx:([a-z0-9_-]+)\]/gi
 
 /** Remove delivery tags and collapse the whitespace they leave behind. */
 export function stripDeliveryTags(script: string): string {
   return script
     .replace(TAG_RE, ' ')
+    .replace(SFX_RE, ' ')
+    .replace(/\btok[\s.,!?]+tok[.!?,]*/gi, ' ')
     .replace(/[ \t]+/g, ' ')
     .trim()
 }
@@ -38,54 +41,6 @@ export function stripDeliveryTags(script: string): string {
 interface Run {
   text: string
   tag: DeliveryTagId | null
-}
-
-/**
- * Walk the script linearly, tracking the active tag across paragraphs. Tag
- * positions come from one matchAll pass (a global regex's lastIndex must
- * never be probed across shifting slices).
- */
-function runs(script: string): Run[] {
-  const tags = new Map<number, { end: number; tag: DeliveryTagId }>()
-  for (const m of script.matchAll(TAG_RE)) {
-    tags.set(m.index ?? 0, {
-      end: (m.index ?? 0) + m[0].length,
-      tag: (m[1] as string).toLowerCase() as DeliveryTagId
-    })
-  }
-  const out: Run[] = []
-  let tag: DeliveryTagId | null = null
-  let buffer = ''
-  const flush = (): void => {
-    const text = buffer.replace(/\s+/g, ' ').trim()
-    if (text) out.push({ text, tag })
-    buffer = ''
-  }
-  let i = 0
-  while (i < script.length) {
-    const mark = tags.get(i)
-    if (mark) {
-      flush() // a tag transition starts a new run
-      tag = mark.tag
-      i = mark.end
-      continue
-    }
-    if (script[i] === '\n') {
-      const para = /^\n[ \t\r]*\n/.exec(script.slice(i))
-      if (para) {
-        flush() // a paragraph break is a deliberate script beat
-        i += para[0].length
-        continue
-      }
-      buffer += ' '
-      i += 1
-      continue
-    }
-    buffer += script[i]
-    i += 1
-  }
-  flush()
-  return out
 }
 
 /**
@@ -155,7 +110,7 @@ function chunkRun(run: Run, limit: number): string[] {
       }
       continue
     }
-    if (current && current.length + sentence.length + 1 > limit) emit()
+    if (current && (current.length + sentence.length + 1 > limit || splitSentences(current).length >= 3)) emit()
     current = current ? `${current} ${sentence}` : sentence
   }
   emit()
@@ -164,13 +119,33 @@ function chunkRun(run: Run, limit: number): string[] {
 
 /** Script → ordered narration chunks (indices assigned in reading order). */
 export function splitIntoChunks(script: string, limit = CHUNK_CHAR_LIMIT): NarrationChunk[] {
+  return parseNarrationScript(script, limit).chunks
+}
+
+export function parseNarrationScript(script: string, limit = CHUNK_CHAR_LIMIT): {
+  chunks: NarrationChunk[]; sfx: Array<{ name: string; beforeChunk: number }>
+} {
   const chunks: NarrationChunk[] = []
-  for (const run of runs(script)) {
-    for (const text of chunkRun(run, limit)) {
-      chunks.push({ index: chunks.length, text, tag: run.tag })
+  const sfx: Array<{ name: string; beforeChunk: number }> = []
+  let tag: DeliveryTagId | null = null
+  let cursor = 0
+  const normalized = script.replace(/\btok[\s.,!?]+tok[.!?,]*/gi, '[sfx:knock]')
+  const markers = /\[(hook|tactical|twist|sfx:([a-z0-9_-]+))\]/gi
+  const flush = (text: string): void => {
+    const clean = text.replace(/\s+/g, ' ').trim()
+    if (!clean) return
+    for (const text of chunkRun({ text: clean, tag }, limit)) {
+      chunks.push({ index: chunks.length, text, tag })
     }
   }
-  return chunks
+  for (const match of normalized.matchAll(markers)) {
+    flush(normalized.slice(cursor, match.index))
+    if (match[2]) sfx.push({ name: match[2].toLowerCase(), beforeChunk: chunks.length })
+    else tag = match[1]!.toLowerCase() as DeliveryTagId
+    cursor = match.index! + match[0].length
+  }
+  flush(normalized.slice(cursor))
+  return { chunks, sfx }
 }
 
 const ORDINALS = [

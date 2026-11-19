@@ -13,11 +13,13 @@ import { atomicWriteFile } from '../store/fs-utils'
  *  - click-free chunks: ASR-bounded trim with a 25 ms breath buffer,
  *    15 ms fades on both edges, pitch-preserving pacing (atempo);
  *  - deliberate silence pacing between chunks by tag/punctuation;
- *  - a fixed mastering chain (high-pass → tone EQ → compressor → loudnorm).
+ *  - a mastering chain (high-pass → tone EQ → compressor → level trim).
  */
 
 /** Breath kept before the first and after the last syllable of a chunk. */
 export const BREATH_MS = 25
+/** Keep extra trailing audio beyond ASR's often imprecise word endpoint. */
+export const TRAILING_BUFFER_MS = 40
 /** Anti-click fades on every chunk edge. */
 export const EDGE_FADE_SEC = 0.015
 /** Uniform stitch format. */
@@ -59,9 +61,9 @@ export interface TrimPlan {
  * Trim plan from what the ASR heard: keep `breathMs` around the first/last
  * spoken word so onsets like "Pertama" keep their attack consonant. Falls
  * back to the whole file when the ASR found no words (the chunk will carry
- * an accepted-with-warnings/failed status in the report anyway).
+ * a failed status in the report anyway).
  */
-export function planTrim(words: AsrWord[], rawDurationSec: number, breathMs = BREATH_MS): TrimPlan {
+export function planTrim(words: AsrWord[], rawDurationSec: number, breathMs = BREATH_MS, extraTrailingMs = 0): TrimPlan {
   const breathSec = breathMs / 1000
   if (words.length === 0 || rawDurationSec <= 0) {
     return { startSec: 0, durationSec: rawDurationSec, speechStartSec: 0, speechEndSec: rawDurationSec }
@@ -69,7 +71,7 @@ export function planTrim(words: AsrWord[], rawDurationSec: number, breathMs = BR
   const first = words[0]!
   const last = words[words.length - 1]!
   const startSec = Math.max(0, first.start - breathSec)
-  const endSec = Math.min(rawDurationSec, last.end + breathSec)
+  const endSec = Math.min(rawDurationSec, last.end + breathSec + (TRAILING_BUFFER_MS + extraTrailingMs) / 1000)
   const durationSec = Math.max(0.05, endSec - startSec)
   return {
     startSec,

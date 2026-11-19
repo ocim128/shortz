@@ -38,19 +38,20 @@ py -3.12 -m venv "$env:LOCALAPPDATA\ShortZ\voxcpm"
 & "$env:LOCALAPPDATA\ShortZ\voxcpm\Scripts\python.exe" -m pip install voxcpm==2.0.3 faster-whisper
 ```
 
-The runtime and model require several gigabytes. The first preview or generation downloads model weights from Hugging Face and can take a while; later runs use the local cache. ShortZ keeps the model loaded for two minutes after a request and caches each designed reference voice (pre-cleaned once with ffmpeg denoising, so no room noise is cloned into your narration), so subsequent generations are faster. The voices are AI-generated designs and pronunciation, accent, and consistency can vary. To use a different environment, set `SHORTZ_VOXCPM_PYTHON` to its Python executable before starting ShortZ. `faster-whisper` powers the CLI's per-chunk ASR verification (same runtime); without it the desktop app still works, but `shortz tts` refuses to run. Run `pnpm exec tsx scripts/tts-smoke.ts` to test the installed model.
+The runtime and model require several gigabytes. The first preview or generation downloads model weights from Hugging Face and can take a while; later runs use the local cache. VoxCPM2 Ultimate Cloning requires one Indonesian WAV and its exact transcript. Set `SHORTZ_VOX_REFERENCE_WAV` to its path and `SHORTZ_VOX_REFERENCE_TEXT` to the exact words before starting ShortZ. The reference is denoised and cached, then supplied as both the prompt and reference for every generation. The reference determines the voice; preset descriptions cannot change its identity. Use a reference you are authorized to use. To use a different Python environment, set `SHORTZ_VOXCPM_PYTHON`. `faster-whisper` powers the CLI's per-chunk ASR verification. Run `pnpm exec tsx scripts/tts-smoke.ts` to test the installed model.
 
 In Speech, enter a file name to save in the configured output folder, or enter a full path to choose a specific folder and file name. Existing files are never overwritten.
 
 ### Generate narration from the CLI
 
-The CLI synthesizes the script in chunks using the selected voice, verifies every chunk with local speech recognition (word accuracy, speaking-pace window, stutter check — up to three takes per chunk), cleans each chunk, stitches the takes with deliberate silence gaps, and masters the result toward −14 LUFS with gentle dynamics. VoxCPM uses one shared reference clip per preset and shifts the seed on retries. The CLI prints the finished file paths and measured loudness, and refuses to overwrite an existing output.
+The CLI synthesizes up to three sentences per chunk, checks raw and conditioned audio with local speech recognition, retries up to three times, and masters the result toward −14 LUFS. Any normalized word mismatch or suspected truncated last word fails verification. Whisper can mishear correct audio and cannot guarantee pronunciation or accent; listen to the result. The CLI prints the finished file paths and measured loudness, and refuses to overwrite an existing output.
 
 ```powershell
 pnpm cli tts --list-voices
 pnpm cli tts --voice jejak --text-file "C:/path/to/narasi.txt" --output "C:/path/to/narasi.mp3"
 pnpm cli tts --provider edge --list-voices
 pnpm cli tts --provider edge --voice rimba --text-file "C:/path/to/narasi.txt" --output "C:/path/to/narasi.mp3"
+pnpm cli tts --provider cloud --text-file "C:/path/to/narasi.txt" --output "C:/path/to/cloud.mp3"
 ```
 
 Embed delivery tags in the script to shape the episode's rhythm — each tag adjusts level, pacing (≤3% slow-down only, never a speed-up), and the silence around it, while the voice itself stays one consistent narrator:
@@ -62,6 +63,10 @@ Embed delivery tags in the script to shape the episode's rhythm — each tag adj
 A tag applies from its position until the next tag or the end of the script. Silence gaps follow the script's own structure automatically.
 
 Voice presets are specific to each provider. The default is `penjelajah` for VoxCPM and `rimba` for Edge; use `--provider edge --list-voices` to see the Edge presets. Edge uses an online speech service; verification still runs locally.
+
+For `--provider cloud`, set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` in the environment. The model defaults to `eleven_multilingual_v2` and can be set with `ELEVENLABS_MODEL_ID`. Cloud synthesis sends the script to ElevenLabs and may incur usage charges; verification and mastering remain local. Cloud voice IDs can also be supplied using `--voice`.
+
+Use `[sfx:knock]` for a non-spoken sound effect. The marker is stripped from synthesis and appears as a named time in the timestamps artifact; the pipeline does not generate or mix the effect. Repeated literal `Tok. Tok.` is also converted into a `knock` marker.
 
 Each run writes two artifacts next to the MP3 (same stem):
 

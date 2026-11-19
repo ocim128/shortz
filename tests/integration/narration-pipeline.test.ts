@@ -96,11 +96,11 @@ describe('narration pipeline', () => {
           fs.appendFileSync(${JSON.stringify(asrLog)}, JSON.stringify(request) + '\\n');
           let response;
           try {
-            if (calls <= 2) {
+            if (calls <= 4) {
               response = { id: request.id, ok: true, transcript: 'er er er er er er',
                 words: [{ word: 'er', start: 0.0, end: 0.4 }], durationSec: 1.5 };
             } else {
-              const text = fs.readFileSync(request.wav + '.txt', 'utf8').trim();
+              const text = fs.readFileSync(request.wav.replace(/p(\\d+)-a/, 'c$1-a') + '.txt', 'utf8').trim();
               const tokens = text.split(/\\s+/).filter(Boolean);
               const per = 0.46;
               const words = tokens.map((word, i) => ({
@@ -238,7 +238,7 @@ describe('narration pipeline', () => {
         const fs = require('node:fs');
         require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
           const request = JSON.parse(line);
-          const text = fs.readFileSync(request.wav + '.txt', 'utf8').trim();
+          const text = fs.readFileSync(request.wav.replace(/p(\\d+)-a/, 'c$1-a') + '.txt', 'utf8').trim();
           const tokens = text.split(/\\s+/).filter(Boolean);
           const per = 0.46;
           const words = tokens.map((word, i) => ({ word, start: 0.1 + i * per, end: 0.1 + i * per + per * 0.9 }));
@@ -265,7 +265,7 @@ describe('narration pipeline', () => {
       const output = path.join(dir, 'narration.mp3')
       const result = await runNarrationPipeline({
         // Paragraph break forces two chunks — proves per-chunk provider calls.
-        script: 'Hujan turun.\n\nKami bertahan.',
+        script: '[hook]Hujan turun. [sfx:knock] [twist]Kami bertahan.',
         voiceId,
         outputMp3: output,
         ffmpegPath,
@@ -281,10 +281,14 @@ describe('narration pipeline', () => {
       const report = JSON.parse(await readFile(result.report, 'utf8')) as { provider: string; passed: boolean }
       expect(report.provider).toBe(id)
       // Word timings exist for the stub provider too — captions stay provider-agnostic.
-      const timestamps = JSON.parse(await readFile(result.timestamps, 'utf8')) as { words: unknown[] }
+      const timestamps = JSON.parse(await readFile(result.timestamps, 'utf8')) as { words: unknown[]; sfx: Array<{ name: string; time: number }> }
       expect(timestamps.words.length).toBeGreaterThan(0)
+      expect(timestamps.sfx).toHaveLength(1)
+      expect(timestamps.sfx[0]?.name).toBe('knock')
+      expect(seen.every((item) => !item.text.includes('sfx'))).toBe(true)
       const timing = JSON.parse(await readFile(result.timestamps, 'utf8')) as { chunks: Array<{ start: number; end: number }> }
-      const actualFirstDuration = await conditionedWavDuration(path.join(path.dirname(result.mp3), 'p0.wav'))
+      expect(timestamps.sfx[0]!.time).toBeCloseTo(timing.chunks[1]!.start, 3)
+      const actualFirstDuration = await conditionedWavDuration(path.join(path.dirname(result.mp3), 'p0-a0.wav'))
       expect(timing.chunks[0]!.end - timing.chunks[0]!.start).toBeCloseTo(actualFirstDuration, 3)
       await result.cleanup()
     } finally {
@@ -311,6 +315,40 @@ describe('narration pipeline', () => {
     } finally {
       await removeScratchDir(dir)
     }
+  }, 60_000)
+
+  it('retries and fails when conditioning causes a word to be cut off', async () => {
+    const dir = await makeScratchDir('narration-conditioned-verify')
+    try {
+      const { ffmpegPath } = await resolveFfmpegBinariesCached()
+      const asrWorker = path.join(dir, 'asr.cjs')
+      await writeFile(asrWorker, `
+        require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+          const r = JSON.parse(line);
+          const conditioned = require('node:path').basename(r.wav).startsWith('p');
+          const text = conditioned ? 'Hujan turu' : 'Hujan turun';
+          const words = text.split(' ').map((word, i) => ({word, start: 0.1 + i * 0.4, end: 0.4 + i * 0.4}));
+          process.stdout.write(JSON.stringify({id: r.id, ok: true, transcript: text, words, durationSec: 1.0}) + '\\n');
+        });`)
+      let calls = 0
+      const provider: TtsProvider = { id: 'stub', stop() {}, async synthesizeChunk(request) {
+        calls++
+        await writeFile(request.outputWav, silentWav(1))
+      } }
+      const result = await runNarrationPipeline({ script: 'Hujan turun.', voiceId: 'jejak',
+        outputMp3: path.join(dir, 'out.mp3'), ffmpegPath, provider,
+        asrWorkerPath: asrWorker, asrPythonPath: process.execPath, master: false })
+      try {
+        const report = JSON.parse(await readFile(result.report, 'utf8')) as {
+          passed: boolean; chunks: Array<{ status: string; attempts: Array<{ mismatches: unknown[]; rawMismatches: unknown[] }> }>
+        }
+        expect(calls).toBe(3)
+        expect(report.passed).toBe(false)
+        expect(report.chunks[0]!.status).toBe('failed')
+        expect(report.chunks[0]!.attempts[0]!.rawMismatches).toEqual([])
+        expect(report.chunks[0]!.attempts[0]!.mismatches).toContainEqual({ expected: 'turun', heard: 'turu' })
+      } finally { await result.cleanup() }
+    } finally { await removeScratchDir(dir) }
   }, 60_000)
 
   it('marks the report failed (not crashed) when every retry flunks a chunk', async () => {

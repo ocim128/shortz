@@ -42,7 +42,7 @@ describe('splitIntoChunks — tags', () => {
 
   it('a tag persists across paragraphs until the next tag', () => {
     const chunks = splitIntoChunks('[tactical]Pertama, kunci.\n\nKedua, diam.')
-    expect(chunks.map((c) => c.tag)).toEqual(['tactical', 'tactical'])
+    expect(chunks.map((c) => c.tag)).toEqual(['tactical'])
   })
 
   it('untagged narration carries null', () => {
@@ -58,9 +58,9 @@ describe('splitIntoChunks — structure', () => {
     ])
   })
 
-  it('paragraph breaks always start a new chunk (deliberate beats)', () => {
+  it('combines short paragraphs for language context', () => {
     const chunks = splitIntoChunks('Langkah kaki mendekat.\n\nSeseorang berhenti.')
-    expect(chunks.map((c) => c.text)).toEqual(['Langkah kaki mendekat.', 'Seseorang berhenti.'])
+    expect(chunks.map((c) => c.text)).toEqual(['Langkah kaki mendekat. Seseorang berhenti.'])
   })
 
   it('never loses characters: joining chunk texts reconstructs the script', () => {
@@ -79,6 +79,13 @@ describe('splitIntoChunks — structure', () => {
     for (const chunk of splitIntoChunks(long)) {
       expect(chunk.text.length).toBeLessThanOrEqual(CHUNK_CHAR_LIMIT)
     }
+  })
+
+  it('keeps sound effects as boundaries and never sends them to speech', async () => {
+    const { parseNarrationScript } = await import('../../src/core/tts/chunks')
+    const result = parseNarrationScript('Satu. Dua. Tiga. Empat. [sfx:knock] Lima. Tok. Tok.')
+    expect(result.chunks.map((chunk) => chunk.text)).toEqual(['Satu. Dua. Tiga.', 'Empat.', 'Lima.'])
+    expect(result.sfx).toEqual([{ name: 'knock', beforeChunk: 2 }, { name: 'knock', beforeChunk: 3 }])
   })
 })
 

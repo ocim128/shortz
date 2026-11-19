@@ -1,0 +1,1017 @@
+{
+  "version": 1,
+  "voiceId": "jejak",
+  "voiceName": "Jejak",
+  "provider": "voxcpm",
+  "master": true,
+  "masterFilter": "highpass=f=85,afftdn=nr=12:nf=-28:tn=1,equalizer=f=140:t=q:w=1.2:g=2.5,equalizer=f=450:t=q:w=1.5:g=-2.5,equalizer=f=3200:t=q:w=1.2:g=1.5,acompressor=threshold=-4dB:ratio=2.2:attack=10:release=80,alimiter=limit=0.851:level=disabled",
+  "asrModel": "small",
+  "generatedAt": "2026-11-19T12:17:00.954Z",
+  "passed": false,
+  "totalChunks": 26,
+  "verifiedChunks": 17,
+  "warningChunks": 8,
+  "failedChunks": 1,
+  "plannedDurationSec": 70.785,
+  "audioQuality": {
+    "integratedLufs": -14,
+    "loudnessRangeLu": 2.3,
+    "noiseFloorDbfs": -14.3,
+    "targets": {
+      "integratedLufs": -14,
+      "loudnessRangeLu": [
+        5,
+        7
+      ]
+    }
+  },
+  "chunks": [
+    {
+      "index": 0,
+      "tag": null,
+      "text": "Di luar pintu mobilmu, ada zombie.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 125,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "tag": null,
+      "text": "Kalau kamu keluar sekarang, mereka akan melihatmu.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 154,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "tag": null,
+      "text": "Wabah baru saja mencapai jalan tol. Orang-orang meninggalkan mobil dan berlari.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 0.987,
+      "bestWordRatio": 0.917,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.917,
+          "similarity": 0.987,
+          "wpm": 132,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "tag": null,
+      "text": "Kamu meraih gagang pintu.",
+      "retries": 2,
+      "status": "accepted-with-warnings",
+      "bestSimilarity": 0.917,
+      "bestWordRatio": 0.75,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.727,
+          "similarity": 0.75,
+          "wpm": 79,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.73): heard \"kamu meraih gagang pintu bodoh dasik kau\"",
+            "char similarity 0.75 < 0.94",
+            "79 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 0.727,
+          "similarity": 0.75,
+          "wpm": 79,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.73): heard \"kamu meraih gagang pintu bodoh dasik kau\"",
+            "char similarity 0.75 < 0.94",
+            "79 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 0.75,
+          "similarity": 0.917,
+          "wpm": 136,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.75): heard \"kamu meraih kegang pintu\"",
+            "char similarity 0.92 < 0.94"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "tag": null,
+      "text": "Tiba-tiba, seorang pengendara diterkam tepat di depanmu.",
+      "retries": 2,
+      "status": "accepted-with-warnings",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 120,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "leading stutter detected"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 130,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "leading stutter detected"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 130,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "leading stutter detected"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "tag": null,
+      "text": "Kamu menarik tanganmu dan mengunci pintu.",
+      "retries": 1,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 173,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "173 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 125,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "tag": null,
+      "text": "Mobil di depan dan belakangmu tidak bergerak. Kamu terjebak.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 125,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "tag": null,
+      "text": "Saat matahari terbenam, kamu mematikan mesin, lampu, dan radio.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 113,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "tag": null,
+      "text": "Lalu, kamu merunduk di bawah jendela.",
+      "retries": 2,
+      "status": "accepted-with-warnings",
+      "bestSimilarity": 0.971,
+      "bestWordRatio": 0.833,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.667,
+          "similarity": 0.914,
+          "wpm": 161,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.67): heard \"halo kamu merunduk di bawah cendela\"",
+            "char similarity 0.91 < 0.94"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 0.833,
+          "similarity": 0.971,
+          "wpm": 150,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.83): heard \"lalu kamu merunduk di bawah cendela\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 0.833,
+          "similarity": 0.971,
+          "wpm": 141,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.83): heard \"lalu kamu merunduk di bawah cendela\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "tag": null,
+      "text": "Langkah kaki mendekat.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 141,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "tag": null,
+      "text": "Seseorang berhenti di samping mobilmu. Bayangannya menutupi jendela.",
+      "retries": 1,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.706,
+          "similarity": 0.962,
+          "wpm": 107,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.71): heard \"sesi orang berhenti di samping mobilmu bayangannya menutupi cendela\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 120,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "tag": null,
+      "text": "Kamu menahan napas.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 141,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "tag": null,
+      "text": "Beberapa detik kemudian, langkah itu menjauh.",
+      "retries": 1,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.714,
+          "similarity": 0.896,
+          "wpm": 90,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.71): heard \"bener bener berapa detik kemudian langkah itu menjauh\"",
+            "char similarity 0.90 < 0.94",
+            "90 wpm outside 130±25%",
+            "leading stutter detected"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 118,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "tag": null,
+      "text": "Persediaanmu tinggal setengah botol air dan sebungkus permen karet. Baterai ponselmu tinggal enam puluh persen.",
+      "retries": 2,
+      "status": "accepted-with-warnings",
+      "bestSimilarity": 0.966,
+      "bestWordRatio": 0.857,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.692,
+          "similarity": 0.93,
+          "wpm": 112,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.69): heard \"bersediaanmu tinggal setengah botol air dan sebungkus permengkarat batereponsorm\"",
+            "char similarity 0.93 < 0.94"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 0.857,
+          "similarity": 0.966,
+          "wpm": 128,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.86): heard \"persediaanmu tinggal setengah botol air dan sebungkus permain karet battery pons\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 0.786,
+          "similarity": 0.966,
+          "wpm": 112,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.79): heard \"bersediaanmu tinggal setengah botol air dan sebungkus permain karat baterai pons\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "tag": null,
+      "text": "Kamu berharap bisa bertahan sampai pagi.",
+      "retries": 1,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 173,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "173 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 161,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "tag": null,
+      "text": "Jeritan di luar perlahan menghilang.",
+      "retries": 2,
+      "status": "accepted-with-warnings",
+      "bestSimilarity": 0.986,
+      "bestWordRatio": 0.8,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.8,
+          "similarity": 0.861,
+          "wpm": 78,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.80): heard \"jeritan diluar perlahan menghilang ke lampai\"",
+            "char similarity 0.86 < 0.94",
+            "78 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 0.8,
+          "similarity": 0.971,
+          "wpm": 134,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.80): heard \"ceritan di luar perlahan menghilang\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 0.8,
+          "similarity": 0.986,
+          "wpm": 156,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.80): heard \"jeritan di luar pelahan menghilang\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 16,
+      "tag": null,
+      "text": "Pukul tiga dini hari, kamu mendengar ketukan di kaca.",
+      "retries": 2,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.889,
+          "similarity": 0.989,
+          "wpm": 169,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.89): heard \"pukul 3 ini hari kamu mendengar ketukan di kaca\"",
+            "169 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 178,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "178 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 161,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "tag": null,
+      "text": "Tok. Tok.",
+      "retries": 2,
+      "status": "failed",
+      "bestSimilarity": 0.714,
+      "bestWordRatio": 0,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0,
+          "similarity": 0.714,
+          "wpm": 75,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.00): heard \"tuk tuk\"",
+            "char similarity 0.71 < 0.94",
+            "75 wpm outside 130±25%",
+            "leading stutter detected"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 0,
+          "similarity": 0.714,
+          "wpm": 94,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.00): heard \"tuk tuk\"",
+            "char similarity 0.71 < 0.94",
+            "94 wpm outside 130±25%",
+            "leading stutter detected"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 0,
+          "similarity": 0.333,
+          "wpm": 107,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.00): heard \"tukar\"",
+            "char similarity 0.33 < 0.94"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "tag": null,
+      "text": "Kamu melihat ke jendela.",
+      "retries": 2,
+      "status": "accepted-with-warnings",
+      "bestSimilarity": 0.978,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 0.978,
+          "wpm": 188,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "188 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 0.978,
+          "wpm": 188,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "188 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 1,
+          "similarity": 0.978,
+          "wpm": 167,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "167 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "tag": null,
+      "text": "Tidak ada siapa-siapa.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 150,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "tag": null,
+      "text": "Lalu ketukan itu terdengar lagi.",
+      "retries": 2,
+      "status": "accepted-with-warnings",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 170,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "170 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 0.8,
+          "similarity": 0.984,
+          "wpm": 156,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.80): heard \"alu ketukan itu terdengar lagi\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 170,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "170 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 21,
+      "tag": null,
+      "text": "Kali ini, dari belakang kepalamu.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 104,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 22,
+      "tag": null,
+      "text": "Kamu perlahan menoleh.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 141,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 23,
+      "tag": null,
+      "text": "Seseorang duduk di kursi belakang.",
+      "retries": 1,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.615,
+          "similarity": 0.825,
+          "wpm": 99,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "word mismatch (ratio 0.62): heard \"senesia tuga sesi orang duduk di kursi belakang\"",
+            "char similarity 0.82 < 0.94"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 156,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 24,
+      "tag": null,
+      "text": "Wajahnya pucat. Matanya menatapmu.",
+      "retries": 2,
+      "status": "accepted-with-warnings",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 94,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "94 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 79,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "79 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 88,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "88 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 25,
+      "tag": null,
+      "text": "Dia sudah terinfeksi.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 125,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ]
+        }
+      ]
+    }
+  ]
+}

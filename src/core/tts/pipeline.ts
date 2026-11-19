@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { transcribeChunk, type AsrResult } from './asr'
-import { splitIntoChunks, type NarrationChunk } from './chunks'
+import { parseNarrationScript, type NarrationChunk } from './chunks'
 import { DEFAULT_DELIVERY, DELIVERY_TAGS, findVoicePreset, type DeliveryTag } from '../../shared/tts/voices'
 import { findVoicePreset as findEdgeVoicePreset } from '../../shared/tts/legacy-edge-voices'
 import { checkAttempt, summarizeVerification, type ChunkVerification } from './verify'
@@ -13,9 +13,7 @@ import {
   planTrim,
   renderGapSilence,
   stitchNarration,
-  wordTimeInChunk,
   type AudioMetrics,
-  type TrimPlan
 } from './postprocess'
 import { atomicWriteFile } from '../store/fs-utils'
 import { createVoxProvider, type TtsProvider } from './provider'
@@ -68,6 +66,7 @@ export interface NarrationTimestamps {
     status: ChunkVerification['status']
   }>
   words: Array<{ word: string; start: number; end: number; chunk: number }>
+  sfx: Array<{ name: string; time: number }>
 }
 
 export interface NarrationReport {
@@ -75,6 +74,7 @@ export interface NarrationReport {
   voiceId: string
   voiceName: string
   provider: string
+  model: string
   master: boolean
   masterFilter: string | null
   asrModel: string
@@ -96,6 +96,7 @@ export interface NarrationReport {
     status: ChunkVerification['status']
     bestSimilarity: number
     bestWordRatio: number
+    acceptedAttempt: number
     attempts: Array<{
       seed: number
       wordRatio: number
@@ -105,6 +106,13 @@ export interface NarrationReport {
       passed: boolean
       reasons: string[]
       warnings: string[]
+      transcript: string
+      mismatches: Array<{ expected: string | null; heard: string | null }>
+      endTruncated: boolean
+      rawTranscript?: string
+      rawMismatches?: Array<{ expected: string | null; heard: string | null }>
+      rawEndTruncated?: boolean
+      rawReasons?: string[]
     }>
   }>
 }
@@ -135,9 +143,8 @@ interface AcceptedChunk {
   chunk: NarrationChunk
   delivery: DeliveryTag
   verification: ChunkVerification
-  winnerWav: string
+  conditionedWav: string
   winnerAsr: AsrResult
-  trim: TrimPlan
 }
 
 export async function runNarrationPipeline(input: NarrationPipelineInput): Promise<NarrationArtifacts> {
@@ -145,7 +152,7 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
   if (provider.id === 'voxcpm' && !findVoicePreset(input.voiceId)) throw new Error(`Unknown voice: ${input.voiceId}`)
   if (provider.id === 'edge' && !findEdgeVoicePreset(input.voiceId)) throw new Error(`Unknown Edge voice: ${input.voiceId}`)
   const master = input.master !== false
-  const chunks = splitIntoChunks(input.script)
+  const { chunks, sfx } = parseNarrationScript(input.script)
   if (chunks.length === 0) throw new Error('The script contains no narration text')
 
   const workDir = await fs.mkdtemp(path.join(path.dirname(input.outputMp3), '.shortz-narration-'))
@@ -183,22 +190,39 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
           ...(input.asrModel ? { model: input.asrModel } : {}),
           signal: input.signal
         })
-        attempts.push(checkAttempt({ expected: chunk.text, seed: attempt, asr }))
-        attemptData.push({ wav, asr })
+        const out = path.join(workDir, `p${i}-a${attempt}.wav`)
+        const trim = planTrim(asr.words, asr.durationSec, undefined, attempt * 40)
+        await processChunkWav({ ffmpegPath: input.ffmpegPath, source: wav, output: out, trim,
+          pacing: delivery.pacing, levelDb: delivery.levelDb, signal: input.signal })
+        const finalAsr = await transcribeChunk(out, {
+          workerPath: input.asrWorkerPath,
+          ...(input.asrPythonPath ? { pythonPath: input.asrPythonPath } : {}),
+          ...(input.asrModel ? { model: input.asrModel } : {}), signal: input.signal
+        })
+        const rawCheck = checkAttempt({ expected: chunk.text, seed: attempt, asr })
+        const finalCheck = checkAttempt({ expected: chunk.text, seed: attempt, asr: finalAsr })
+        finalCheck.rawTranscript = rawCheck.transcript
+        finalCheck.rawMismatches = rawCheck.mismatches
+        finalCheck.rawEndTruncated = rawCheck.endTruncated
+        finalCheck.rawReasons = rawCheck.reasons
+        if (!rawCheck.passed) {
+          finalCheck.passed = false
+          finalCheck.reasons.unshift(...rawCheck.reasons.map((reason) => `raw: ${reason}`))
+        }
+        attempts.push(finalCheck)
+        attemptData.push({ wav: out, asr: finalAsr })
         if (attempts[attempts.length - 1]!.passed) break
       }
       if (attemptData.length === 0) throw new Error(`Chunk ${i + 1} produced no synthesis attempts`)
       const verification = summarizeVerification(attempts)
-      // The take actually used is summarize()'s choice: the best similarity,
-      // forced to a fully passing take when one exists.
+      // Retain the best take for review when none passes.
       const used = attemptData[verification.accepted]!
       accepted.push({
         chunk,
         delivery,
         verification,
-        winnerWav: used.wav,
-        winnerAsr: used.asr,
-        trim: planTrim(used.asr.words, used.asr.durationSec)
+        conditionedWav: used.wav,
+        winnerAsr: used.asr
       })
     }
     provider.stop()
@@ -206,20 +230,10 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
     // --- condition chunks (trim + denoise + level + fades) -------------------
     const conditionedFiles: string[] = []
     const chunkDurations: number[] = []
-    for (const [i, a] of accepted.entries()) {
+    for (const a of accepted) {
       input.signal?.throwIfAborted()
-      const out = path.join(workDir, `p${i}.wav`)
-      await processChunkWav({
-        ffmpegPath: input.ffmpegPath,
-        source: a.winnerWav,
-        output: out,
-        trim: a.trim,
-        pacing: a.delivery.pacing,
-        levelDb: a.delivery.levelDb,
-        signal: input.signal
-      })
-      conditionedFiles.push(out)
-      chunkDurations.push(await conditionedWavDuration(out))
+      conditionedFiles.push(a.conditionedWav)
+      chunkDurations.push(await conditionedWavDuration(a.conditionedWav))
     }
 
     // --- deliberate silence gaps ---------------------------------------------
@@ -262,7 +276,7 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
     })
     const audioQuality = await measureAudioMetrics(input.ffmpegPath, stagedMp3, input.signal)
 
-    const timestamps = buildTimestamps(input.voiceId, master, accepted, chunkStarts, chunkDurations, timeline)
+    const timestamps = buildTimestamps(input.voiceId, master, accepted, chunkStarts, chunkDurations, timeline, sfx)
     const report = buildReport(input, provider, masterFilter, accepted, timeline, audioQuality)
 
     const paths = artifactPaths(stagedMp3)
@@ -290,7 +304,8 @@ function buildTimestamps(
   accepted: AcceptedChunk[],
   chunkStarts: number[],
   chunkDurations: number[],
-  timeline: number
+  timeline: number,
+  sfx: Array<{ name: string; beforeChunk: number }>
 ): NarrationTimestamps {
   const words: NarrationTimestamps['words'] = []
   const chunkEntries: NarrationTimestamps['chunks'] = []
@@ -309,13 +324,14 @@ function buildTimestamps(
     for (const w of a.winnerAsr.words) {
       words.push({
         word: w.word,
-        start: round3(start + wordTimeInChunk(w.start, a.trim, a.trim.durationSec / chunkDurations[i]!)),
-        end: round3(start + wordTimeInChunk(w.end, a.trim, a.trim.durationSec / chunkDurations[i]!)),
+        start: round3(start + Math.min(chunkDurations[i]!, Math.max(0, w.start))),
+        end: round3(start + Math.min(chunkDurations[i]!, Math.max(0, w.end))),
         chunk: a.chunk.index
       })
     }
   })
-  return { version: 1, voiceId, durationSec: round3(timeline), master, chunks: chunkEntries, words }
+  return { version: 1, voiceId, durationSec: round3(timeline), master, chunks: chunkEntries, words,
+    sfx: sfx.map((marker) => ({ name: marker.name, time: round3(chunkStarts[marker.beforeChunk] ?? timeline) })) }
 }
 
 function buildReport(
@@ -334,6 +350,7 @@ function buildReport(
     status: a.verification.status,
     bestSimilarity: a.verification.attempts[a.verification.accepted]!.similarity,
     bestWordRatio: a.verification.attempts[a.verification.accepted]!.wordRatio,
+    acceptedAttempt: a.verification.accepted,
     attempts: a.verification.attempts.map((att) => ({
       seed: att.seed,
       wordRatio: att.wordRatio,
@@ -342,17 +359,25 @@ function buildReport(
       expectedWpm: att.expectedWpm,
       passed: att.passed,
       reasons: att.reasons,
-      warnings: att.warnings
+      warnings: att.warnings,
+      transcript: att.transcript,
+      mismatches: att.mismatches,
+      endTruncated: att.endTruncated,
+      rawTranscript: att.rawTranscript,
+      rawMismatches: att.rawMismatches,
+      rawEndTruncated: att.rawEndTruncated,
+      rawReasons: att.rawReasons
     }))
   }))
   const verified = chunkEntries.filter((c) => c.status === 'verified').length
-  const warnings = chunkEntries.filter((c) => c.status === 'accepted-with-warnings').length
+  const warnings = 0 // Kept for report compatibility; strict mode never accepts a failed take.
   const failed = chunkEntries.filter((c) => c.status === 'failed').length
   return {
     version: 1,
     voiceId: input.voiceId,
-    voiceName: (provider.id === 'edge' ? findEdgeVoicePreset(input.voiceId) : findVoicePreset(input.voiceId))?.name ?? input.voiceId,
+    voiceName: provider.id === 'voxcpm' ? 'Configured reference voice' : (provider.id === 'edge' ? findEdgeVoicePreset(input.voiceId) : findVoicePreset(input.voiceId))?.name ?? input.voiceId,
     provider: provider.id,
+    model: provider.model ?? provider.id,
     master: masterFilter !== null,
     masterFilter,
     asrModel: input.asrModel ?? 'small',

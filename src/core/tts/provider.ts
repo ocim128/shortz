@@ -35,6 +35,7 @@ export interface TtsProviderContext {
 export interface TtsProvider {
   /** Stable id — the CLI `--provider` value. */
   readonly id: string
+  readonly model?: string
   /** Synthesize one chunk into request.outputWav. */
   synthesizeChunk(request: TtsProviderChunkRequest, context: TtsProviderContext): Promise<void>
   /** Release workers/connections after an episode. */
@@ -53,6 +54,7 @@ export function createVoxProvider(options?: { workerPath?: string }): TtsProvide
   const workerPath = options?.workerPath ?? ''
   return {
     id: 'voxcpm',
+    model: 'openbmb/VoxCPM2',
     async synthesizeChunk(request, context) {
       const preset = findVoicePresetOrThrow(context.voiceId)
       await synthesizeVoxChunk(
@@ -113,7 +115,41 @@ export function createEdgeProvider(): TtsProvider {
   }
 }
 
-export const PROVIDER_IDS = ['voxcpm', 'edge'] as const
+/** ElevenLabs' multilingual TTS endpoint; credentials and the voice are configured externally. */
+export function createCloudProvider(options?: { fetchImpl?: typeof fetch }): TtsProvider {
+  const model = process.env.ELEVENLABS_MODEL_ID || 'eleven_multilingual_v2'
+  return {
+    id: 'cloud', model,
+    async synthesizeChunk(request, context) {
+      const key = process.env.ELEVENLABS_API_KEY
+      const voice = context.voiceId || process.env.ELEVENLABS_VOICE_ID
+      if (!key || !voice) throw new Error('Cloud TTS requires ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID')
+      const signal = context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000)
+      const response = await (options?.fetchImpl ?? fetch)(
+        `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=mp3_44100_128`,
+        { method: 'POST', headers: { 'xi-api-key': key, 'content-type': 'application/json' },
+          body: JSON.stringify({ text: request.text, model_id: model }), signal }
+      )
+      if (!response.ok) throw new Error(`Cloud TTS failed (HTTP ${response.status})`)
+      const rawMp3 = `${request.outputWav}.cloud.mp3`
+      const audio = Buffer.from(await response.arrayBuffer())
+      if (!audio.length) throw new Error('Cloud TTS returned empty audio')
+      try {
+        await fs.writeFile(rawMp3, audio)
+        const result = await runFfmpeg({ ffmpegPath: context.ffmpegPath,
+          args: ['-y', '-i', rawMp3, '-ac', '1', '-c:a', 'pcm_s16le', request.outputWav],
+          durationSec: Math.max(1, request.text.length / 14), signal: context.signal })
+        if (result.cancelled || context.signal?.aborted) throw new Error('Narration cancelled')
+        if (result.stalled || result.code !== 0) throw new Error('Cloud TTS audio conversion failed')
+      } finally {
+        await fs.rm(rawMp3, { force: true }).catch(() => undefined)
+      }
+    },
+    stop() { /* no persistent connection */ }
+  }
+}
+
+export const PROVIDER_IDS = ['voxcpm', 'edge', 'cloud'] as const
 export type TtsProviderId = (typeof PROVIDER_IDS)[number]
 
 /** Resolve a `--provider` value; `workerPath` applies to voxcpm only. */
@@ -126,6 +162,8 @@ export function createProvider(
       return createVoxProvider({ ...(options?.voxWorkerPath ? { workerPath: options.voxWorkerPath } : {}) })
     case 'edge':
       return createEdgeProvider()
+    case 'cloud':
+      return createCloudProvider()
     default:
       throw new Error(`Unknown speech provider: ${id}. Known: ${PROVIDER_IDS.join(', ')}`)
   }

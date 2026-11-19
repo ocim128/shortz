@@ -1,23 +1,12 @@
 import type { AsrResult } from './asr'
 import { stripDeliveryTags } from './chunks'
 
-/**
- * Chunk-level ASR verification policy (pure — unit-tested). Promoted from the
- * repair loop the owner ran manually in tmp/repair-verified.py: normalized
- * similarity against the expected chunk (0.88 accept), plus the pipeline's
- * extra gates — words-per-minute window and clipped/stuttered onsets.
- */
+/** Strict normalized word verification plus pace and boundary checks. */
 
 /** Indonesian narration target; VoxCPM sits near this before pacing. */
 export const BASE_WPM = 130
-/**
- * Word-sequence ratio at/above this accepts the take. 0.9 (not 1.0): the
- * whisper-base verifier itself slips on spelling/tokenization of good audio
- * ("disamping" vs "di samping", "menyembunyikanmu" vs "…mu") — one token
- * noise in a long chunk must not force three regenerations. A short chunk
- * still needs near-exact words (4 words · one slip = 0.75 → retry).
- */
-export const WORD_ACCEPT = 0.9
+/** All normalized words must match; recognizer errors conservatively fail. */
+export const WORD_ACCEPT = 1
 /** Char ratio at/above this accepts (observed whisper noise floor ≈0.94). */
 export const CHAR_ACCEPT = 0.94
 /** Best-of-N below word 0.75 or char 0.88 marks the chunk failed outright. */
@@ -170,16 +159,48 @@ export interface ChunkAttempt {
   /** Non-blocking notes surfaced in the report (whisper artifacts etc.). */
   warnings: string[]
   transcript: string
+  mismatches: Array<{ expected: string | null; heard: string | null }>
+  endTruncated: boolean
+  rawTranscript?: string
+  rawMismatches?: Array<{ expected: string | null; heard: string | null }>
+  rawEndTruncated?: boolean
+  rawReasons?: string[]
+}
+
+/** Minimum-edit word alignment, used to report every insertion, deletion and substitution. */
+export function wordMismatches(expected: string, heard: string): ChunkAttempt['mismatches'] {
+  let a = normalizeForAsr(expected).split(' ').filter(Boolean)
+  let b = normalizeForAsr(heard).split(' ').filter(Boolean)
+  a = mergeSplits(a, new Set(b))
+  b = mergeSplits(b, new Set(a))
+  const dp = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0))
+  for (let i = 0; i <= a.length; i++) dp[i]![0] = i
+  for (let j = 0; j <= b.length; j++) dp[0]![j] = j
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    dp[i]![j] = Math.min(dp[i - 1]![j]! + 1, dp[i]![j - 1]! + 1, dp[i - 1]![j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1))
+  }
+  const errors: ChunkAttempt['mismatches'] = []
+  let i = a.length, j = b.length
+  while (i || j) {
+    if (i && j && dp[i]![j] === dp[i - 1]![j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1)) {
+      if (a[i - 1] !== b[j - 1]) errors.push({ expected: a[i - 1]!, heard: b[j - 1]! })
+      i--; j--
+    } else if (i && dp[i]![j] === dp[i - 1]![j]! + 1) {
+      errors.push({ expected: a[--i]!, heard: null })
+    } else {
+      errors.push({ expected: null, heard: b[--j]! })
+    }
+  }
+  return errors.reverse()
 }
 
 export interface ChunkVerification {
   attempts: ChunkAttempt[]
-  /** Index into attempts of the take actually used (best similarity). */
+  /** Index of the selected take, including failed takes retained for review. */
   accepted: number
   retries: number
-  /** 'verified' when an attempt passed; 'failed' when best < SIMILARITY_FLOOR;
-   *  otherwise 'accepted-with-warnings' (best take kept, flagged for review). */
-  status: 'verified' | 'accepted-with-warnings' | 'failed'
+  /** Failed takes are kept for review and never count as verified. */
+  status: 'verified' | 'failed'
 }
 
 function stuttered(transcript: string): boolean {
@@ -213,11 +234,18 @@ export function checkAttempt(input: {
     wpm >= expectedWpm * (1 - WPM_TOLERANCE) && wpm <= expectedWpm * (1 + WPM_TOLERANCE)
   const firstWord = input.asr.words[0]
   const leadClip = firstWord !== undefined && firstWord.start * 1000 < LEAD_CLIP_MS
-  const stutter = stuttered(input.asr.transcript)
+  const stutter = stuttered(input.asr.transcript) && !stuttered(input.expected)
+  const mismatches = wordMismatches(input.expected, input.asr.transcript)
+  const lastWord = input.asr.words[input.asr.words.length - 1]
+  const expectedLast = target.split(' ').filter(Boolean).at(-1)
+  const heardLast = normalizeForAsr(input.asr.words.map((word) => word.word).join(' ')).split(' ').filter(Boolean).at(-1)
+  const endTruncated = !lastWord || !expectedLast || heardLast !== expectedLast ||
+    lastWord.end >= input.asr.durationSec - 0.01 || lastWord.end <= lastWord.start
 
   const reasons: string[] = []
-  if (wordRatio < WORD_ACCEPT)
+  if (mismatches.length)
     reasons.push(`word mismatch (ratio ${wordRatio.toFixed(2)}): heard "${heard.slice(0, 80)}"`)
+  if (endTruncated) reasons.push('last word missing, truncated, or has invalid timestamps')
   if (ratio < CHAR_ACCEPT)
     reasons.push(`char similarity ${ratio.toFixed(2)} < ${CHAR_ACCEPT}`)
   if (!durationOk)
@@ -239,7 +267,9 @@ export function checkAttempt(input: {
     passed: reasons.length === 0,
     reasons,
     warnings,
-    transcript: input.asr.transcript
+    transcript: input.asr.transcript,
+    mismatches,
+    endTruncated
   }
 }
 
@@ -258,14 +288,8 @@ export function summarizeVerification(attempts: ChunkAttempt[]): ChunkVerificati
   for (let i = 1; i < attempts.length; i += 1) {
     if (rank(attempts[i]!) > rank(attempts[accepted]!)) accepted = i
   }
-  const best = attempts[accepted]!
   const passedIndex = attempts.findIndex((a) => a.passed)
-  const status: ChunkVerification['status'] =
-    passedIndex >= 0
-      ? 'verified'
-      : best.wordRatio < WORD_FLOOR || best.similarity < SIMILARITY_FLOOR
-        ? 'failed'
-        : 'accepted-with-warnings'
+  const status: ChunkVerification['status'] = passedIndex >= 0 ? 'verified' : 'failed'
   // When any attempt passed, the used take is that one (rank puts it first).
   if (passedIndex >= 0) accepted = passedIndex
   return { attempts, accepted, retries: attempts.length - 1, status }

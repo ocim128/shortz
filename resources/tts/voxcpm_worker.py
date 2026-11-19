@@ -1,5 +1,6 @@
 """Keep VoxCPM loaded and serve one JSON-line synthesis request at a time."""
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -8,7 +9,8 @@ import sys
 import traceback
 from pathlib import Path
 
-DELIVERY_TAG_RE = re.compile(r'\[(?:hook|tactical|twist)\][ \t]*', re.IGNORECASE)
+DELIVERY_TAG_RE = re.compile(r'\[(?:hook|tactical|twist|sfx:[a-z0-9_-]+)\][ \t]*', re.IGNORECASE)
+CHECKPOINT = 'openbmb/VoxCPM2'
 
 
 def strip_delivery_tags(text):
@@ -17,10 +19,11 @@ def strip_delivery_tags(text):
     The pipeline strips tags before sending, but an older still-running app
     instance could forward raw script text — the worker defends in depth.
     """
+    text = re.sub(r'\btok[\s.,!?]+tok[.!?,]*', ' ', text, flags=re.IGNORECASE)
     return re.sub(r'[ \t]+', ' ', DELIVERY_TAG_RE.sub(' ', text)).strip()
 
 
-def chunks(text, limit=120):
+def chunks(text, limit=300):
     """Keep paragraphs and sentences intact where they fit the model's limit."""
     result = []
     for paragraph in re.split(r'\n\s*\n+', text.strip()):
@@ -77,15 +80,25 @@ class SpeechWorker:
             from voxcpm import VoxCPM
 
             # torch.compile is not reliably available on Windows.
-            self.model = VoxCPM.from_pretrained('openbmb/VoxCPM2', load_denoiser=False, optimize=False)
+            self.model = VoxCPM.from_pretrained(CHECKPOINT, load_denoiser=False, optimize=False)
+            if self.model.tts_model.__class__.__name__ != 'VoxCPM2Model':
+                raise RuntimeError(f'Expected VoxCPM2 checkpoint {CHECKPOINT}; refusing an older model')
             self.np, self.sf, self.torch = np, sf, torch
 
     def synthesize(self, request):
+        source_value = os.environ.get('SHORTZ_VOX_REFERENCE_WAV', '').strip()
+        reference_text = os.environ.get('SHORTZ_VOX_REFERENCE_TEXT', '').strip()
+        if not source_value or not reference_text:
+            raise RuntimeError('Ultimate Cloning requires SHORTZ_VOX_REFERENCE_WAV and its exact SHORTZ_VOX_REFERENCE_TEXT')
+        source = Path(source_value)
+        if not source.is_file():
+            raise RuntimeError('SHORTZ_VOX_REFERENCE_WAV must point to an existing WAV file')
         self.load()
         np, sf, torch, model = self.np, self.sf, self.torch, self.model
         sample_rate = model.tts_model.sample_rate
         text = strip_delivery_tags(request['text'])
-        reference = Path(request['reference'])
+        cache_key = hashlib.sha256(source.read_bytes() + reference_text.encode('utf8') + b'ultimate-v1').hexdigest()
+        reference = Path(request['reference']).parent / f'ultimate-{cache_key}.wav'
         try:
             info = sf.info(str(reference))
             reference_valid = info.frames > 0 and info.samplerate == sample_rate
@@ -93,34 +106,21 @@ class SpeechWorker:
             reference_valid = False
 
         if not reference_valid:
-            reference_text = 'Malam itu hujan turun tanpa henti, dan kami harus mencari jalan pulang sebelum gelap.'
-            torch.manual_seed(request['seed'])
-            np.random.seed(request['seed'])
-            with torch.inference_mode():
-                voice = model.generate(text=f"({request['prompt']}){reference_text}",
-                                       cfg_value=2.0, inference_timesteps=10)
-            voice = np.asarray(voice, dtype=np.float32).reshape(-1)
-            if not len(voice):
-                raise RuntimeError('VoxCPM returned an empty reference voice')
             # Write next to the final file so interrupted writes never become cache hits.
             reference.parent.mkdir(parents=True, exist_ok=True)
             temporary = reference.with_name(f'.{reference.name}.{os.getpid()}.tmp.wav')
             denoised = reference.with_name(f'.{reference.name}.{os.getpid()}.denoised.wav')
             try:
-                sf.write(str(temporary), voice, sample_rate)
-                # Pre-clean the reference once so VoxCPM never clones room noise
-                # or vocoder hiss into every chunk of the episode.
                 ffmpeg_path = request.get('ffmpeg_path')
-                if ffmpeg_path:
-                    run = subprocess.run(
-                        [ffmpeg_path, '-v', 'error', '-y', '-i', str(temporary),
+                if not ffmpeg_path:
+                    raise RuntimeError('ffmpeg_path is required to denoise the reference')
+                run = subprocess.run(
+                        [ffmpeg_path, '-v', 'error', '-y', '-i', str(source),
                          '-af', 'afftdn=nf=-25,highpass=f=85',
-                         '-ar', str(sample_rate), '-ac', '1', str(denoised)],
+                         '-ar', str(sample_rate), '-ac', '1', str(temporary)],
                         capture_output=True, text=True)
-                    if run.returncode == 0 and denoised.exists() and denoised.stat().st_size > 44:
-                        os.replace(denoised, temporary)
-                    else:
-                        print(f'Reference denoise skipped: {run.stderr[-300:]}', file=sys.stderr)
+                if run.returncode != 0 or not temporary.exists() or temporary.stat().st_size <= 44:
+                    raise RuntimeError(f'Reference denoising failed: {run.stderr[-300:]}')
                 os.replace(temporary, reference)
             finally:
                 temporary.unlink(missing_ok=True)
@@ -135,7 +135,8 @@ class SpeechWorker:
                 np.random.seed(seed)
                 with torch.inference_mode():
                     candidate = np.asarray(model.generate(
-                        text=f"({request['prompt']}){part}", reference_wav_path=str(reference),
+                        text=part, prompt_wav_path=str(reference), prompt_text=reference_text,
+                        reference_wav_path=str(reference),
                         cfg_value=2.0, inference_timesteps=10), dtype=np.float32).reshape(-1)
                 if (len(candidate) > 0 and np.isfinite(candidate).all()
                         and np.any(np.abs(candidate) > 0.0001)

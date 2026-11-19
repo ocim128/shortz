@@ -135,13 +135,34 @@ describe('checkAttempt', () => {
     expect(attempt.passed).toBe(false)
     expect(attempt.reasons.join(' ')).toContain('stutter')
   })
+
+  it.each([
+    ['pertama', 'peretama'], ['air', 'er'], ['jeritan', 'ceritan'],
+    ['beberapa', 'biberapa'], ['seseorang', 'sezeorang'], ['radio', 'radi']
+  ])('rejects the content-word substitution %s → %s even in a long chunk', (expectedWord, heardWord) => {
+    const expected = `ini adalah kalimat yang cukup panjang untuk menguji ${expectedWord} dengan jelas sekali`
+    const heard = expected.replace(expectedWord, heardWord)
+    const tokens = heard.split(' ')
+    const words = tokens.map<[string, number, number]>((word, i) => [word, i * 0.4, i * 0.4 + 0.3])
+    const result = checkAttempt({ expected, seed: 0, asr: asr(heard, words, tokens.length * 0.46) })
+    expect(result.passed).toBe(false)
+    expect(result.mismatches).toContainEqual({ expected: expectedWord, heard: heardWord })
+    expect(summarizeVerification([result, result, result]).status).toBe('failed')
+  })
+
+  it('rejects a final word ending at the audio boundary', () => {
+    const result = checkAttempt({ expected: 'Matikan radio.', seed: 0,
+      asr: asr('Matikan radio.', [['Matikan', 0, 0.4], ['radio', 0.4, 0.9]], 0.9) })
+    expect(result.endTruncated).toBe(true)
+    expect(result.passed).toBe(false)
+  })
 })
 
 describe('summarizeVerification', () => {
   const good = checkAttempt({
     expected: 'Hujan turun.',
     seed: 100,
-    asr: asr('Hujan turun.', [['Hujan', 0.1, 0.5], ['turun.', 0.5, 0.9]], 0.9)
+    asr: asr('Hujan turun.', [['Hujan', 0.1, 0.5], ['turun.', 0.5, 0.9]], 1.0)
   })
 
   it('records zero retries when the first take passes', () => {
@@ -192,7 +213,7 @@ describe('summarizeVerification', () => {
     expect(attempt.wordRatio).toBe(1)
   })
 
-  it('keeps the best take with a warning when a mishearing survives all retries', () => {
+  it('fails when a mishearing survives all retries', () => {
     // Live-observed shape: whisper consistently misspells two words of a long
     // chunk ("diketuk"→"diketu", "menoleh"→"menolih") — below the word gate but
     // char 0.97 (audio is right) → ships flagged, not failed.
@@ -211,7 +232,7 @@ describe('summarizeVerification', () => {
     expect(middling.wordRatio).toBeLessThan(0.9)
     expect(middling.similarity).toBeGreaterThanOrEqual(0.88)
     const summary = summarizeVerification([middling, middling, middling])
-    expect(summary.status).toBe('accepted-with-warnings')
+    expect(summary.status).toBe('failed')
   })
 
   it('prefers a fully passing take over a higher-similarity failing one', () => {

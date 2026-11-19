@@ -26,7 +26,7 @@ describe('planTrim', () => {
       2.0
     )
     expect(trim.startSec).toBeCloseTo(0.3 - BREATH_MS / 1000, 4)
-    expect(trim.durationSec).toBeCloseTo(1.1 + BREATH_MS / 1000 - (0.3 - BREATH_MS / 1000), 4)
+    expect(trim.durationSec).toBeCloseTo(1.1 + (BREATH_MS + 40) / 1000 - (0.3 - BREATH_MS / 1000), 4)
     expect(trim.speechStartSec).toBeCloseTo(BREATH_MS / 1000, 4)
   })
 

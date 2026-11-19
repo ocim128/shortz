@@ -59,6 +59,10 @@ export async function runTtsCommand(args: string[]): Promise<number> {
       if (!PROVIDER_IDS.includes(values.provider as (typeof PROVIDER_IDS)[number])) {
         throw new Error(`Unknown speech provider: ${values.provider}. Known: ${PROVIDER_IDS.join(', ')}`)
       }
+      if (values.provider === 'cloud') {
+        console.log('Cloud voice is selected by ELEVENLABS_VOICE_ID.')
+        return 0
+      }
       for (const voice of values.provider === 'edge' ? EDGE_VOICE_PRESETS : VOICE_PRESETS) {
         console.log(`${voice.id}\t${voice.name}\t${voice.description}`)
       }
@@ -75,8 +79,11 @@ export async function runTtsCommand(args: string[]): Promise<number> {
     if (!PROVIDER_IDS.includes(values.provider as (typeof PROVIDER_IDS)[number])) {
       throw new Error(`Unknown speech provider: ${values.provider}. Known: ${PROVIDER_IDS.join(', ')}`)
     }
-    const voiceId = values.voice ?? (values.provider === 'edge' ? EDGE_DEFAULT_VOICE_ID : DEFAULT_VOICE_ID)
-    if (!(values.provider === 'edge' ? findEdgeVoicePreset(voiceId) : findVoicePreset(voiceId))) {
+    const voiceId = values.provider === 'cloud' ? (values.voice ?? process.env.ELEVENLABS_VOICE_ID ?? '') : values.voice ?? (values.provider === 'edge' ? EDGE_DEFAULT_VOICE_ID : DEFAULT_VOICE_ID)
+    if (values.provider === 'cloud' && (!process.env.ELEVENLABS_API_KEY || !voiceId)) {
+      throw new Error('Cloud TTS requires ELEVENLABS_API_KEY and a voice ID (--voice or ELEVENLABS_VOICE_ID)')
+    }
+    if (values.provider !== 'cloud' && !(values.provider === 'edge' ? findEdgeVoicePreset(voiceId) : findVoicePreset(voiceId))) {
       throw new Error(`Unknown voice: ${voiceId}. Use --list-voices to see the presets.`)
     }
     const text = (textFile === undefined
