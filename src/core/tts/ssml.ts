@@ -1,4 +1,4 @@
-import type { TtsVoicePreset } from '../../shared/tts/voices'
+import type { TtsVoicePreset } from '../../shared/tts/legacy-edge-voices'
 
 /**
  * SSML builder for Edge TTS (pure — unit-tested without a socket).

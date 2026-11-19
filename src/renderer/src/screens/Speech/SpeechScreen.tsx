@@ -24,9 +24,12 @@ export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<TtsResult | null>(null)
   const [error, setError] = useState('')
+  const [previewError, setPreviewError] = useState('')
   const [previewState, setPreviewState] = useState<Record<string, PreviewState>>({})
   const [previewUrl, setPreviewUrl] = useState<Record<string, string>>({})
   const [playingId, setPlayingId] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const previewBusyRef = useRef(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   // Stop any preview audio when leaving the screen.
@@ -39,15 +42,20 @@ export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
   )
 
   const playPreview = async (id: string): Promise<void> => {
-    if (running || previewState[id] === 'loading') return
+    if (running || previewBusyRef.current) return
     if (playingId === id && audioRef.current) {
       audioRef.current.pause()
+      setPlayingId(null)
       return
     }
     audioRef.current?.pause()
+    setPlayingId(null)
+    setPreviewError('')
     try {
       let url = previewUrl[id]
       if (!url) {
+        previewBusyRef.current = true
+        setPreviewLoading(true)
         setPreviewState((s) => ({ ...s, [id]: 'loading' }))
         const fresh = await window.shortz.ttsPreviewVoice(id)
         setPreviewUrl((s) => ({ ...s, [id]: fresh }))
@@ -65,11 +73,13 @@ export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
       }
       await audio.play()
     } catch (err) {
-      // The row itself shows S.ttsPreviewFailed; the raw message is wordy and
-      // low-signal (network stack traces), so it only reaches the console.
       console.warn('tts preview failed:', err)
+      setPreviewError(err instanceof Error ? err.message : String(err))
       setPreviewState((s) => ({ ...s, [id]: 'error' }))
-      if (playingId === id) setPlayingId(null)
+      setPlayingId(null)
+    } finally {
+      previewBusyRef.current = false
+      setPreviewLoading(false)
     }
   }
 
@@ -95,14 +105,14 @@ export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
 
   const previewLabel = (id: string): string => {
     if (previewState[id] === 'loading') return S.ttsPreviewLoading
-    if (previewState[id] === 'error') return S.ttsPreviewFailed
+    if (playingId === id) return S.ttsPreviewPause
     return S.ttsPreview
   }
 
   return (
     <div className="batch">
       <header className="batch__topbar">
-        <button type="button" className="btn btn-ghost" onClick={onBack} disabled={running}>
+        <button type="button" className="btn btn-ghost" onClick={onBack} disabled={running || previewLoading}>
           <Icon name="arrowLeft" /> {S.back}
         </button>
         <div className="batch__chips">
@@ -137,35 +147,44 @@ export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
             const selected = v.id === voiceId
             const state = previewState[v.id] ?? 'idle'
             return (
-              <label
+              <div
                 key={v.id}
                 className={`speech__voice${selected ? ' is-selected' : ''}${state === 'error' ? ' is-error' : ''}`}
               >
-                <input
-                  type="radio"
-                  name="tts-voice"
-                  value={v.id}
-                  checked={selected}
-                  disabled={running}
-                  onChange={() => setVoiceId(v.id)}
-                />
-                <span className="speech__voice-body">
-                  <span className="speech__voice-name">{v.name}</span>
-                  <span className="speech__voice-desc">{v.description}</span>
-                </span>
+                <label className="speech__voice-choice">
+                  <input
+                    type="radio"
+                    name="tts-voice"
+                    value={v.id}
+                    checked={selected}
+                    disabled={running}
+                    onChange={() => setVoiceId(v.id)}
+                  />
+                  <span className="speech__voice-body">
+                    <span className="speech__voice-name">{v.name}</span>
+                    <span className="speech__voice-desc">{v.description}</span>
+                  </span>
+                </label>
                 <button
                   type="button"
                   className="btn btn-ghost"
-                  disabled={running || state === 'loading'}
+                  disabled={running || previewLoading}
+                  aria-label={`${previewLabel(v.id)} ${v.name}`}
                   onClick={() => void playPreview(v.id)}
                 >
                   <Icon name={playingId === v.id ? 'pause' : 'play'} size={13} />
                   {previewLabel(v.id)}
                 </button>
-              </label>
+              </div>
             )
           })}
         </div>
+        {previewLoading && (
+          <button type="button" className="btn" onClick={() => void window.shortz.ttsCancel()}>
+            Cancel preview
+          </button>
+        )}
+        {previewError && <p role="alert">{S.ttsPreviewFailed}: {previewError}</p>}
 
         <label className="field__label" htmlFor="tts-filename">
           {S.ttsFilenameLabel}
@@ -184,7 +203,7 @@ export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
           <button
             type="button"
             className="btn btn-primary"
-            disabled={!text.trim() || text.trim().length > TTS_MAX_TEXT_LENGTH || running}
+            disabled={!text.trim() || text.trim().length > TTS_MAX_TEXT_LENGTH || running || previewLoading}
             onClick={() => void start()}
           >
             {S.ttsGenerate}

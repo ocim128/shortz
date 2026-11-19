@@ -234,6 +234,29 @@ await test('app opens to Home (drop zone + recent section)', async () => {
   assert(home.cards > 0 || home.empty, 'neither project cards nor empty state rendered')
 })
 
+await test('Speech scrolls to the last voice and generation controls in a short window', async () => {
+  await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 600, deviceScaleFactor: 1, mobile: false })
+  try {
+    await evaluate(`Array.from(document.querySelectorAll('.home__header-actions button')).find(b => b.textContent.trim() === 'Speech').click()`)
+    await waitFor(`!!document.querySelector('.speech__content')`, 5000, 'Speech screen')
+    const result = await evaluate(`(() => {
+      const pane = document.querySelector('.speech__content')
+      pane.scrollTop = pane.scrollHeight
+      const button = document.querySelector('.speech__content .btn-primary')
+      const p = pane.getBoundingClientRect()
+      const b = button.getBoundingClientRect()
+      return { scrollTop: pane.scrollTop, overflow: getComputedStyle(pane).overflowY,
+        visible: b.top >= p.top && b.bottom <= p.bottom,
+        voices: document.querySelectorAll('input[name="tts-voice"]').length }
+    })()`)
+    assert(result.voices >= 10, 'expected the expanded voice list')
+    assert(result.overflow === 'auto' && result.scrollTop > 0 && result.visible, `generation controls not reachable by scrolling: ${JSON.stringify(result)}`)
+  } finally {
+    await evaluate(`document.querySelector('.batch__topbar button')?.click()`)
+    await send('Emulation.clearDeviceMetricsOverride')
+  }
+})
+
 let editorUp = false
 await test('opening a clip reaches the Editor (three panes, phone frame)', async () => {
   assert(await evaluate(`typeof window.__shortzDev === 'object'`), 'dev hook missing (dev-only — suite must run against pnpm dev)')

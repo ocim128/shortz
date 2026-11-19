@@ -72,7 +72,7 @@ import {
 } from '../core/store/editor-configs'
 import { logInfo, logWarn } from '../core/log'
 import { compressVideo, type CompressionQuality } from '../core/ffmpeg/compress'
-import { synthesizeSpeech } from '../core/tts/synthesize'
+import { synthesizeVoxSpeech } from '../core/tts/voxcpm'
 import { findVoicePreset, PREVIEW_TEXT } from '../shared/tts/voices'
 import { uniqueOutputPath } from '../core/store/fs-utils'
 
@@ -276,7 +276,11 @@ export function registerIpcHandlers(): void {
     compressionAbort?.abort()
   })
 
-  // --- speech (Edge TTS — network job, own single-flight slot) -----------------
+  // --- speech (local VoxCPM worker) -------------------------------------------
+
+  const voxWorker = (): string => app.isPackaged
+    ? path.join(process.resourcesPath, 'tts', 'voxcpm_worker.py')
+    : path.join(app.getAppPath(), 'resources', 'tts', 'voxcpm_worker.py')
 
   handle(
     'shortz:ttsSynthesize',
@@ -288,9 +292,9 @@ export function registerIpcHandlers(): void {
       if (ttsAbort) throw new Error('A speech generation is already running — cancel it first')
       const controller = new AbortController()
       ttsAbort = controller
-      const preset = findVoicePreset(req.voiceId)
-      if (!preset) throw new Error(`Unknown voice: ${req.voiceId}`)
       try {
+        const preset = findVoicePreset(req.voiceId)
+        if (!preset) throw new Error(`Unknown voice: ${req.voiceId}`)
         const [settings, binaries] = await Promise.all([currentSettings(), resolveBinariesWithSettings()])
         const name = (req.filename ?? '').trim() || 'narration'
         const target = uniqueOutputPath(
@@ -303,11 +307,13 @@ export function registerIpcHandlers(): void {
           })
         )
         logInfo(`[tts] start — voice=${preset.id} (${preset.name}) chars=${req.text.length}`)
-        const result = await synthesizeSpeech({
+        const result = await synthesizeVoxSpeech({
           text: req.text,
           voiceId: req.voiceId,
           outputPath: target,
           ffmpegPath: binaries.ffmpegPath,
+          workerPath: voxWorker(),
+          referenceCacheDir: path.join(dataDir(), 'cache', 'tts-voxcpm-references'),
           signal: controller.signal
         })
         logInfo(`[tts] done — voice=${preset.id} ${(result.bytes / 1e3).toFixed(0)} kB -> ${result.path}`)
@@ -327,18 +333,28 @@ export function registerIpcHandlers(): void {
     if (!preset) throw new Error(`Unknown voice: ${voiceId}`)
     // Cache per voice in the data dir — the sample never changes, so every
     // preview after the first is an instant local playback.
-    const dir = path.join(dataDir(), 'cache', 'tts-preview')
+    const dir = path.join(dataDir(), 'cache', 'tts-preview-voxcpm-v1')
     const file = path.join(dir, `${preset.id}.mp3`)
     const stat = await fsp.stat(file).catch(() => null)
     if (stat && stat.isFile() && stat.size > 0) return mintMediaUrl(file)
-    const binaries = await resolveBinariesWithSettings()
-    await synthesizeSpeech({
-      text: PREVIEW_TEXT,
-      voiceId,
-      outputPath: file,
-      ffmpegPath: binaries.ffmpegPath
-    })
-    return mintMediaUrl(file)
+    if (ttsAbort) throw new Error('A speech generation is already running')
+    const controller = new AbortController()
+    ttsAbort = controller
+    try {
+      const binaries = await resolveBinariesWithSettings()
+      await synthesizeVoxSpeech({
+        text: PREVIEW_TEXT,
+        voiceId,
+        outputPath: file,
+        ffmpegPath: binaries.ffmpegPath,
+        workerPath: voxWorker(),
+        referenceCacheDir: path.join(dataDir(), 'cache', 'tts-voxcpm-references'),
+        signal: controller.signal
+      })
+      return mintMediaUrl(file)
+    } finally {
+      ttsAbort = null
+    }
   })
   // --- projects ---------------------------------------------------------------
 

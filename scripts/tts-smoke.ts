@@ -1,14 +1,15 @@
 /**
- * One-off live smoke check for the full TTS pipeline (network + ffmpeg
- * stitch — not part of the test suite). Run: pnpm exec tsx scripts/tts-smoke.ts [voiceId]
+ * One-off live smoke check for local VoxCPM and MP3 encoding.
+ * Run: pnpm exec tsx scripts/tts-smoke.ts [voiceId]
  */
 import { execFileSync } from 'node:child_process'
 import ffprobe from 'ffprobe-static'
 import { resolveFfmpegBinariesCached } from '../src/core/ffmpeg/resolve-bin'
-import { synthesizeSpeech } from '../src/core/tts/synthesize'
+import path from 'node:path'
+import { stopVoxWorker, synthesizeVoxSpeech } from '../src/core/tts/voxcpm'
 import { findVoicePreset, VOICE_PRESETS } from '../src/shared/tts/voices'
 
-const voiceId = process.argv[2] ?? 'rimba'
+const voiceId = process.argv[2] ?? 'penjelajah'
 const preset = findVoicePreset(voiceId)
 if (!preset) {
   console.error(`Unknown voice: ${voiceId}. Known: ${VOICE_PRESETS.map((v) => v.id).join(', ')}`)
@@ -30,17 +31,20 @@ async function main(): Promise<void> {
     const { ffmpegPath } = await resolveFfmpegBinariesCached()
     const out = `${process.env.TEMP ?? '.'}\\shortz-tts-smoke-${preset.id}.mp3`
     const started = Date.now()
-    const r = await synthesizeSpeech({
+    const r = await synthesizeVoxSpeech({
       text: 'Hujan turun sepanjang malam. Air merendah pinggul. Aku bertahan.',
       voiceId: preset.id,
       outputPath: out,
-      ffmpegPath
+      ffmpegPath,
+      workerPath: path.resolve('resources/tts/voxcpm_worker.py')
     })
     console.log(`OK voice=${preset.id} bytes=${r.bytes} ms=${Date.now() - started} file=${r.path}`)
     console.log(probe(r.path).replace(/\s+/g, ' '))
   } catch (e) {
     console.error('FAIL:', e instanceof Error ? e.message : String(e))
-    process.exit(1)
+    process.exitCode = 1
+  } finally {
+    stopVoxWorker()
   }
 }
 

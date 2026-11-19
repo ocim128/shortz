@@ -27,3 +27,15 @@ Notes:
 The Downloader accepts X post links and public Instagram post links, including Instagram photos and videos in carousels. Each Instagram post's files are grouped in a folder named for its shortcode, within the selected download layout. Instagram lookups use the third-party OGInstagram service, which receives the post link and your IP address; availability depends on that service and Instagram. Private or login-required posts are not supported.
 
 Use **Compress video** on the home screen to create a smaller H.264 MP4 next to a selected video. Choose a quality level; the original is kept and existing output files are never replaced. Results vary with the source, and an already compressed video may produce a larger file.
+
+## Speech setup (Windows)
+
+Speech uses the local [VoxCPM2](https://github.com/OpenBMB/VoxCPM) model. Install Python 3.10–3.12, then run these commands once in PowerShell. The CUDA wheel is for NVIDIA GPUs; for other hardware, install the appropriate PyTorch build following the [PyTorch instructions](https://pytorch.org/get-started/locally/).
+
+```powershell
+py -3.12 -m venv "$env:LOCALAPPDATA\ShortZ\voxcpm"
+& "$env:LOCALAPPDATA\ShortZ\voxcpm\Scripts\python.exe" -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+& "$env:LOCALAPPDATA\ShortZ\voxcpm\Scripts\python.exe" -m pip install voxcpm==2.0.3
+```
+
+The runtime and model require several gigabytes. The first preview or generation downloads model weights from Hugging Face and can take a while; later runs use the local cache. ShortZ keeps the model loaded for two minutes after a request and caches each designed reference voice, so subsequent generations are faster. The voices are AI-generated designs and pronunciation, accent, and consistency can vary. To use a different environment, set `SHORTZ_VOXCPM_PYTHON` to its Python executable before starting ShortZ. Run `pnpm exec tsx scripts/tts-smoke.ts` to test the installed model.

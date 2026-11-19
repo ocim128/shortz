@@ -6,6 +6,9 @@ appId: app.shortz.desktop
 productName: ShortZ
 directories:
   output: dist
+extraResources:
+  - from: resources/tts
+    to: tts
 files:
   - out/**
   - resources/**

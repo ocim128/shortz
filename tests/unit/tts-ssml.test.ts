@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildSsml, escapeSsmlText, splitSentences } from '../../src/core/tts/ssml'
-import { findVoicePreset, VOICE_PRESETS } from '../../src/shared/tts/voices'
+import { findVoicePreset, VOICE_PRESETS } from '../../src/shared/tts/legacy-edge-voices'
 
 describe('escapeSsmlText', () => {
   it('escapes the five XML metacharacters', () => {

@@ -13,6 +13,9 @@
 .compress__content {
   width: min(100%, 680px);
   padding: 32px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .compress__content select {
   max-width: 320px;
@@ -74,10 +77,17 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-2);
-  cursor: pointer;
   transition:
     border-color var(--speed) var(--ease),
     background var(--speed) var(--ease);
+}
+.speech__voice-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
 }
 .speech__voice:hover {
   border-color: var(--border-hover);
@@ -91,6 +101,7 @@
 }
 .speech__voice input {
   accent-color: var(--accent);
+  flex-shrink: 0;
 }
 .speech__voice-body {
   display: flex;

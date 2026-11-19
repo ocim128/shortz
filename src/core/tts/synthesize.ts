@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { synthesizeEdgeTts, TtsCancelledError, type SocketFactory } from './net/edge-tts-client'
 import { buildSsml, splitSentences } from './ssml'
-import { findVoicePreset, TTS_MAX_TEXT_LENGTH } from '../../shared/tts/voices'
+import { findVoicePreset, TTS_MAX_TEXT_LENGTH } from '../../shared/tts/legacy-edge-voices'
 import { atomicWriteFile } from '../store/fs-utils'
 import { runFfmpeg } from '../ffmpeg/runner'
 

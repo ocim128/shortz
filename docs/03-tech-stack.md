@@ -82,6 +82,8 @@ No CI infrastructure in v0.1 (personal project, local `pnpm test` gate). GitHub 
 
 Every dependency must earn its place; target **≤ 15 runtime deps**. Everything video-related is delegated to FFmpeg processes, so the JS surface stays small and auditable. No network-capable dependency is allowed (enforced by review; `electron` itself is the only one with net access, unused). **Amendment (Downloader feature, rev 3):** no network-capable *dependency* — network *code* exists only in `src/core/downloader` behind a host allow-list (`twitter-downloader/03-tech-stack.md` §Dependency policy amendment). **Amendment (Speech feature, rev 4):** `ws` (zero transitive deps) is allowed as a WebSocket *transport* for the Edge TTS client — TTS network code exists only in `src/core/tts/net/` behind a host allow-list (`speech.platform.bing.com` only), mirroring the downloader amendment.
 
+**Amendment (VoxCPM speech):** the Speech screen uses an external Python environment and local VoxCPM2 inference instead of Edge TTS. Its Python dependencies are installed separately and are not counted in the JavaScript runtime dependency target. The model's Hugging Face client downloads model files on first use and may contact Hugging Face subsequently; this external process is not covered by the Edge TTS host allow-list. Narration text is processed by the local worker. Setup and disk requirements are in the root README.
+
 ## Decided at planning time (formerly "open items")
 
 1. IPC: **hand-rolled typed bridge — locked.** ~13 methods don't justify electron-trpc's dependency weight and major-version churn (simplicity audit).

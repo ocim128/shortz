@@ -9,6 +9,7 @@ import { sweepStaleRenderTemp } from './sweep'
 import { createMainWindow } from './windows/main-window'
 import { TASKBAR_APP_ID } from './windows/taskbar'
 import { logError } from '../core/log'
+import { stopVoxWorker } from '../core/tts/voxcpm'
 
 if (process.platform === 'win32') app.setAppUserModelId(TASKBAR_APP_ID)
 
@@ -37,6 +38,7 @@ function applyPortableMode(): void {
 }
 
 applyPortableMode()
+app.on('before-quit', stopVoxWorker)
 
 // Persistent, size-capped log + last-resort handlers — installed before
 // anything that can fail. Packaged builds have no console; without this a
