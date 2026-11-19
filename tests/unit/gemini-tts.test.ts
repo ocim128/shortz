@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createGeminiTtsProvider, GEMINI_DELIVERY_STYLES } from '../../src/core/tts/gemini-tts'
-import { INVESTIGATOR_VOICE_ID } from '../../src/shared/tts/gemini'
+import { DEFAULT_GEMINI_TTS_VOICE } from '../../src/shared/tts/gemini'
 import { makeScratchDir, removeScratchDir } from '../helpers/env'
 
 function wav(): Buffer {
@@ -18,7 +18,7 @@ function wav(): Buffer {
 describe('Gemini TTS provider', () => {
   afterEach(() => vi.unstubAllEnvs())
 
-  it('defaults to the selected Investigator voice', async () => {
+  it('defaults to the AI Studio Investigator voice', async () => {
     const dir = await makeScratchDir('gemini-default')
     try {
       const fetchMock = vi.fn(async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: {
@@ -27,7 +27,7 @@ describe('Gemini TTS provider', () => {
       const provider = createGeminiTtsProvider({ apiKey: 'fake', fetchImpl: fetchMock as typeof fetch })
       await provider.synthesizeChunk({ text: 'Halo.', chunkIndex: 0, attempt: 0, outputWav: path.join(dir, 'out.wav') }, { voiceId: '', ffmpegPath: '' })
       const [, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
-      expect(JSON.parse(String(options.body)).generationConfig.speechConfig.voiceConfig).toEqual({ voice: INVESTIGATOR_VOICE_ID })
+      expect(JSON.parse(String(options.body)).generationConfig.speechConfig.voiceConfig).toEqual({ voice: DEFAULT_GEMINI_TTS_VOICE })
     } finally { await removeScratchDir(dir) }
   })
 
@@ -98,6 +98,39 @@ describe('Gemini TTS provider', () => {
       await provider.synthesizeChunk(request, { voiceId: 'Charon', ffmpegPath: '' })
       const used = fetchMock.mock.calls.map((call) => (call[1] as RequestInit).headers as Record<string, string>)
       expect(used.map((headers) => headers['x-goog-api-key'])).toEqual(['first', 'second', 'second'])
+    } finally { await removeScratchDir(dir) }
+  })
+
+  it('can fall back through seven configured keys for prebuilt voices', async () => {
+    const dir = await makeScratchDir('gemini-seven-keys')
+    try {
+      const keys = Array.from({ length: 7 }, (_, i) => `key-${i + 1}`)
+      const fetchMock = vi.fn()
+      for (let i = 0; i < 6; i++) fetchMock.mockResolvedValueOnce(new Response('', { status: 429, headers: { 'retry-after': '3600' } }))
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: {
+        mimeType: 'audio/wav', data: wav().toString('base64')
+      } }] } }] }), { status: 200 }))
+      const provider = createGeminiTtsProvider({ apiKeys: keys, fetchImpl: fetchMock as typeof fetch })
+      const output = path.join(dir, 'out.wav')
+      await provider.synthesizeChunk({ text: 'Halo.', chunkIndex: 0, attempt: 0, outputWav: output }, { voiceId: 'Charon', ffmpegPath: '' })
+      const used = fetchMock.mock.calls.map((call) => (call[1] as RequestInit).headers as Record<string, string>)
+      expect(used.map((headers) => headers['x-goog-api-key'])).toEqual(keys)
+      expect(await readFile(output)).toEqual(wav())
+    } finally { await removeScratchDir(dir) }
+  })
+
+  it('reads key seven directly from the process environment', async () => {
+    const dir = await makeScratchDir('gemini-seventh-env-key')
+    try {
+      for (const name of ['GEMINI_API_KEY', 'GEMINI_API_KEY2', 'GEMINI_API_KEY3', 'GEMINI_API_KEY4', 'GEMINI_API_KEY5', 'GEMINI_API_KEY6']) vi.stubEnv(name, '')
+      vi.stubEnv('GEMINI_API_KEY7', 'seventh-test-key')
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: {
+        mimeType: 'audio/wav', data: wav().toString('base64')
+      } }] } }] }), { status: 200 }))
+      await createGeminiTtsProvider({ fetchImpl: fetchMock as typeof fetch }).synthesizeChunk(
+        { text: 'Halo.', chunkIndex: 0, attempt: 0, outputWav: path.join(dir, 'out.wav') }, { voiceId: 'Charon', ffmpegPath: '' })
+      const [, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      expect(options.headers).toMatchObject({ 'x-goog-api-key': 'seventh-test-key' })
     } finally { await removeScratchDir(dir) }
   })
 

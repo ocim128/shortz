@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import type { DeliveryTagId } from '../../shared/tts/voices'
 import { DEFAULT_GEMINI_TTS_VOICE, GEMINI_TTS_VOICES } from '../../shared/tts/gemini'
 import type { TtsProvider } from './provider'
+import { GEMINI_API_KEY_NAMES } from './environment'
 
 export const DEFAULT_GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts'
 export { DEFAULT_GEMINI_TTS_VOICE, GEMINI_TTS_VOICES } from '../../shared/tts/gemini'
@@ -43,7 +44,7 @@ export function createGeminiTtsProvider(options: { model?: string; apiKey?: stri
   const model = options.model ?? DEFAULT_GEMINI_TTS_MODEL
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(model)) throw new Error('Invalid Gemini TTS model ID')
   const supplied = options.apiKeys ?? (options.apiKey !== undefined ? [options.apiKey] :
-    [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY2, process.env.GEMINI_API_KEY3])
+    GEMINI_API_KEY_NAMES.map((name) => process.env[name]))
   const keys = [...new Set(supplied.map((key) => key?.trim()).filter((key): key is string => Boolean(key)))]
   const blockedUntil = keys.map(() => 0)
   let currentKey = 0
@@ -78,7 +79,7 @@ export function createGeminiTtsProvider(options: { model?: string; apiKey?: stri
         }
       }
       const body = JSON.stringify({
-            contents: [{ parts: [{ text: request.text, speechMetadata: { style: GEMINI_DELIVERY_STYLES[tag] } }] }],
+            contents: [{ role: 'user', parts: [{ text: request.text, speechMetadata: { style: GEMINI_DELIVERY_STYLES[tag] } }] }],
             generationConfig: {
               responseModalities: ['AUDIO'],
               speechConfig: { languageCode: 'id-ID', voiceConfig: customVoice ? { voice } : { prebuiltVoiceConfig: { voiceName: voice } } }

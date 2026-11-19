@@ -7,7 +7,7 @@ import {
   TTS_MAX_TEXT_LENGTH,
   VOICE_PRESETS
 } from '../../../../shared/tts/voices'
-import { DEFAULT_GEMINI_TTS_VOICE, INVESTIGATOR_VOICE } from '../../../../shared/tts/gemini'
+import { INVESTIGATOR_VOICE_ID, INVESTIGATOR_VOICE } from '../../../../shared/tts/gemini'
 
 const SPEECH_VOICES = [INVESTIGATOR_VOICE, ...VOICE_PRESETS]
 
@@ -21,7 +21,7 @@ function defaultFilename(text: string): string {
 
 export function SpeechScreen({ onBack }: { onBack: () => void }): JSX.Element {
   const [text, setText] = useState('')
-  const [voiceId, setVoiceId] = useState<string>(DEFAULT_GEMINI_TTS_VOICE)
+  const [voiceId, setVoiceId] = useState<string>(INVESTIGATOR_VOICE_ID)
   const [filename, setFilename] = useState('')
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<TtsResult | null>(null)

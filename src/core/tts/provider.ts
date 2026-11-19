@@ -6,6 +6,7 @@ import { runFfmpeg } from '../ffmpeg/runner'
 import { findVoicePreset } from '../../shared/tts/voices'
 import { findVoicePreset as findLegacyVoicePreset } from '../../shared/tts/legacy-edge-voices'
 import { createGeminiTtsProvider } from './gemini-tts'
+import { createGeminiCloudProvider } from './gemini-cloud'
 import type { DeliveryTagId } from '../../shared/tts/voices'
 
 /**
@@ -156,13 +157,13 @@ export function createCloudProvider(options?: { fetchImpl?: typeof fetch }): Tts
   }
 }
 
-export const PROVIDER_IDS = ['voxcpm', 'edge', 'cloud', 'gemini-tts'] as const
+export const PROVIDER_IDS = ['voxcpm', 'edge', 'cloud', 'gemini-tts', 'gemini-cloud'] as const
 export type TtsProviderId = (typeof PROVIDER_IDS)[number]
 
 /** Resolve a `--provider` value; `workerPath` applies to voxcpm only. */
 export function createProvider(
   id: string,
-  options?: { voxWorkerPath?: string; model?: string; geminiApiKeys?: string[] }
+  options?: { voxWorkerPath?: string; model?: string; geminiApiKeys?: string[]; googleCloudProject?: string }
 ): TtsProvider {
   switch (id) {
     case 'voxcpm':
@@ -173,6 +174,8 @@ export function createProvider(
       return createCloudProvider()
     case 'gemini-tts':
       return createGeminiTtsProvider({ model: options?.model, apiKeys: options?.geminiApiKeys })
+    case 'gemini-cloud':
+      return createGeminiCloudProvider({ model: options?.model, project: options?.googleCloudProject })
     default:
       throw new Error(`Unknown speech provider: ${id}. Known: ${PROVIDER_IDS.join(', ')}`)
   }

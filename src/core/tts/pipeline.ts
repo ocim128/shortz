@@ -162,7 +162,8 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
   if (chunks.length === 0) throw new Error('The script contains no narration text')
 
   const workDir = await fs.mkdtemp(path.join(path.dirname(input.outputMp3), '.shortz-narration-'))
-  const geminiCacheDir = provider.id === 'gemini-tts'
+  const isGemini = provider.id === 'gemini-tts' || provider.id === 'gemini-cloud'
+  const geminiCacheDir = isGemini
     ? path.join(path.dirname(input.outputMp3), '.shortz-tts-cache', createHash('sha256').update(path.resolve(input.outputMp3)).digest('hex'))
     : undefined
   const cleanup = async (options?: { preserveCache?: boolean }): Promise<void> => {
@@ -207,7 +208,7 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
         const trim = planTrim(asr.words, asr.durationSec, undefined, attempt * 40)
         await processChunkWav({ ffmpegPath: input.ffmpegPath, source: wav, output: out, trim,
           pacing: delivery.pacing, levelDb: delivery.levelDb, signal: input.signal,
-          ...(provider.id === 'gemini-tts' ? { profile: 'gemini-tts' as const } : {}) })
+          ...(isGemini ? { profile: 'gemini-tts' as const } : {}) })
         const finalAsr = await transcribeChunk(out, {
           workerPath: input.asrWorkerPath,
           ...(input.asrPythonPath ? { pythonPath: input.asrPythonPath } : {}),
@@ -286,13 +287,13 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
       output: stagedMp3,
       master,
       totalDurationSec: timeline,
-      ...(provider.id === 'gemini-tts' ? { profile: 'gemini-tts' as const } : {}),
+      ...(isGemini ? { profile: 'gemini-tts' as const } : {}),
       signal: input.signal
     })
     const audioQuality = await measureAudioMetrics(input.ffmpegPath, stagedMp3, input.signal)
 
     // Re-align the completed Gemini MP3 so timestamps describe the final encode.
-    const finalAsr = provider.id === 'gemini-tts' ? await transcribeChunk(stagedMp3, {
+    const finalAsr = isGemini ? await transcribeChunk(stagedMp3, {
       workerPath: input.asrWorkerPath,
       ...(input.asrPythonPath ? { pythonPath: input.asrPythonPath } : {}),
       ...(input.asrModel ? { model: input.asrModel } : {}), signal: input.signal

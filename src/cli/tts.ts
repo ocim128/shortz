@@ -11,8 +11,8 @@ import { publishNarrationArtifacts } from '../core/tts/publish'
 import { DEFAULT_VOICE_ID, findVoicePreset, TTS_MAX_TEXT_LENGTH, VOICE_PRESETS } from '../shared/tts/voices'
 import { DEFAULT_VOICE_ID as EDGE_DEFAULT_VOICE_ID, findVoicePreset as findEdgeVoicePreset, VOICE_PRESETS as EDGE_VOICE_PRESETS } from '../shared/tts/legacy-edge-voices'
 import { DEFAULT_GEMINI_TTS_VOICE, GEMINI_TTS_VOICES, isGeminiCustomVoice } from '../core/tts/gemini-tts'
-import { resolveTtsEnvironment } from '../core/tts/environment'
-import { INVESTIGATOR_VOICE } from '../shared/tts/gemini'
+import { resolveGoogleCloudProject, resolveTtsEnvironment } from '../core/tts/environment'
+import { INVESTIGATOR_VOICE, INVESTIGATOR_VOICE_ID } from '../shared/tts/gemini'
 export { resolveTtsEnvironment } from '../core/tts/environment'
 
 const USAGE = `Usage:
@@ -32,7 +32,7 @@ Options:
       --text-file      Read the script from a UTF-8 file
       --text           Supply the script directly
       --no-master      Skip the broadcast mastering chain (default: on)
-      --provider <id>  Speech engine: ${PROVIDER_IDS.join(' | ')} (default: gemini-tts)
+      --provider <id>  Speech engine: ${PROVIDER_IDS.join(' | ')} (default: gemini-cloud)
       --model <id>     Gemini TTS model (default: gemini-3.8-flash-tts)
       --gemini-key-index <n>  Use a specific configured Gemini key (1-based)
       --asr-model <s>  Whisper verifier size (default: small)
@@ -73,8 +73,9 @@ export async function runTtsCommand(args: string[]): Promise<number> {
         console.log('Cloud voice is selected by ELEVENLABS_VOICE_ID.')
         return 0
       }
-      if (values.provider === 'gemini-tts') {
-        console.log(`${INVESTIGATOR_VOICE.id}\t${INVESTIGATOR_VOICE.name}\t${INVESTIGATOR_VOICE.description}`)
+      if (values.provider === 'gemini-tts' || values.provider === 'gemini-cloud') {
+        const id = values.provider === 'gemini-cloud' ? INVESTIGATOR_VOICE.id : DEFAULT_GEMINI_TTS_VOICE
+        console.log(`${id}\t${INVESTIGATOR_VOICE.name}\t${INVESTIGATOR_VOICE.description}`)
         for (const voice of GEMINI_TTS_VOICES) console.log(voice)
         return 0
       }
@@ -94,13 +95,13 @@ export async function runTtsCommand(args: string[]): Promise<number> {
     if (!PROVIDER_IDS.includes(values.provider as (typeof PROVIDER_IDS)[number])) {
       throw new Error(`Unknown speech provider: ${values.provider}. Known: ${PROVIDER_IDS.join(', ')}`)
     }
-    if (values.model && values.provider !== 'gemini-tts') throw new Error('--model is supported with --provider gemini-tts')
+    if (values.model && values.provider !== 'gemini-tts' && values.provider !== 'gemini-cloud') throw new Error('--model is supported with Gemini providers')
     const voiceId = values.provider === 'cloud' ? (values.voice ?? process.env.ELEVENLABS_VOICE_ID ?? '') :
-      values.voice ?? (values.provider === 'gemini-tts' ? DEFAULT_GEMINI_TTS_VOICE : values.provider === 'edge' ? EDGE_DEFAULT_VOICE_ID : DEFAULT_VOICE_ID)
+      values.voice ?? (values.provider === 'gemini-cloud' ? INVESTIGATOR_VOICE_ID : values.provider === 'gemini-tts' ? DEFAULT_GEMINI_TTS_VOICE : values.provider === 'edge' ? EDGE_DEFAULT_VOICE_ID : DEFAULT_VOICE_ID)
     if (values.provider === 'cloud' && (!process.env.ELEVENLABS_API_KEY || !voiceId)) {
       throw new Error('Cloud TTS requires ELEVENLABS_API_KEY and a voice ID (--voice or ELEVENLABS_VOICE_ID)')
     }
-    if (values.provider === 'gemini-tts' && !isGeminiCustomVoice(voiceId) && !GEMINI_TTS_VOICES.includes(voiceId as (typeof GEMINI_TTS_VOICES)[number])) {
+    if ((values.provider === 'gemini-tts' || values.provider === 'gemini-cloud') && !isGeminiCustomVoice(voiceId) && !GEMINI_TTS_VOICES.includes(voiceId as (typeof GEMINI_TTS_VOICES)[number])) {
       throw new Error(`Unknown Gemini TTS voice: ${voiceId}. Use --provider gemini-tts --list-voices.`)
     }
     if (values.provider === 'gemini-tts' && geminiApiKeys.length === 0) throw new Error('Gemini TTS requires GEMINI_API_KEY in .env, api.env, or the environment')
@@ -111,7 +112,7 @@ export async function runTtsCommand(args: string[]): Promise<number> {
       if (!key) throw new Error('The selected Gemini key index is not configured')
       selectedGeminiKeys = [key]
     }
-    if (values.provider !== 'cloud' && values.provider !== 'gemini-tts' && !(values.provider === 'edge' ? findEdgeVoicePreset(voiceId) : findVoicePreset(voiceId))) {
+    if (values.provider !== 'cloud' && values.provider !== 'gemini-tts' && values.provider !== 'gemini-cloud' && !(values.provider === 'edge' ? findEdgeVoicePreset(voiceId) : findVoicePreset(voiceId))) {
       throw new Error(`Unknown voice: ${voiceId}. Use --list-voices to see the presets.`)
     }
     const text = (textFile === undefined
@@ -130,7 +131,8 @@ export async function runTtsCommand(args: string[]): Promise<number> {
       values.provider,
       values['asr-model'],
       values.model,
-      selectedGeminiKeys
+      selectedGeminiKeys,
+      values.provider === 'gemini-cloud' ? await resolveGoogleCloudProject() : undefined
     )
   } catch (error) {
     console.error(`[tts] ${error instanceof Error ? error.message : String(error)}`)
@@ -146,7 +148,8 @@ async function generateNarration(
   providerId: string,
   asrModel: string,
   model?: string,
-  geminiApiKeys?: string[]
+  geminiApiKeys?: string[],
+  googleCloudProject?: string
 ): Promise<number> {
   const destination = await fs.lstat(output).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
@@ -165,7 +168,7 @@ async function generateNarration(
   const resources = path.resolve(__dirname, '..', '..', 'resources', 'tts')
   // Fails fast with a readable message for an unknown --provider value.
   const provider = createProvider(providerId, {
-    voxWorkerPath: path.join(resources, 'voxcpm_worker.py'), model, geminiApiKeys
+    voxWorkerPath: path.join(resources, 'voxcpm_worker.py'), model, geminiApiKeys, googleCloudProject
   })
   const controller = new AbortController()
   const cancel = (): void => controller.abort()

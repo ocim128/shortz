@@ -352,7 +352,9 @@ describe('narration pipeline', () => {
     } finally { await removeScratchDir(dir) }
   }, 60_000)
 
-  it.each([false, true])('aligns the finished Gemini MP3 and reports final mismatch=%s', async (finalMismatch) => {
+  it.each([
+    ['gemini-tts', false], ['gemini-tts', true], ['gemini-cloud', false], ['gemini-cloud', true]
+  ] as const)('aligns the finished %s MP3 and reports final mismatch=%s', async (providerId, finalMismatch) => {
     const dir = await makeScratchDir('narration-gemini')
     try {
       const { ffmpegPath } = await resolveFfmpegBinariesCached()
@@ -367,7 +369,7 @@ describe('narration pipeline', () => {
           process.stdout.write(JSON.stringify({id: r.id, ok: true, transcript: text, words, durationSec: final ? 2 : 1}) + '\\n');
         });`)
       const seen: TtsProviderChunkRequest[] = []
-      const provider: TtsProvider = { id: 'gemini-tts', model: 'gemini-3.8-flash-tts', stop() {},
+      const provider: TtsProvider = { id: providerId, model: 'gemini-3.8-flash-tts', stop() {},
         async synthesizeChunk(request) { seen.push(request); await writeFile(request.outputWav, silentWav(1)) } }
       const result = await runNarrationPipeline({ script: '[hook]Hujan turun. [twist]Kami bertahan.', voiceId: 'Charon',
         outputMp3: path.join(dir, 'out.mp3'), ffmpegPath, provider,

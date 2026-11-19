@@ -73,10 +73,10 @@ import {
 import { logInfo, logWarn } from '../core/log'
 import { compressVideo, type CompressionQuality } from '../core/ffmpeg/compress'
 import { synthesizeVoxSpeech } from '../core/tts/voxcpm'
-import { createGeminiTtsProvider } from '../core/tts/gemini-tts'
+import { createGeminiCloudProvider } from '../core/tts/gemini-cloud'
 import { runNarrationPipeline } from '../core/tts/pipeline'
 import { publishNarrationArtifacts } from '../core/tts/publish'
-import { resolveTtsEnvironment } from '../core/tts/environment'
+import { resolveGoogleCloudProject } from '../core/tts/environment'
 import { stopAsrWorker } from '../core/tts/asr'
 import { findVoicePreset, PREVIEW_TEXT, TTS_MAX_TEXT_LENGTH } from '../shared/tts/voices'
 import { INVESTIGATOR_VOICE_ID } from '../shared/tts/gemini'
@@ -321,14 +321,13 @@ export function registerIpcHandlers(): void {
         )
         if (isInvestigator) {
           const configDir = app.isPackaged ? dataDir() : app.getAppPath()
-          const { geminiApiKeys } = await resolveTtsEnvironment(path.join(configDir, '.env'), process.env, path.join(configDir, 'api.env'))
-          if (!geminiApiKeys.length) throw new Error(`Investigator requires GEMINI_API_KEY in api.env or .env in ${configDir}`)
+          const project = await resolveGoogleCloudProject(path.join(configDir, '.env'), process.env, path.join(configDir, 'api.env'))
           await fsp.mkdir(path.dirname(target), { recursive: true })
           let artifacts
           try {
             artifacts = await runNarrationPipeline({ script: req.text, voiceId: INVESTIGATOR_VOICE_ID,
               outputMp3: target, ffmpegPath: binaries.ffmpegPath,
-              provider: createGeminiTtsProvider({ apiKeys: geminiApiKeys }),
+              provider: createGeminiCloudProvider({ project }),
               asrWorkerPath: ttsResource('asr_worker.py'), signal: controller.signal })
           } finally {
             stopAsrWorker()
