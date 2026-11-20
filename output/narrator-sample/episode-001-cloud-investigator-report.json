@@ -1,0 +1,605 @@
+{
+  "version": 1,
+  "voiceId": "voice_71a5a701-796e-421d-840e-0adc00b0816a",
+  "voiceName": "voice_71a5a701-796e-421d-840e-0adc00b0816a",
+  "provider": "gemini-cloud",
+  "model": "gemini-3.8-flash-tts",
+  "master": true,
+  "masterFilter": "highpass=f=85,equalizer=f=140:t=q:w=1.2:g=1,equalizer=f=450:t=q:w=1.5:g=-1,equalizer=f=3200:t=q:w=1.2:g=1,loudnorm=I=-14:LRA=6:TP=-1.5,aformat=sample_fmts=s16",
+  "asrModel": "small",
+  "generatedAt": "2026-11-20T02:15:48.854Z",
+  "passed": false,
+  "totalChunks": 6,
+  "verifiedChunks": 3,
+  "warningChunks": 0,
+  "failedChunks": 3,
+  "plannedDurationSec": 73.68,
+  "finalAlignment": {
+    "transcript": "Kalo kaca di ketuk, jangan langsung menoleh. Saat wabah menutup jalan tol, dua langkah ini bisa menyembunyikanmu. Satu bunyi bisa membuatmu salah melihat arah. Pertama, kunci semua pintu. Mobil di depan dan belakang sudah rapat. Gagang pintu tinggal sejengkal dari tanganmu, saat seseorang diterkam di selam mobil. Tarik tanganmu, tekan kunci. Kalo mobil tak bisa maju, Pintu tertutup itu satu-satunya batas antara kamu dan jalan. Kedua, hilangkan tanda kalau ada orang di dalam. Matikan mesin, lampu, dan radio. Turunkan badan sampai garis cendela ada di atas kepalamu. Kalau langkah berhenti di samping pintu, biarkan bayangannya lewat dulu. Air tinggal setengah botol, batray 60%. kamu cuma perlu bertahan sampai pagi. Bukul 3 pagi, jalan akhirnya sunyi, cendelannya kosong, yang mengetuk duduk tepat di belakangmu.",
+    "mismatches": [
+      {
+        "expected": "kalau",
+        "heard": "kalo"
+      },
+      {
+        "expected": "sela",
+        "heard": "selam"
+      },
+      {
+        "expected": "kalau",
+        "heard": "kalo"
+      },
+      {
+        "expected": "jendela",
+        "heard": "cendela"
+      },
+      {
+        "expected": "baterai",
+        "heard": "batray"
+      },
+      {
+        "expected": "pukul",
+        "heard": "bukul"
+      },
+      {
+        "expected": "jendelanya",
+        "heard": "cendelannya"
+      }
+    ],
+    "passed": false
+  },
+  "audioQuality": {
+    "integratedLufs": -16.7,
+    "loudnessRangeLu": 3.9,
+    "noiseFloorDbfs": -25.1,
+    "targets": {
+      "integratedLufs": -14,
+      "loudnessRangeLu": [
+        5,
+        7
+      ]
+    }
+  },
+  "chunks": [
+    {
+      "index": 0,
+      "tag": "hook",
+      "text": "Kalau kaca diketuk, jangan langsung menoleh. Saat wabah menutup jalan tol, dua langkah ini bisa menyembunyikanmu. Satu bunyi bisa membuatmu salah melihat arah.",
+      "retries": 2,
+      "status": "failed",
+      "bestSimilarity": 0.99,
+      "bestWordRatio": 0.957,
+      "acceptedAttempt": 0,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.957,
+          "similarity": 0.99,
+          "wpm": 132,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "raw: word mismatch (ratio 0.96): heard \"kalo kaca diketuk jangan langsung menoleh saat wabah menutup jalan tol 2 langkah\"",
+            "word mismatch (ratio 0.96): heard \"kalo kaca diketuk jangan langsung menoleh saat wabah menutup jalan tol 2 langkah\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Kalo kaca diketuk, jangan langsung menoleh. Saat wabah menutup jalan tol, dua langkah ini bisa menyembunyikanmu. Satu bunyi bisa membuatmu salah melihat arah.",
+          "mismatches": [
+            {
+              "expected": "kalau",
+              "heard": "kalo"
+            }
+          ],
+          "endTruncated": false,
+          "rawTranscript": "Kalo kaca diketuk, jangan langsung menoleh. Saat wabah menutup jalan tol, dua langkah ini bisa menyembunyikanmu. Satu bunyi bisa membuatmu salah melihat arah.",
+          "rawMismatches": [
+            {
+              "expected": "kalau",
+              "heard": "kalo"
+            }
+          ],
+          "rawEndTruncated": false,
+          "rawReasons": [
+            "word mismatch (ratio 0.96): heard \"kalo kaca diketuk jangan langsung menoleh saat wabah menutup jalan tol 2 langkah\""
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 0.913,
+          "similarity": 0.983,
+          "wpm": 114,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "raw: word mismatch (ratio 0.91): heard \"kalo kaca diketuk jangan langsung meroleh saat wabah menutup jalan tol 2 langkah\"",
+            "word mismatch (ratio 0.91): heard \"kalo kaca diketuk jangan langsung meroleh saat wabah menutup jalan tol 2 langkah\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Kalo kaca diketuk, jangan langsung meroleh. Saat wabah menutup jalan tol, dua langkah ini bisa menyembunyikanmu. Satu bunyi bisa membuatmu salah melihat arah.",
+          "mismatches": [
+            {
+              "expected": "kalau",
+              "heard": "kalo"
+            },
+            {
+              "expected": "menoleh",
+              "heard": "meroleh"
+            }
+          ],
+          "endTruncated": false,
+          "rawTranscript": "Kalo kaca diketuk, jangan langsung meroleh. Saat wabah menutup jalan tol, dua langkah ini bisa menyembunyikanmu. Satu bunyi bisa membuatmu salah melihat arah.",
+          "rawMismatches": [
+            {
+              "expected": "kalau",
+              "heard": "kalo"
+            },
+            {
+              "expected": "menoleh",
+              "heard": "meroleh"
+            }
+          ],
+          "rawEndTruncated": false,
+          "rawReasons": [
+            "word mismatch (ratio 0.91): heard \"kalo kaca diketuk jangan langsung meroleh saat wabah menutup jalan tol 2 langkah\""
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 0.913,
+          "similarity": 0.983,
+          "wpm": 113,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "raw: word mismatch (ratio 0.91): heard \"kalo kaca di ketuk jangan langsung menoleh saat wabah menutup jalan tol 2 langka\"",
+            "word mismatch (ratio 0.91): heard \"kalo kaca di ketuk jangan langsung menoleh saat wabah menutup jalan tol 2 langka\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Kalo kaca di ketuk, jangan langsung menoleh. Saat wabah menutup jalan tol, dua langka ini bisa menyembunyikanmu. Satu bunyi bisa membuatmu salah melihat arah.",
+          "mismatches": [
+            {
+              "expected": "kalau",
+              "heard": "kalo"
+            },
+            {
+              "expected": "langkah",
+              "heard": "langka"
+            }
+          ],
+          "endTruncated": false,
+          "rawTranscript": "Kalo kaca di ketuk, jangan langsung menoleh. Saat wabah menutup jalan tol, dua langka ini bisa menyembunyikanmu. Satu bunyi bisa membuatmu salah melihat arah.",
+          "rawMismatches": [
+            {
+              "expected": "kalau",
+              "heard": "kalo"
+            },
+            {
+              "expected": "langkah",
+              "heard": "langka"
+            }
+          ],
+          "rawEndTruncated": false,
+          "rawReasons": [
+            "word mismatch (ratio 0.91): heard \"kalo kaca di ketuk jangan langsung menoleh saat wabah menutup jalan tol 2 langka\""
+          ]
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "tag": "tactical",
+      "text": "Pertama, kunci semua pintu. Mobil di depan dan belakang sudah rapat. Gagang pintu tinggal sejengkal dari tanganmu saat seseorang diterkam di sela mobil.",
+      "retries": 2,
+      "status": "failed",
+      "bestSimilarity": 0.997,
+      "bestWordRatio": 0.957,
+      "acceptedAttempt": 0,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.957,
+          "similarity": 0.997,
+          "wpm": 111,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "raw: word mismatch (ratio 0.96): heard \"pertama kunci semua pintu mobil di depan dan belakang sudah rapat gagang pintu t\"",
+            "word mismatch (ratio 0.96): heard \"pertama kunci semua pintu mobil di depan dan belakang sudah rapat gagang pintu t\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Pertama, kunci semua pintu, mobil di depan dan belakang sudah rapat, gagang pintu tinggal sejengkal dari tanganmu saat seseorang diterkam di selam mobil.",
+          "mismatches": [
+            {
+              "expected": "sela",
+              "heard": "selam"
+            }
+          ],
+          "endTruncated": false,
+          "rawTranscript": "Pertama, kunci semua pintu, mobil di depan dan belakang sudah rapat, gagang pintu tinggal sejengkal dari tanganmu saat seseorang diterkam di selam mobil.",
+          "rawMismatches": [
+            {
+              "expected": "sela",
+              "heard": "selam"
+            }
+          ],
+          "rawEndTruncated": false,
+          "rawReasons": [
+            "word mismatch (ratio 0.96): heard \"pertama kunci semua pintu mobil di depan dan belakang sudah rapat gagang pintu t\""
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 0.957,
+          "similarity": 0.997,
+          "wpm": 112,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "raw: word mismatch (ratio 0.96): heard \"pertama kunci semua pintu mobil di depan dan belakang sudah rapat gagang pintu t\"",
+            "word mismatch (ratio 0.96): heard \"pertama kunci semua pintu mobil di depan dan belakang sudah rapat gagang pintu t\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Pertama, kunci semua pintu, mobil di depan dan belakang sudah rapat, gagang pintu tinggal sejengkal dari tanganmu saat seseorang diterkam di selam mobil.",
+          "mismatches": [
+            {
+              "expected": "sela",
+              "heard": "selam"
+            }
+          ],
+          "endTruncated": false,
+          "rawTranscript": "Pertama, kunci semua pintu, mobil di depan dan belakang sudah rapat, gagang pintu tinggal sejengkal dari tanganmu saat seseorang diterkam di selam mobil.",
+          "rawMismatches": [
+            {
+              "expected": "sela",
+              "heard": "selam"
+            }
+          ],
+          "rawEndTruncated": false,
+          "rawReasons": [
+            "word mismatch (ratio 0.96): heard \"pertama kunci semua pintu mobil di depan dan belakang sudah rapat gagang pintu t\""
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 0.957,
+          "similarity": 0.997,
+          "wpm": 98,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "raw: word mismatch (ratio 0.96): heard \"pertama kunci semua pintu mobil di depan dan belakang sudah rapat gagang pintu t\"",
+            "raw: 95 wpm outside 130±25%",
+            "word mismatch (ratio 0.96): heard \"pertama kunci semua pintu mobil di depan dan belakang sudah rapat gagang pintu t\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Pertama, kunci semua pintu. Mobil di depan dan belakang sudah rapat. Gagang pintu tinggal sejengkal dari tanganmu. Saat seseorang diterkam di selam mobil.",
+          "mismatches": [
+            {
+              "expected": "sela",
+              "heard": "selam"
+            }
+          ],
+          "endTruncated": false,
+          "rawTranscript": "Pertama, kunci semua pintu. Mobil di depan dan belakang sudah rapat. Gagang pintu tinggal sejengkal dari tanganmu. Saat seseorang diterkam di selam mobil.",
+          "rawMismatches": [
+            {
+              "expected": "sela",
+              "heard": "selam"
+            }
+          ],
+          "rawEndTruncated": false,
+          "rawReasons": [
+            "word mismatch (ratio 0.96): heard \"pertama kunci semua pintu mobil di depan dan belakang sudah rapat gagang pintu t\"",
+            "95 wpm outside 130±25%"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "tag": "tactical",
+      "text": "Tarik tanganmu. Tekan kunci. Kalau mobil tak bisa maju, pintu tertutup itu satu-satunya batas antara kamu dan jalan.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "acceptedAttempt": 0,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 119,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Tarik tanganmu, tekan kunci. Kalau mobil tak bisa maju, pintu tertutup itu satu-satunya batas antara kamu dan jalan.",
+          "mismatches": [],
+          "endTruncated": false,
+          "rawTranscript": "Tarik tanganmu, tekan kunci. Kalau mobil tak bisa maju, pintu tertutup itu satu-satunya batas antara kamu dan jalan.",
+          "rawMismatches": [],
+          "rawEndTruncated": false,
+          "rawReasons": []
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "tag": "tactical",
+      "text": "Kedua, hilangkan tanda kalau ada orang di dalam. Matikan mesin, lampu, dan radio. Turunkan badan sampai garis jendela ada di atas kepalamu.",
+      "retries": 0,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "acceptedAttempt": 0,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 102,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Kedua, hilangkan tanda kalau ada orang di dalam, matikan mesin, lampu dan radio, turunkan badan sampai garis jendela ada di atas kepalamu.",
+          "mismatches": [],
+          "endTruncated": false,
+          "rawTranscript": "Kedua, hilangkan tanda kalau ada orang di dalam, matikan mesin, lampu, dan radio, turunkan badan sampai garis jendela ada di atas kepalamu.",
+          "rawMismatches": [],
+          "rawEndTruncated": false,
+          "rawReasons": []
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "tag": "tactical",
+      "text": "Kalau langkah berhenti di samping pintu, biarkan bayangannya lewat dulu. Air tinggal setengah botol, baterai enam puluh persen. Kamu cuma perlu bertahan sampai pagi.",
+      "retries": 1,
+      "status": "verified",
+      "bestSimilarity": 1,
+      "bestWordRatio": 1,
+      "acceptedAttempt": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.913,
+          "similarity": 0.98,
+          "wpm": 109,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "raw: word mismatch (ratio 0.91): heard \"kalo langkah berhenti di samping pintu biarkan bayangannya lewat dulu air tingga\"",
+            "word mismatch (ratio 0.91): heard \"kalo langkah berhenti di samping pintu biarkan bayangannya lewat dulu air tingga\""
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Kalo langkah berhenti di samping pintu, biarkan bayangannya lewat dulu. Air tinggal setengah botol, batray 60%, kamu cuma perlu bertahan sampai pagi.",
+          "mismatches": [
+            {
+              "expected": "kalau",
+              "heard": "kalo"
+            },
+            {
+              "expected": "baterai",
+              "heard": "batray"
+            }
+          ],
+          "endTruncated": false,
+          "rawTranscript": "Kalo langkah berhenti di samping pintu, biarkan bayangannya lewat dulu. Air tinggal setengah botol, batray 60%, kamu cuma perlu bertahan sampai pagi.",
+          "rawMismatches": [
+            {
+              "expected": "kalau",
+              "heard": "kalo"
+            },
+            {
+              "expected": "baterai",
+              "heard": "batray"
+            }
+          ],
+          "rawEndTruncated": false,
+          "rawReasons": [
+            "word mismatch (ratio 0.91): heard \"kalo langkah berhenti di samping pintu biarkan bayangannya lewat dulu air tingga\""
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 1,
+          "similarity": 1,
+          "wpm": 104,
+          "expectedWpm": 130,
+          "passed": true,
+          "reasons": [],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Kalau langkah berhenti di samping pintu, biarkan bayangannya lewat dulu. Air tinggal setengah botol, baterai 60%, kamu cuma perlu bertahan sampai pagi.",
+          "mismatches": [],
+          "endTruncated": false,
+          "rawTranscript": "Kalau langkah berhenti di samping pintu, biarkan bayangannya lewat dulu. Air tinggal setengah botol, baterai 60%, kamu cuma perlu bertahan sampai pagi.",
+          "rawMismatches": [],
+          "rawEndTruncated": false,
+          "rawReasons": []
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "tag": "twist",
+      "text": "Pukul tiga pagi, jalan akhirnya sunyi. Jendelanya kosong. Yang mengetuk duduk tepat di belakangmu.",
+      "retries": 2,
+      "status": "failed",
+      "bestSimilarity": 0.984,
+      "bestWordRatio": 0.857,
+      "acceptedAttempt": 1,
+      "attempts": [
+        {
+          "seed": 0,
+          "wordRatio": 0.786,
+          "similarity": 0.973,
+          "wpm": 57,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "raw: word mismatch (ratio 0.79): heard \"bukul 3 pagi jalan akhirnya sunyi jendelannya kosong yang mengatuk duduk tepat d\"",
+            "raw: 56 wpm outside 130±25%",
+            "word mismatch (ratio 0.79): heard \"bukul 3 pagi jalan akhirnya sunyi jendelannya kosong yang mengatuk duduk tepat d\"",
+            "57 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Bukul tiga pagi, jalan akhirnya sunyi, jendelannya kosong, yang mengatuk duduk tepat di belakangmu.",
+          "mismatches": [
+            {
+              "expected": "pukul",
+              "heard": "bukul"
+            },
+            {
+              "expected": "jendelanya",
+              "heard": "jendelannya"
+            },
+            {
+              "expected": "mengetuk",
+              "heard": "mengatuk"
+            }
+          ],
+          "endTruncated": false,
+          "rawTranscript": "Bukul tiga pagi, jalan akhirnya sunyi, jendelannya kosong yang mengatuk duduk tepat di belakangmu.",
+          "rawMismatches": [
+            {
+              "expected": "pukul",
+              "heard": "bukul"
+            },
+            {
+              "expected": "jendelanya",
+              "heard": "jendelannya"
+            },
+            {
+              "expected": "mengetuk",
+              "heard": "mengatuk"
+            }
+          ],
+          "rawEndTruncated": false,
+          "rawReasons": [
+            "word mismatch (ratio 0.79): heard \"bukul 3 pagi jalan akhirnya sunyi jendelannya kosong yang mengatuk duduk tepat d\"",
+            "56 wpm outside 130±25%"
+          ]
+        },
+        {
+          "seed": 1,
+          "wordRatio": 0.857,
+          "similarity": 0.984,
+          "wpm": 61,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "raw: word mismatch (ratio 0.79): heard \"bukul 3 pagi jalan akhirnya sunyi jendelannya kosong yang menghentuk duduk tepat\"",
+            "raw: 60 wpm outside 130±25%",
+            "word mismatch (ratio 0.86): heard \"bukul 3 pagi jalan akhirnya sunyi jendelannya kosong yang mengetuk duduk tepat d\"",
+            "61 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Bukul tiga pagi, jalan akhirnya sunyi, jendelannya kosong, yang mengetuk duduk tepat di belakangmu.",
+          "mismatches": [
+            {
+              "expected": "pukul",
+              "heard": "bukul"
+            },
+            {
+              "expected": "jendelanya",
+              "heard": "jendelannya"
+            }
+          ],
+          "endTruncated": false,
+          "rawTranscript": "Bukul tiga pagi, jalan akhirnya sunyi, jendelannya kosong, yang menghentuk duduk tepat di belakangmu.",
+          "rawMismatches": [
+            {
+              "expected": "pukul",
+              "heard": "bukul"
+            },
+            {
+              "expected": "jendelanya",
+              "heard": "jendelannya"
+            },
+            {
+              "expected": "mengetuk",
+              "heard": "menghentuk"
+            }
+          ],
+          "rawEndTruncated": false,
+          "rawReasons": [
+            "word mismatch (ratio 0.79): heard \"bukul 3 pagi jalan akhirnya sunyi jendelannya kosong yang menghentuk duduk tepat\"",
+            "60 wpm outside 130±25%"
+          ]
+        },
+        {
+          "seed": 2,
+          "wordRatio": 0.857,
+          "similarity": 0.978,
+          "wpm": 51,
+          "expectedWpm": 130,
+          "passed": false,
+          "reasons": [
+            "raw: word mismatch (ratio 0.86): heard \"bukul 3 pagi jalan akhirnya sunyi cendelanya kosong yang mengetuk duduk tepat di\"",
+            "raw: 50 wpm outside 130±25%",
+            "word mismatch (ratio 0.86): heard \"bukul 3 pagi jalan akhirnya sunyi cendelanya kosong yang mengetuk duduk tepat di\"",
+            "51 wpm outside 130±25%"
+          ],
+          "warnings": [
+            "speech starts at 0ms — onset may be clipped (whisper floors word starts)"
+          ],
+          "transcript": "Bukul tiga pagi, jalan akhirnya sunyi, cendelanya kosong, yang mengetuk duduk tepat di belakangmu.",
+          "mismatches": [
+            {
+              "expected": "pukul",
+              "heard": "bukul"
+            },
+            {
+              "expected": "jendelanya",
+              "heard": "cendelanya"
+            }
+          ],
+          "endTruncated": false,
+          "rawTranscript": "Bukul tiga pagi, jalan akhirnya sunyi, cendelanya kosong, yang mengetuk duduk tepat di belakangmu.",
+          "rawMismatches": [
+            {
+              "expected": "pukul",
+              "heard": "bukul"
+            },
+            {
+              "expected": "jendelanya",
+              "heard": "cendelanya"
+            }
+          ],
+          "rawEndTruncated": false,
+          "rawReasons": [
+            "word mismatch (ratio 0.86): heard \"bukul 3 pagi jalan akhirnya sunyi cendelanya kosong yang mengetuk duduk tepat di\"",
+            "50 wpm outside 130±25%"
+          ]
+        }
+      ]
+    }
+  ]
+}
