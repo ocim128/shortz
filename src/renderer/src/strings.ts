@@ -27,7 +27,8 @@ export const S = {
   homeSpeech: 'Speech',
   compressIntro:
     'Make an MP4 smaller while keeping the original video. The compressed file is saved beside it.',
-  compressChoose: 'Choose video',
+  compressInvalidFile: 'Choose a supported video file.',
+  compressMissingPath: 'Could not read the dropped file. Try choosing it instead.',
   compressQuality: 'Quality',
   compressHigh: 'High quality',
   compressBalanced: 'Balanced',

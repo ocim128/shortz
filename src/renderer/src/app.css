@@ -22,6 +22,14 @@
   display: block;
   margin-top: 8px;
 }
+.compress__dropzone {
+  min-height: 180px;
+  margin-bottom: 24px;
+}
+.compress__dropzone:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
 .compress__path {
   overflow-wrap: anywhere;
   color: var(--fg-1);
@@ -479,13 +487,15 @@ select.input {
     border-color var(--speed) var(--ease),
     transform var(--speed) var(--ease);
 }
-.dropzone:hover,
-.home.is-dragover .dropzone {
+.dropzone:hover:not(:disabled),
+.home.is-dragover .dropzone,
+.batch.is-dragover .compress__dropzone {
   border-color: var(--accent);
   background: radial-gradient(120% 130% at 50% 0%, #241722 0%, #1d151d 65%);
 }
-.dropzone:hover .dropzone__icon,
-.home.is-dragover .dropzone__icon {
+.dropzone:hover:not(:disabled) .dropzone__icon,
+.home.is-dragover .dropzone__icon,
+.batch.is-dragover .compress__dropzone .dropzone__icon {
   color: var(--accent);
   border-color: rgba(254, 44, 85, 0.5);
   transform: scale(1.06);

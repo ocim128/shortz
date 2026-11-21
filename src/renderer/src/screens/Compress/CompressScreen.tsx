@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { isVideoExtension } from '../../../../shared/video-extensions'
 import { Icon } from '../../components/Icon'
 import { formatBytes } from '../../lib/format'
 import { S } from '../../strings'
@@ -13,16 +14,19 @@ export function CompressScreen({ onBack }: { onBack: () => void }): JSX.Element 
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState<Result | null>(null)
   const [error, setError] = useState('')
+  const [dragOver, setDragOver] = useState(false)
+  const dragDepth = useRef(0)
 
   useEffect(() => window.shortz.onCompressionProgress(setProgress), [])
 
+  const selectSource = (file: string): void => {
+    setSource(file)
+    setResult(null)
+    setError('')
+  }
   const choose = async (): Promise<void> => {
     const file = await window.shortz.pickFile()
-    if (file) {
-      setSource(file)
-      setResult(null)
-      setError('')
-    }
+    if (file) selectSource(file)
   }
   const start = async (): Promise<void> => {
     if (!source || running) return
@@ -40,7 +44,45 @@ export function CompressScreen({ onBack }: { onBack: () => void }): JSX.Element 
   }
 
   return (
-    <div className="batch">
+    <div
+      className={`batch${dragOver ? ' is-dragover' : ''}`}
+      onDragEnter={(e) => {
+        e.preventDefault()
+        if (running || !Array.from(e.dataTransfer.types).includes('Files')) return
+        dragDepth.current += 1
+        setDragOver(true)
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = running ? 'none' : 'copy'
+      }}
+      onDragLeave={() => {
+        dragDepth.current -= 1
+        if (dragDepth.current <= 0) {
+          dragDepth.current = 0
+          setDragOver(false)
+        }
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        dragDepth.current = 0
+        setDragOver(false)
+        if (running) return
+        const file = e.dataTransfer.files[0]
+        if (!file) return
+        const extension = file.name.includes('.') ? file.name.split('.').pop() : ''
+        if (!extension || !isVideoExtension(extension)) {
+          setError(S.compressInvalidFile)
+          return
+        }
+        const path = window.shortz.getPathForFile(file)
+        if (!path) {
+          setError(S.compressMissingPath)
+          return
+        }
+        selectSource(path)
+      }}
+    >
       <header className="batch__topbar">
         <button type="button" className="btn btn-ghost" onClick={onBack} disabled={running}>
           <Icon name="arrowLeft" /> {S.back}
@@ -52,8 +94,17 @@ export function CompressScreen({ onBack }: { onBack: () => void }): JSX.Element 
       <main className="compress__content">
         <h2 className="pane-title">{S.homeCompress}</h2>
         <p className="batch__intro">{S.compressIntro}</p>
-        <button type="button" className="btn" onClick={() => void choose()} disabled={running}>
-          {S.compressChoose}
+        <button
+          type="button"
+          className="dropzone compress__dropzone"
+          onClick={() => void choose()}
+          disabled={running}
+        >
+          <span className="dropzone__icon" aria-hidden="true">
+            <Icon name="film" size={26} />
+          </span>
+          <span className="dropzone__title">{S.homeDropTitle}</span>
+          <span className="dropzone__hint">{S.homeDropHint}</span>
         </button>
         {source && (
           <p className="compress__path" title={source}>
