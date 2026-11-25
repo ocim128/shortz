@@ -128,8 +128,18 @@ export function chunkProcessArgs(input: {
   pacing: number
   /** Tag loudness shaping, e.g. +0.5 hook / −1.5 twist. */
   levelDb?: number
-  profile?: 'gemini-tts'
+  profile?: 'gemini-tts' | 'gemini-cloud'
 }): string[] {
+  // Cloud synthesis is already clean. ASR timestamps may end before a soft
+  // final syllable, so keep the entire source instead of seeking to its words.
+  // Reverse twice to fade the actual end, independent of ASR duration rounding.
+  if (input.profile === 'gemini-cloud') {
+    return [
+      '-y', '-i', input.source,
+      '-af', `areverse,afade=t=in:st=0:d=${EDGE_FADE_SEC},areverse,adelay=20:all=1,afade=t=in:st=0:d=${EDGE_FADE_SEC},apad=pad_dur=0.02,aresample=${STITCH_RATE_HZ}`,
+      '-ac', '1', '-c:a', 'pcm_s16le', input.output
+    ]
+  }
   const pacedDuration = input.trim.durationSec / (input.profile === 'gemini-tts' ? 1 : input.pacing)
   const fadeOutStart = Math.max(0, pacedDuration - EDGE_FADE_SEC)
   const filters = [
@@ -213,7 +223,7 @@ export async function processChunkWav(options: {
   trim: TrimPlan
   pacing: number
   levelDb?: number
-  profile?: 'gemini-tts'
+  profile?: 'gemini-tts' | 'gemini-cloud'
   signal?: AbortSignal
 }): Promise<void> {
   await run(

@@ -79,7 +79,7 @@ import { publishNarrationArtifacts } from '../core/tts/publish'
 import { resolveGoogleCloudProject } from '../core/tts/environment'
 import { stopAsrWorker } from '../core/tts/asr'
 import { findVoicePreset, PREVIEW_TEXT, TTS_MAX_TEXT_LENGTH } from '../shared/tts/voices'
-import { INVESTIGATOR_VOICE_ID } from '../shared/tts/gemini'
+import { ARCHIPELAGO_VOICE, ARCHIPELAGO_VOICE_ID, INVESTIGATOR_VOICE, INVESTIGATOR_VOICE_ID } from '../shared/tts/gemini'
 import { uniqueOutputPath } from '../core/store/fs-utils'
 
 /**
@@ -307,9 +307,9 @@ export function registerIpcHandlers(): void {
         if (typeof req.text !== 'string' || !req.text.trim() || req.text.trim().length > TTS_MAX_TEXT_LENGTH) {
           throw new Error(`Speech text must contain 1–${TTS_MAX_TEXT_LENGTH} characters`)
         }
-        const isInvestigator = req.voiceId === INVESTIGATOR_VOICE_ID
-        const preset = isInvestigator ? undefined : findVoicePreset(req.voiceId)
-        if (!isInvestigator && !preset) throw new Error(`Unknown voice: ${req.voiceId}`)
+        const cloudVoice = [INVESTIGATOR_VOICE, ARCHIPELAGO_VOICE].find((voice) => voice.id === req.voiceId)
+        const preset = cloudVoice ? undefined : findVoicePreset(req.voiceId)
+        if (!cloudVoice && !preset) throw new Error(`Unknown voice: ${req.voiceId}`)
         const [settings, binaries] = await Promise.all([currentSettings(), resolveBinariesWithSettings()])
         const name = (req.filename ?? '').trim() || 'narration'
         const target = uniqueOutputPath(
@@ -319,13 +319,13 @@ export function registerIpcHandlers(): void {
             name
           })
         )
-        if (isInvestigator) {
+        if (cloudVoice) {
           const configDir = app.isPackaged ? dataDir() : app.getAppPath()
           const project = await resolveGoogleCloudProject(path.join(configDir, '.env'), process.env, path.join(configDir, 'api.env'))
           await fsp.mkdir(path.dirname(target), { recursive: true })
           let artifacts
           try {
-            artifacts = await runNarrationPipeline({ script: req.text, voiceId: INVESTIGATOR_VOICE_ID,
+            artifacts = await runNarrationPipeline({ script: req.text, voiceId: cloudVoice.id,
               outputMp3: target, ffmpegPath: binaries.ffmpegPath,
               provider: createGeminiCloudProvider({ project }),
               asrWorkerPath: ttsResource('asr_worker.py'), signal: controller.signal })
@@ -334,7 +334,7 @@ export function registerIpcHandlers(): void {
           }
           const published = await publishNarrationArtifacts(artifacts, target)
           const stat = await fsp.stat(target)
-          logInfo(`[tts] done — voice=Investigator verified=${artifacts.passed} ${(stat.size / 1e3).toFixed(0)} kB -> ${target}`)
+          logInfo(`[tts] done — voice=${cloudVoice.name} verified=${artifacts.passed} ${(stat.size / 1e3).toFixed(0)} kB -> ${target}`)
           return { path: target, url: mintMediaUrl(target), bytes: stat.size,
             verified: artifacts.passed, reportPath: published.report }
         }
@@ -361,10 +361,11 @@ export function registerIpcHandlers(): void {
   })
 
   handle('shortz:ttsPreviewVoice', async (voiceId: string): Promise<string> => {
-    if (voiceId === INVESTIGATOR_VOICE_ID) {
-      const file = ttsResource('investigator-preview.mp3')
+    if (voiceId === INVESTIGATOR_VOICE_ID || voiceId === ARCHIPELAGO_VOICE_ID) {
+      const name = voiceId === INVESTIGATOR_VOICE_ID ? 'Investigator' : 'Archipelago'
+      const file = ttsResource(voiceId === INVESTIGATOR_VOICE_ID ? 'investigator-preview.mp3' : 'archipelago-preview.mp3')
       const stat = await fsp.stat(file).catch(() => null)
-      if (!stat?.isFile() || !stat.size) throw new Error('The Investigator preview is unavailable')
+      if (!stat?.isFile() || !stat.size) throw new Error(`The ${name} preview is unavailable`)
       return mintMediaUrl(file)
     }
     const preset = findVoicePreset(voiceId)

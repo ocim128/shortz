@@ -208,7 +208,8 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
         const trim = planTrim(asr.words, asr.durationSec, undefined, attempt * 40)
         await processChunkWav({ ffmpegPath: input.ffmpegPath, source: wav, output: out, trim,
           pacing: delivery.pacing, levelDb: delivery.levelDb, signal: input.signal,
-          ...(isGemini ? { profile: 'gemini-tts' as const } : {}) })
+          ...(provider.id === 'gemini-cloud' ? { profile: 'gemini-cloud' as const }
+            : isGemini ? { profile: 'gemini-tts' as const } : {}) })
         const finalAsr = await transcribeChunk(out, {
           workerPath: input.asrWorkerPath,
           ...(input.asrPythonPath ? { pythonPath: input.asrPythonPath } : {}),

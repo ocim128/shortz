@@ -12,7 +12,7 @@ import { DEFAULT_VOICE_ID, findVoicePreset, TTS_MAX_TEXT_LENGTH, VOICE_PRESETS }
 import { DEFAULT_VOICE_ID as EDGE_DEFAULT_VOICE_ID, findVoicePreset as findEdgeVoicePreset, VOICE_PRESETS as EDGE_VOICE_PRESETS } from '../shared/tts/legacy-edge-voices'
 import { DEFAULT_GEMINI_TTS_VOICE, GEMINI_TTS_VOICES, isGeminiCustomVoice } from '../core/tts/gemini-tts'
 import { resolveGoogleCloudProject, resolveTtsEnvironment } from '../core/tts/environment'
-import { INVESTIGATOR_VOICE, INVESTIGATOR_VOICE_ID } from '../shared/tts/gemini'
+import { ARCHIPELAGO_VOICE, ARCHIPELAGO_VOICE_ALIAS, ARCHIPELAGO_VOICE_ID, INVESTIGATOR_VOICE, INVESTIGATOR_VOICE_ID } from '../shared/tts/gemini'
 export { resolveTtsEnvironment } from '../core/tts/environment'
 
 const USAGE = `Usage:
@@ -76,6 +76,7 @@ export async function runTtsCommand(args: string[]): Promise<number> {
       if (values.provider === 'gemini-tts' || values.provider === 'gemini-cloud') {
         const id = values.provider === 'gemini-cloud' ? INVESTIGATOR_VOICE.id : DEFAULT_GEMINI_TTS_VOICE
         console.log(`${id}\t${INVESTIGATOR_VOICE.name}\t${INVESTIGATOR_VOICE.description}`)
+        if (values.provider === 'gemini-cloud') console.log(`${ARCHIPELAGO_VOICE_ALIAS}\t${ARCHIPELAGO_VOICE.name}\t${ARCHIPELAGO_VOICE.description} (${ARCHIPELAGO_VOICE_ID})`)
         for (const voice of GEMINI_TTS_VOICES) console.log(voice)
         return 0
       }
@@ -96,8 +97,9 @@ export async function runTtsCommand(args: string[]): Promise<number> {
       throw new Error(`Unknown speech provider: ${values.provider}. Known: ${PROVIDER_IDS.join(', ')}`)
     }
     if (values.model && values.provider !== 'gemini-tts' && values.provider !== 'gemini-cloud') throw new Error('--model is supported with Gemini providers')
-    const voiceId = values.provider === 'cloud' ? (values.voice ?? process.env.ELEVENLABS_VOICE_ID ?? '') :
+    const requestedVoice = values.provider === 'cloud' ? (values.voice ?? process.env.ELEVENLABS_VOICE_ID ?? '') :
       values.voice ?? (values.provider === 'gemini-cloud' ? INVESTIGATOR_VOICE_ID : values.provider === 'gemini-tts' ? DEFAULT_GEMINI_TTS_VOICE : values.provider === 'edge' ? EDGE_DEFAULT_VOICE_ID : DEFAULT_VOICE_ID)
+    const voiceId = values.provider === 'gemini-cloud' && requestedVoice === ARCHIPELAGO_VOICE_ALIAS ? ARCHIPELAGO_VOICE_ID : requestedVoice
     if (values.provider === 'cloud' && (!process.env.ELEVENLABS_API_KEY || !voiceId)) {
       throw new Error('Cloud TTS requires ELEVENLABS_API_KEY and a voice ID (--voice or ELEVENLABS_VOICE_ID)')
     }

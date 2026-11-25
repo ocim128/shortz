@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { DeliveryTagId } from '../../shared/tts/voices'
-import { DEFAULT_GEMINI_TTS_VOICE, GEMINI_TTS_VOICES } from '../../shared/tts/gemini'
+import { ARCHIPELAGO_VOICE_ID, DEFAULT_GEMINI_TTS_VOICE, GEMINI_TTS_VOICES } from '../../shared/tts/gemini'
 import type { TtsProvider } from './provider'
 import { GEMINI_API_KEY_NAMES } from './environment'
 
@@ -19,6 +19,12 @@ export const GEMINI_DELIVERY_STYLES: Record<DeliveryTagId, string> = {
   hook: 'Calm, firm, urgent Indonesian survival-thriller narrator, slightly brisk pace',
   tactical: 'Clear, authoritative, controlled Indonesian documentary thriller narrator',
   twist: 'Slow, quiet, tense hushed delivery with eerie suspense'
+}
+
+export const ARCHIPELAGO_DELIVERY_STYLES: Record<DeliveryTagId, string> = {
+  hook: 'Intriguing, warm, composed Indonesian documentary narrator with quiet urgency and curiosity',
+  tactical: 'Clear, grounded, engaging Indonesian historical-geological documentary narrator, steady natural pacing',
+  twist: 'Measured, reflective, slightly hushed Indonesian documentary reveal with weight and wonder'
 }
 
 /** Google may supply retry advice in a header or google.rpc.RetryInfo. */
@@ -59,8 +65,9 @@ export function createGeminiTtsProvider(options: { model?: string; apiKey?: stri
         throw new Error(`Unknown Gemini TTS voice: ${voice}. Choose ${GEMINI_TTS_VOICES.join(', ')} or a designed voice ID`)
       }
       const tag = request.tag ?? 'tactical'
+      const style = (voice === ARCHIPELAGO_VOICE_ID ? ARCHIPELAGO_DELIVERY_STYLES : GEMINI_DELIVERY_STYLES)[tag]
       const cacheKey = createHash('sha256').update(JSON.stringify([
-        'gemini-tts-audio-v1', model, voice, request.text, GEMINI_DELIVERY_STYLES[tag], request.attempt
+        'gemini-tts-audio-v1', model, voice, request.text, style, request.attempt
       ])).digest('hex')
       const cacheFile = context.geminiCacheDir ? path.join(context.geminiCacheDir, `${cacheKey}.wav`) : undefined
       if (cacheFile) {
@@ -79,7 +86,7 @@ export function createGeminiTtsProvider(options: { model?: string; apiKey?: stri
         }
       }
       const body = JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: request.text, speechMetadata: { style: GEMINI_DELIVERY_STYLES[tag] } }] }],
+            contents: [{ role: 'user', parts: [{ text: request.text, speechMetadata: { style } }] }],
             generationConfig: {
               responseModalities: ['AUDIO'],
               speechConfig: { languageCode: 'id-ID', voiceConfig: customVoice ? { voice } : { prebuiltVoiceConfig: { voiceName: voice } } }

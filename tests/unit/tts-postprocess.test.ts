@@ -43,6 +43,18 @@ describe('planTrim', () => {
 })
 
 describe('chunkProcessArgs', () => {
+  it('keeps the entire Gemini Cloud source and fades its actual end', () => {
+    const args = chunkProcessArgs({ source: 'in.wav', output: 'out.wav',
+      trim: planTrim([{ word: 'Asia', start: 0.3, end: 0.7 }], 1.2),
+      pacing: 0.97, levelDb: -3, profile: 'gemini-cloud' })
+    expect(args).not.toContain('-ss')
+    expect(args).not.toContain('-t')
+    const filter = args[args.indexOf('-af') + 1]!
+    expect(filter).toContain(`areverse,afade=t=in:st=0:d=${EDGE_FADE_SEC},areverse`)
+    expect(filter).toContain('adelay=20:all=1')
+    expect(filter).toContain('apad=pad_dur=0.02')
+    expect(filter).not.toMatch(/afftdn|atempo|volume=|silenceremove/)
+  })
   it('does not denoise, pace, or alter tag level for Gemini audio', () => {
     const args = chunkProcessArgs({ source: 'in.wav', output: 'out.wav',
       trim: planTrim([{ word: 'Halo', start: 0.1, end: 0.9 }], 1.2),

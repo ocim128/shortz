@@ -352,6 +352,38 @@ describe('narration pipeline', () => {
     } finally { await removeScratchDir(dir) }
   }, 60_000)
 
+  it('preserves Gemini Cloud audio on both sides of underestimated ASR timestamps', async () => {
+    const dir = await makeScratchDir('narration-gemini-cloud-edges')
+    try {
+      const { ffmpegPath } = await resolveFfmpegBinariesCached()
+      const asrWorker = path.join(dir, 'asr.cjs')
+      await writeFile(asrWorker, `
+        require('node:readline').createInterface({input: process.stdin}).on('line', line => {
+          const r = JSON.parse(line);
+          process.stdout.write(JSON.stringify({id: r.id, ok: true, transcript: 'Asia',
+            words: [{word: 'Asia', start: 0.3, end: 0.7}], durationSec: 1}) + '\\n');
+        });`)
+      const provider: TtsProvider = { id: 'gemini-cloud', stop() {}, async synthesizeChunk(request) {
+        const wav = silentWav(1, 48000)
+        // Quiet signal extends well beyond the ASR word boundaries at both ends.
+        for (let i = 0; i < 48000; i++) wav.writeInt16LE(i % 48 < 24 ? 1000 : -1000, 44 + i * 2)
+        await writeFile(request.outputWav, wav)
+      } }
+      const result = await runNarrationPipeline({ script: 'Asia.', voiceId: 'Charon',
+        outputMp3: path.join(dir, 'out.mp3'), ffmpegPath, provider,
+        asrWorkerPath: asrWorker, asrPythonPath: process.execPath, master: false })
+      try {
+        const conditioned = path.join(path.dirname(result.mp3), 'p0-a0.wav')
+        expect(await conditionedWavDuration(conditioned)).toBeCloseTo(1.04, 3)
+        const pcm = execFileSync(ffmpegPath, ['-v', 'error', '-i', conditioned, '-f', 's16le', '-acodec', 'pcm_s16le', '-'])
+        for (const second of [0.12, 0.92]) {
+          const sample = pcm.readInt16LE(Math.round(second * 48000) * 2)
+          expect(Math.abs(sample)).toBeGreaterThan(900)
+        }
+      } finally { await result.cleanup() }
+    } finally { await removeScratchDir(dir) }
+  }, 60_000)
+
   it.each([
     ['gemini-tts', false], ['gemini-tts', true], ['gemini-cloud', false], ['gemini-cloud', true]
   ] as const)('aligns the finished %s MP3 and reports final mismatch=%s', async (providerId, finalMismatch) => {

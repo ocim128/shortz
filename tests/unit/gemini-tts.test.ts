@@ -1,8 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createGeminiTtsProvider, GEMINI_DELIVERY_STYLES } from '../../src/core/tts/gemini-tts'
-import { DEFAULT_GEMINI_TTS_VOICE } from '../../src/shared/tts/gemini'
+import { ARCHIPELAGO_DELIVERY_STYLES, createGeminiTtsProvider, GEMINI_DELIVERY_STYLES } from '../../src/core/tts/gemini-tts'
+import { ARCHIPELAGO_VOICE_ID, DEFAULT_GEMINI_TTS_VOICE, INVESTIGATOR_VOICE_ID } from '../../src/shared/tts/gemini'
 import { makeScratchDir, removeScratchDir } from '../helpers/env'
 
 function wav(): Buffer {
@@ -17,6 +17,23 @@ function wav(): Buffer {
 
 describe('Gemini TTS provider', () => {
   afterEach(() => vi.unstubAllEnvs())
+
+  it.each(['hook', 'tactical', 'twist'] as const)('keeps %s delivery distinct for Archipelago and Investigator', async (tag) => {
+    const dir = await makeScratchDir('gemini-narrator-styles')
+    try {
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: {
+        mimeType: 'audio/wav', data: wav().toString('base64')
+      } }] } }] }), { status: 200 }))
+      const provider = createGeminiTtsProvider({ apiKey: 'fake', fetchImpl: fetchMock as typeof fetch })
+      for (const voiceId of [ARCHIPELAGO_VOICE_ID, INVESTIGATOR_VOICE_ID]) {
+        await provider.synthesizeChunk({ text: 'Halo.', tag, chunkIndex: 0, attempt: 0, outputWav: path.join(dir, 'out.wav') }, { voiceId, ffmpegPath: '' })
+      }
+      const bodies = fetchMock.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body)))
+      expect(bodies[0].contents[0].parts[0].speechMetadata.style).toBe(ARCHIPELAGO_DELIVERY_STYLES[tag])
+      expect(bodies[1].contents[0].parts[0].speechMetadata.style).toBe(GEMINI_DELIVERY_STYLES[tag])
+      expect(ARCHIPELAGO_DELIVERY_STYLES[tag]).not.toBe(GEMINI_DELIVERY_STYLES[tag])
+    } finally { await removeScratchDir(dir) }
+  })
 
   it('defaults to the AI Studio Investigator voice', async () => {
     const dir = await makeScratchDir('gemini-default')
