@@ -42,11 +42,11 @@ export const S = {
 
   // Speech (text-to-speech)
   ttsIntro:
-    'Turn text into a narrated MP3. Investigator and Archipelago use Gemini online; other voices use the local speech runtime.',
+    'Turn text into a narrated MP3. Investigator and Archipelago voices use Gemini online; other voices use the local speech runtime.',
   ttsTextLabel: 'Text',
   ttsTextPlaceholder: 'Write the narration here…',
   ttsVoiceLabel: 'Voice',
-  ttsVoiceTag: (n: number) => `${n} Indonesian AI voice designs`,
+  ttsVoiceTag: (n: number) => `${n} AI voice designs`,
   ttsPreview: 'Preview',
   ttsPreviewPause: 'Pause',
   ttsPreviewLoading: 'Generating sample…',

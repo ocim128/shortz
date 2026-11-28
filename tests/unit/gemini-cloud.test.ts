@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createGeminiCloudProvider } from '../../src/core/tts/gemini-cloud'
-import { INVESTIGATOR_VOICE_ID } from '../../src/shared/tts/gemini'
+import { ARCHIPELAGO_EN_DELIVERY_STYLES } from '../../src/core/tts/gemini-tts'
+import { ARCHIPELAGO_EN_VOICE_ID, INVESTIGATOR_VOICE_ID } from '../../src/shared/tts/gemini'
 import { makeScratchDir, removeScratchDir } from '../helpers/env'
 
 describe('Google Cloud Gemini narration', () => {
@@ -58,6 +59,27 @@ describe('Google Cloud Gemini narration', () => {
         { voiceId: 'Charon', ffmpegPath: '' })
       const [, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
       expect(JSON.parse(String(options.body)).generationConfig.speechConfig.voiceConfig).toEqual({ voice: 'Charon' })
+    } finally { await removeScratchDir(dir) }
+  })
+
+  it('sends en-US and English documentary styles for Archipelago (EN)', async () => {
+    const dir = await makeScratchDir('gemini-cloud-archipelago-en')
+    try {
+      const audio = Buffer.alloc(48)
+      audio.write('RIFF', 0); audio.write('WAVE', 8)
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [
+        { inlineData: { mimeType: 'audio/wav', data: audio.toString('base64') } }
+      ] } }] }), { status: 200 }))
+      const provider = createGeminiCloudProvider({ project: 'test-project', getToken: async () => 'test-token', fetchImpl: fetchMock as typeof fetch })
+      await provider.synthesizeChunk({ text: 'In 1511, off the coast of Malacca.', tag: 'hook', chunkIndex: 0, attempt: 0, outputWav: path.join(dir, 'out.wav') },
+        { voiceId: ARCHIPELAGO_EN_VOICE_ID, ffmpegPath: '' })
+      const [, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      const body = JSON.parse(String(options.body))
+      expect(body.contents[0].parts[0].speechMetadata.style).toBe(ARCHIPELAGO_EN_DELIVERY_STYLES.hook)
+      expect(body.generationConfig.speechConfig).toEqual({
+        languageCode: 'en-US',
+        voiceConfig: { voice: ARCHIPELAGO_EN_VOICE_ID }
+      })
     } finally { await removeScratchDir(dir) }
   })
 })

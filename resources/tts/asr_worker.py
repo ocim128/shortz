@@ -1,10 +1,11 @@
 """Keep faster-whisper loaded and serve JSON-line transcription requests.
 
-One request per line: {"id": <n>, "wav": <path>, "model"?: "small"} ->
+One request per line: {"id": <n>, "wav": <path>, "model"?: "small", "language"?: "id"} ->
 {"id": <n>, "ok": true, "transcript": str, "words": [...], "durationSec": f}
 or {"id": <n>, "ok": false, "error": str}. Promoted from the verified repair
-scripts in tmp/ (transcribe-voice.py, repair-verified.py): Indonesian,
-beam_size 5, no VAD, word timestamps for caption timing.
+scripts in tmp/ (transcribe-voice.py, repair-verified.py): default Indonesian
+("id", configurable per request), beam_size 5, no VAD, word timestamps for
+caption timing.
 
 The model size is configurable per request (default "small" — markedly more
 accurate than "base" on Indonesian) and models are cached per size, so mixed
@@ -30,13 +31,13 @@ def load_model(size):
     return np, sf, resample_poly, model
 
 
-def transcribe(np, sf, resample_poly, model, wav_path):
+def transcribe(np, sf, resample_poly, model, wav_path, language='id'):
     samples, rate = sf.read(wav_path, dtype='float32')
     if samples.ndim > 1:
         samples = samples.mean(axis=1)
     samples = resample_poly(samples, 16000, rate).astype(np.float32)
     segments, _ = model.transcribe(
-        samples, language='id', beam_size=5, vad_filter=False,
+        samples, language=language, beam_size=5, vad_filter=False,
         condition_on_previous_text=False, word_timestamps=True)
     words = []
     texts = []
@@ -77,8 +78,9 @@ def main():
             request = json.loads(line)
             request_id = request.get('id')
             size = request.get('model') or DEFAULT_MODEL_SIZE
+            language = request.get('language') or 'id'
             np, sf, resample_poly, model = get_model(size)
-            result = transcribe(np, sf, resample_poly, model, request['wav'])
+            result = transcribe(np, sf, resample_poly, model, request['wav'], language=language)
             response = {'id': request_id, 'ok': True, **result}
         except Exception:
             response = {'id': request_id, 'ok': False, 'error': traceback.format_exc()[-2000:]}

@@ -7,9 +7,9 @@ import {
   TTS_MAX_TEXT_LENGTH,
   VOICE_PRESETS
 } from '../../../../shared/tts/voices'
-import { ARCHIPELAGO_VOICE, INVESTIGATOR_VOICE_ID, INVESTIGATOR_VOICE } from '../../../../shared/tts/gemini'
+import { ARCHIPELAGO_EN_VOICE, ARCHIPELAGO_VOICE, INVESTIGATOR_VOICE_ID, INVESTIGATOR_VOICE } from '../../../../shared/tts/gemini'
 
-const SPEECH_VOICES = [INVESTIGATOR_VOICE, ARCHIPELAGO_VOICE, ...VOICE_PRESETS]
+const SPEECH_VOICES = [INVESTIGATOR_VOICE, ARCHIPELAGO_VOICE, ARCHIPELAGO_EN_VOICE, ...VOICE_PRESETS]
 
 type PreviewState = 'idle' | 'loading' | 'ready' | 'error'
 

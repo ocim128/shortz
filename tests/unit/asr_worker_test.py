@@ -115,6 +115,29 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(read_files, ['chunk.wav'])
 
     @unittest.skipIf(np is None, 'numpy is required for transcription stubs')
+    def test_forwards_requested_language_to_whisper(self):
+        np_stub, sf_stub, resample, model, _read = make_stubs(
+            'A Javanese jong.',
+            [('A', 0.1, 0.2), ('Javanese', 0.2, 0.6), ('jong.', 0.6, 0.9)],
+        )
+        transcribe_args = {}
+        original = model.transcribe
+
+        def recording(samples, **kwargs):
+            transcribe_args.update(kwargs)
+            return original(samples, **kwargs)
+
+        model.transcribe = recording
+        request = json.dumps({'id': 4, 'wav': 'en.wav', 'language': 'en'})
+        with patch.object(worker.sys, 'stdin', io.StringIO(request)), \
+             patch.object(worker.sys, 'stdout', io.StringIO()) as stdout, \
+             patch.object(worker, 'load_model', return_value=(np_stub, sf_stub, resample, model)):
+            self.assertEqual(worker.main(), 0)
+        response = json.loads(stdout.getvalue())
+        self.assertTrue(response['ok'])
+        self.assertEqual(transcribe_args['language'], 'en')
+
+    @unittest.skipIf(np is None, 'numpy is required for transcription stubs')
     def test_a_transcribe_failure_becomes_ok_false_not_a_crash(self):
         np_stub, sf_stub, resample, _model, _read = make_stubs('', [])
 

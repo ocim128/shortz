@@ -1,8 +1,18 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ARCHIPELAGO_DELIVERY_STYLES, createGeminiTtsProvider, GEMINI_DELIVERY_STYLES } from '../../src/core/tts/gemini-tts'
-import { ARCHIPELAGO_VOICE_ID, DEFAULT_GEMINI_TTS_VOICE, INVESTIGATOR_VOICE_ID } from '../../src/shared/tts/gemini'
+import {
+  ARCHIPELAGO_DELIVERY_STYLES,
+  ARCHIPELAGO_EN_DELIVERY_STYLES,
+  createGeminiTtsProvider,
+  GEMINI_DELIVERY_STYLES
+} from '../../src/core/tts/gemini-tts'
+import {
+  ARCHIPELAGO_EN_VOICE_ID,
+  ARCHIPELAGO_VOICE_ID,
+  DEFAULT_GEMINI_TTS_VOICE,
+  INVESTIGATOR_VOICE_ID
+} from '../../src/shared/tts/gemini'
 import { makeScratchDir, removeScratchDir } from '../helpers/env'
 
 function wav(): Buffer {
@@ -18,20 +28,25 @@ function wav(): Buffer {
 describe('Gemini TTS provider', () => {
   afterEach(() => vi.unstubAllEnvs())
 
-  it.each(['hook', 'tactical', 'twist'] as const)('keeps %s delivery distinct for Archipelago and Investigator', async (tag) => {
+  it.each(['hook', 'tactical', 'twist'] as const)('keeps %s delivery and language distinct for Archipelago, Archipelago (EN), and Investigator', async (tag) => {
     const dir = await makeScratchDir('gemini-narrator-styles')
     try {
       const fetchMock = vi.fn(async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: {
         mimeType: 'audio/wav', data: wav().toString('base64')
       } }] } }] }), { status: 200 }))
       const provider = createGeminiTtsProvider({ apiKey: 'fake', fetchImpl: fetchMock as typeof fetch })
-      for (const voiceId of [ARCHIPELAGO_VOICE_ID, INVESTIGATOR_VOICE_ID]) {
+      for (const voiceId of [ARCHIPELAGO_VOICE_ID, ARCHIPELAGO_EN_VOICE_ID, INVESTIGATOR_VOICE_ID]) {
         await provider.synthesizeChunk({ text: 'Halo.', tag, chunkIndex: 0, attempt: 0, outputWav: path.join(dir, 'out.wav') }, { voiceId, ffmpegPath: '' })
       }
-      const bodies = fetchMock.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body)))
+      const bodies = fetchMock.mock.calls.map((call) => JSON.parse(String((call as unknown as [string, RequestInit])[1].body)))
       expect(bodies[0].contents[0].parts[0].speechMetadata.style).toBe(ARCHIPELAGO_DELIVERY_STYLES[tag])
-      expect(bodies[1].contents[0].parts[0].speechMetadata.style).toBe(GEMINI_DELIVERY_STYLES[tag])
+      expect(bodies[0].generationConfig.speechConfig.languageCode).toBe('id-ID')
+      expect(bodies[1].contents[0].parts[0].speechMetadata.style).toBe(ARCHIPELAGO_EN_DELIVERY_STYLES[tag])
+      expect(bodies[1].generationConfig.speechConfig.languageCode).toBe('en-US')
+      expect(bodies[2].contents[0].parts[0].speechMetadata.style).toBe(GEMINI_DELIVERY_STYLES[tag])
+      expect(bodies[2].generationConfig.speechConfig.languageCode).toBe('id-ID')
       expect(ARCHIPELAGO_DELIVERY_STYLES[tag]).not.toBe(GEMINI_DELIVERY_STYLES[tag])
+      expect(ARCHIPELAGO_EN_DELIVERY_STYLES[tag]).not.toBe(ARCHIPELAGO_DELIVERY_STYLES[tag])
     } finally { await removeScratchDir(dir) }
   })
 

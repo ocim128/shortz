@@ -51,12 +51,13 @@ describe('tts provider voice selection', () => {
     expect(lines.slice(1)).toEqual(['Charon', 'Fenrir', 'Orus', 'Algenib'])
   })
 
-  it('lists Archipelago for Google Cloud without changing the Investigator default', async () => {
+  it('lists Archipelago and Archipelago (EN) for Google Cloud without changing the Investigator default', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     expect(await runTtsCommand(['--provider', 'gemini-cloud', '--list-voices'])).toBe(0)
     const lines = log.mock.calls.map(([line]) => String(line))
     expect(lines[0]).toContain('Investigator')
     expect(lines.some((line) => line.startsWith('archipelago\tArchipelago\t'))).toBe(true)
+    expect(lines.some((line) => line.startsWith('archipelago-en\tArchipelago (EN)\t'))).toBe(true)
   })
 
   it('rejects an invalid project key index before generation', async () => {

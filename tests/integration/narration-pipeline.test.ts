@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runNarrationPipeline } from '../../src/core/tts/pipeline'
 import { createVoxProvider, type TtsProvider, type TtsProviderChunkRequest, type TtsProviderContext } from '../../src/core/tts/provider'
 import { createGeminiTtsProvider } from '../../src/core/tts/gemini-tts'
+import { ARCHIPELAGO_EN_VOICE_ID, ARCHIPELAGO_VOICE_ID } from '../../src/shared/tts/gemini'
 import { stopAsrWorker } from '../../src/core/tts/asr'
 import { stopVoxWorker } from '../../src/core/tts/voxcpm'
 import { resolveFfmpegBinariesCached } from '../../src/core/ffmpeg/resolve-bin'
@@ -525,5 +526,48 @@ describe('narration pipeline', () => {
     } finally {
       await removeScratchDir(dir)
     }
+  }, 60_000)
+
+  it.each([
+    { voiceId: ARCHIPELAGO_EN_VOICE_ID, expectedLanguage: 'en', script: '[hook]The sea remembers.' },
+    { voiceId: ARCHIPELAGO_VOICE_ID, expectedLanguage: 'id', script: '[hook]Hujan turun.' }
+  ])('passes ASR language "$expectedLanguage" for $voiceId across chunk and final alignment', async ({ voiceId, expectedLanguage, script }) => {
+    const dir = await makeScratchDir(`narration-asr-lang-${expectedLanguage}`)
+    try {
+      const { ffmpegPath } = await resolveFfmpegBinariesCached()
+      const asrWorker = path.join(dir, 'asr.cjs')
+      const asrLog = path.join(dir, 'asr-lang-log.jsonl')
+      const cleanText = script.replace(/^\[[^\]]+\]/, '')
+      await writeFile(asrWorker, `
+        const fs = require('node:fs');
+        require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+          const r = JSON.parse(line);
+          fs.appendFileSync(${JSON.stringify(asrLog)}, JSON.stringify(r) + '\\n');
+          const text = ${JSON.stringify(cleanText)};
+          const words = text.split(/\\s+/).map((word, i) => ({ word, start: 0.1 + i * 0.4, end: 0.4 + i * 0.4 }));
+          process.stdout.write(JSON.stringify({ id: r.id, ok: true, transcript: text, words, durationSec: 1.4 }) + '\\n');
+        });`)
+      const provider: TtsProvider = {
+        id: 'gemini-cloud',
+        model: 'gemini-3.8-flash-tts',
+        stop() {},
+        async synthesizeChunk(request) { await writeFile(request.outputWav, silentWav(1.4)) }
+      }
+      const result = await runNarrationPipeline({
+        script,
+        voiceId,
+        outputMp3: path.join(dir, 'out.mp3'),
+        ffmpegPath,
+        provider,
+        asrWorkerPath: asrWorker,
+        asrPythonPath: process.execPath,
+        master: false
+      })
+      try {
+        const requests = (await readFile(asrLog, 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as { language?: string })
+        expect(requests.length).toBeGreaterThanOrEqual(3)
+        expect(requests.every((r) => r.language === expectedLanguage)).toBe(true)
+      } finally { await result.cleanup() }
+    } finally { await removeScratchDir(dir) }
   }, 60_000)
 })

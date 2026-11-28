@@ -79,7 +79,14 @@ import { publishNarrationArtifacts } from '../core/tts/publish'
 import { resolveGoogleCloudProject } from '../core/tts/environment'
 import { stopAsrWorker } from '../core/tts/asr'
 import { findVoicePreset, PREVIEW_TEXT, TTS_MAX_TEXT_LENGTH } from '../shared/tts/voices'
-import { ARCHIPELAGO_VOICE, ARCHIPELAGO_VOICE_ID, INVESTIGATOR_VOICE, INVESTIGATOR_VOICE_ID } from '../shared/tts/gemini'
+import {
+  ARCHIPELAGO_EN_VOICE,
+  ARCHIPELAGO_EN_VOICE_ID,
+  ARCHIPELAGO_VOICE,
+  ARCHIPELAGO_VOICE_ID,
+  INVESTIGATOR_VOICE,
+  INVESTIGATOR_VOICE_ID
+} from '../shared/tts/gemini'
 import { uniqueOutputPath } from '../core/store/fs-utils'
 
 /**
@@ -307,7 +314,7 @@ export function registerIpcHandlers(): void {
         if (typeof req.text !== 'string' || !req.text.trim() || req.text.trim().length > TTS_MAX_TEXT_LENGTH) {
           throw new Error(`Speech text must contain 1–${TTS_MAX_TEXT_LENGTH} characters`)
         }
-        const cloudVoice = [INVESTIGATOR_VOICE, ARCHIPELAGO_VOICE].find((voice) => voice.id === req.voiceId)
+        const cloudVoice = [INVESTIGATOR_VOICE, ARCHIPELAGO_VOICE, ARCHIPELAGO_EN_VOICE].find((voice) => voice.id === req.voiceId)
         const preset = cloudVoice ? undefined : findVoicePreset(req.voiceId)
         if (!cloudVoice && !preset) throw new Error(`Unknown voice: ${req.voiceId}`)
         const [settings, binaries] = await Promise.all([currentSettings(), resolveBinariesWithSettings()])
@@ -361,11 +368,16 @@ export function registerIpcHandlers(): void {
   })
 
   handle('shortz:ttsPreviewVoice', async (voiceId: string): Promise<string> => {
-    if (voiceId === INVESTIGATOR_VOICE_ID || voiceId === ARCHIPELAGO_VOICE_ID) {
-      const name = voiceId === INVESTIGATOR_VOICE_ID ? 'Investigator' : 'Archipelago'
-      const file = ttsResource(voiceId === INVESTIGATOR_VOICE_ID ? 'investigator-preview.mp3' : 'archipelago-preview.mp3')
+    const cloudPreviews: Record<string, { name: string; file: string }> = {
+      [INVESTIGATOR_VOICE_ID]: { name: 'Investigator', file: 'investigator-preview.mp3' },
+      [ARCHIPELAGO_VOICE_ID]: { name: 'Archipelago', file: 'archipelago-preview.mp3' },
+      [ARCHIPELAGO_EN_VOICE_ID]: { name: 'Archipelago (EN)', file: 'archipelago-en-preview.mp3' }
+    }
+    const cloudPreview = cloudPreviews[voiceId]
+    if (cloudPreview) {
+      const file = ttsResource(cloudPreview.file)
       const stat = await fsp.stat(file).catch(() => null)
-      if (!stat?.isFile() || !stat.size) throw new Error(`The ${name} preview is unavailable`)
+      if (!stat?.isFile() || !stat.size) throw new Error(`The ${cloudPreview.name} preview is unavailable`)
       return mintMediaUrl(file)
     }
     const preset = findVoicePreset(voiceId)

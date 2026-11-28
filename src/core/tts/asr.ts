@@ -115,7 +115,7 @@ class AsrWorker {
     else pending.resolve(result!)
   }
 
-  transcribe(wavPath: string, model: string | undefined, signal?: AbortSignal): Promise<AsrResult> {
+  transcribe(wavPath: string, model: string | undefined, language: string | undefined, signal?: AbortSignal): Promise<AsrResult> {
     if (signal?.aborted) return Promise.reject(new Error('Speech verification cancelled'))
     if (this.closed) {
       throw new Error(
@@ -131,8 +131,9 @@ class AsrWorker {
       this.pending = { id, resolve, reject, signal, abort }
       signal?.addEventListener('abort', abort, { once: true })
       if (signal?.aborted) return abort()
-      const request: { id: number; wav: string; model?: string } = { id, wav: path.resolve(wavPath) }
+      const request: { id: number; wav: string; model?: string; language?: string } = { id, wav: path.resolve(wavPath) }
       if (model) request.model = model
+      if (language) request.language = language
       this.child.stdin.write(`${JSON.stringify(request)}\n`, 'utf8')
     })
   }
@@ -153,12 +154,12 @@ export function stopAsrWorker(): void {
 /** Transcribe one WAV chunk, keeping the verifier loaded between calls. */
 export async function transcribeChunk(
   wavPath: string,
-  options: { pythonPath?: string; workerPath: string; model?: string; signal?: AbortSignal }
+  options: { pythonPath?: string; workerPath: string; model?: string; language?: string; signal?: AbortSignal }
 ): Promise<AsrResult> {
   const python = options.pythonPath ?? defaultAsrPythonPath()
   if (worker && (worker.python !== python || worker.script !== options.workerPath)) {
     throw new Error('A different speech verifier is already running')
   }
   worker ??= new AsrWorker(python, options.workerPath)
-  return worker.transcribe(wavPath, options.model, options.signal)
+  return worker.transcribe(wavPath, options.model, options.language, options.signal)
 }

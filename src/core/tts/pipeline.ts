@@ -5,6 +5,7 @@ import { transcribeChunk, type AsrResult } from './asr'
 import { parseNarrationScript, type NarrationChunk } from './chunks'
 import { DEFAULT_DELIVERY, DELIVERY_TAGS, findVoicePreset, type DeliveryTag } from '../../shared/tts/voices'
 import { findVoicePreset as findEdgeVoicePreset } from '../../shared/tts/legacy-edge-voices'
+import { geminiVoiceLanguage } from '../../shared/tts/gemini'
 import { checkAttempt, summarizeVerification, wordMismatches, type ChunkVerification } from './verify'
 import {
   gapMsAfter,
@@ -162,6 +163,7 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
   if (chunks.length === 0) throw new Error('The script contains no narration text')
 
   const workDir = await fs.mkdtemp(path.join(path.dirname(input.outputMp3), '.shortz-narration-'))
+  const { asrLanguage } = geminiVoiceLanguage(input.voiceId)
   const isGemini = provider.id === 'gemini-tts' || provider.id === 'gemini-cloud'
   const geminiCacheDir = isGemini
     ? path.join(path.dirname(input.outputMp3), '.shortz-tts-cache', createHash('sha256').update(path.resolve(input.outputMp3)).digest('hex'))
@@ -202,6 +204,7 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
           workerPath: input.asrWorkerPath,
           ...(input.asrPythonPath ? { pythonPath: input.asrPythonPath } : {}),
           ...(input.asrModel ? { model: input.asrModel } : {}),
+          language: asrLanguage,
           signal: input.signal
         })
         const out = path.join(workDir, `p${i}-a${attempt}.wav`)
@@ -213,7 +216,9 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
         const finalAsr = await transcribeChunk(out, {
           workerPath: input.asrWorkerPath,
           ...(input.asrPythonPath ? { pythonPath: input.asrPythonPath } : {}),
-          ...(input.asrModel ? { model: input.asrModel } : {}), signal: input.signal
+          ...(input.asrModel ? { model: input.asrModel } : {}),
+          language: asrLanguage,
+          signal: input.signal
         })
         const rawCheck = checkAttempt({ expected: chunk.text, seed: attempt, asr })
         const finalCheck = checkAttempt({ expected: chunk.text, seed: attempt, asr: finalAsr })
@@ -297,7 +302,9 @@ export async function runNarrationPipeline(input: NarrationPipelineInput): Promi
     const finalAsr = isGemini ? await transcribeChunk(stagedMp3, {
       workerPath: input.asrWorkerPath,
       ...(input.asrPythonPath ? { pythonPath: input.asrPythonPath } : {}),
-      ...(input.asrModel ? { model: input.asrModel } : {}), signal: input.signal
+      ...(input.asrModel ? { model: input.asrModel } : {}),
+      language: asrLanguage,
+      signal: input.signal
     }) : undefined
     const mismatches = finalAsr ? wordMismatches(chunks.map((chunk) => chunk.text).join(' '), finalAsr.transcript) : undefined
     const finalAlignment = finalAsr && mismatches ? {

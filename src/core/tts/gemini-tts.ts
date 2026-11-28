@@ -3,7 +3,13 @@ import { createHash, randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { DeliveryTagId } from '../../shared/tts/voices'
-import { ARCHIPELAGO_VOICE_ID, DEFAULT_GEMINI_TTS_VOICE, GEMINI_TTS_VOICES } from '../../shared/tts/gemini'
+import {
+  ARCHIPELAGO_EN_VOICE_ID,
+  ARCHIPELAGO_VOICE_ID,
+  DEFAULT_GEMINI_TTS_VOICE,
+  GEMINI_TTS_VOICES,
+  geminiVoiceLanguage
+} from '../../shared/tts/gemini'
 import type { TtsProvider } from './provider'
 import { GEMINI_API_KEY_NAMES } from './environment'
 
@@ -25,6 +31,12 @@ export const ARCHIPELAGO_DELIVERY_STYLES: Record<DeliveryTagId, string> = {
   hook: 'Intriguing, warm, composed Indonesian documentary narrator with quiet urgency and curiosity',
   tactical: 'Clear, grounded, engaging Indonesian historical-geological documentary narrator, steady natural pacing',
   twist: 'Measured, reflective, slightly hushed Indonesian documentary reveal with weight and wonder'
+}
+
+export const ARCHIPELAGO_EN_DELIVERY_STYLES: Record<DeliveryTagId, string> = {
+  hook: 'Intriguing, composed, quietly urgent English documentary narrator with natural pitch dynamics and curiosity',
+  tactical: 'Clear, grounded, engaging English historical-geological documentary narrator with expressive cadence and natural phrasing',
+  twist: 'Measured, hushed, reflective English documentary reveal with emotional weight, deliberate pacing, and wonder'
 }
 
 /** Google may supply retry advice in a header or google.rpc.RetryInfo. */
@@ -65,7 +77,13 @@ export function createGeminiTtsProvider(options: { model?: string; apiKey?: stri
         throw new Error(`Unknown Gemini TTS voice: ${voice}. Choose ${GEMINI_TTS_VOICES.join(', ')} or a designed voice ID`)
       }
       const tag = request.tag ?? 'tactical'
-      const style = (voice === ARCHIPELAGO_VOICE_ID ? ARCHIPELAGO_DELIVERY_STYLES : GEMINI_DELIVERY_STYLES)[tag]
+      const styles = voice === ARCHIPELAGO_EN_VOICE_ID
+        ? ARCHIPELAGO_EN_DELIVERY_STYLES
+        : voice === ARCHIPELAGO_VOICE_ID
+          ? ARCHIPELAGO_DELIVERY_STYLES
+          : GEMINI_DELIVERY_STYLES
+      const style = styles[tag]
+      const { languageCode } = geminiVoiceLanguage(voice)
       const cacheKey = createHash('sha256').update(JSON.stringify([
         'gemini-tts-audio-v1', model, voice, request.text, style, request.attempt
       ])).digest('hex')
@@ -89,7 +107,7 @@ export function createGeminiTtsProvider(options: { model?: string; apiKey?: stri
             contents: [{ role: 'user', parts: [{ text: request.text, speechMetadata: { style } }] }],
             generationConfig: {
               responseModalities: ['AUDIO'],
-              speechConfig: { languageCode: 'id-ID', voiceConfig: customVoice ? { voice } : { prebuiltVoiceConfig: { voiceName: voice } } }
+              speechConfig: { languageCode, voiceConfig: customVoice ? { voice } : { prebuiltVoiceConfig: { voiceName: voice } } }
             }
           })
       let response: Response | undefined
